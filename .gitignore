@@ -1,0 +1,17 @@
+.DS_Store
+
+.vscode
+.cursor
+.codex
+.opencode
+
+node_modules
+dist
+dist-ssr
+*.local
+
+.env
+.env.local
+.env.*.local
+
+Thumbs.db
