@@ -16,11 +16,18 @@ type History map[string][]string
 
 const help = `
 Usage: mvd [OPTIONS] SRC [DST]
+       mvd add DIR
+       mvd rm [-f] DIR
+       mvd rebase DIR NEW-DIR
 
 Move a file/directory and track its location history.
 
 Commands:
   mvd SRC DST          Move SRC to DST (tracked)
+  mvd add DIR          Add DIR to the record file without moving it
+  mvd rm [-f] DIR      Remove the exact recorded entry for DIR
+  mvd rebase DIR NEW-DIR
+                       Change the entry base to NEW-DIR
   mvd --list [SRC]     Show location history (all if SRC omitted)
   mvd --back SRC       Move SRC back to its previous location
   mvd --clear SRC      Clear movement history for SRC
@@ -29,6 +36,7 @@ Options:
   --list               Show location history
   --back               Move back to previous location
   --clear              Clear movement history for a specific file
+  -f, --force          Force removal for mvd rm and clear its histories
   -h, --help           Show this help message
 `
 
@@ -40,6 +48,26 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "add":
+			if len(args) < 2 {
+				return fmt.Errorf("usage: mvd add DIR")
+			}
+			if len(args) > 2 {
+				return fmt.Errorf("usage: mvd add DIR")
+			}
+			return cmdAdd(args[1])
+		case "rm":
+			return runRemove(args[1:])
+		case "rebase":
+			if len(args) != 3 {
+				return fmt.Errorf("usage: mvd rebase DIR NEW-DIR")
+			}
+			return cmdRebase(args[1], args[2])
+		}
+	}
+
 	var list, back, clear bool
 	args, err := flags.Bool("--list", &list).
 		Bool("--back", &back).
@@ -74,6 +102,122 @@ func run(args []string) error {
 		return nil
 	}
 	return cmdMove(args[0], args[1])
+}
+
+func runRemove(args []string) error {
+	var force bool
+	var dir string
+
+	for _, arg := range args {
+		switch arg {
+		case "-f", "--force":
+			force = true
+		default:
+			if len(arg) > 0 && arg[0] == '-' {
+				return fmt.Errorf("usage: mvd rm [-f] DIR")
+			}
+			if dir != "" {
+				return fmt.Errorf("usage: mvd rm [-f] DIR")
+			}
+			dir = arg
+		}
+	}
+	if dir == "" {
+		return fmt.Errorf("usage: mvd rm [-f] DIR")
+	}
+	return cmdRemove(dir, force)
+}
+
+func cmdAdd(dir string) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve: %w", err)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		return err
+	}
+
+	if _, locations := findEntry(hist, absDir); locations != nil {
+		fmt.Printf("hint: %s is already recorded, nothing added\n", absDir)
+		return nil
+	}
+
+	hist[absDir] = []string{absDir}
+	fmt.Printf("added: %s\n", absDir)
+	return saveHistory(hist)
+}
+
+func cmdRemove(dir string, force bool) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve: %w", err)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		return err
+	}
+
+	locations, ok := hist[absDir]
+	if !ok {
+		fmt.Printf("hint: no recorded entry for %s\n", absDir)
+		return nil
+	}
+
+	if len(locations) > 1 {
+		if !force {
+			return fmt.Errorf("%s has movement history:\n  use `mvd rm -f %s`\n  to clear it", absDir, absDir)
+		}
+		fmt.Printf("hint: removing %s will clear %d history entries\n", absDir, len(locations)-1)
+	}
+
+	delete(hist, absDir)
+	fmt.Printf("removed: %s\n", absDir)
+	return saveHistory(hist)
+}
+
+func cmdRebase(dir, newDir string) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolve dir: %w", err)
+	}
+	absNewDir, err := filepath.Abs(newDir)
+	if err != nil {
+		return fmt.Errorf("resolve new-dir: %w", err)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		return err
+	}
+
+	origKey, locations := findEntry(hist, absDir)
+	if locations == nil {
+		return fmt.Errorf("no recorded entry for %s", absDir)
+	}
+
+	if otherKey, otherLocations := findEntry(hist, absNewDir); otherLocations != nil && otherKey != origKey {
+		return fmt.Errorf("%s is already recorded in another entry", absNewDir)
+	}
+
+	if locations[0] == absNewDir {
+		fmt.Printf("base unchanged: %s\n", absNewDir)
+		return nil
+	}
+
+	oldBase := locations[0]
+	updated := []string{absNewDir}
+	if oldBase != absNewDir && !containsPath(locations[1:], oldBase) {
+		updated = append(updated, oldBase)
+	}
+	updated = append(updated, locations[1:]...)
+
+	delete(hist, origKey)
+	hist[absNewDir] = updated
+	fmt.Printf("rebased: %s → %s\n", origKey, absNewDir)
+	return saveHistory(hist)
 }
 
 func cmdClear(src string) error {
@@ -123,16 +267,20 @@ func cmdMove(src, dst string) error {
 		return err
 	}
 
-	locations := hist[absSrc]
-	if len(locations) == 0 {
+	// Look up existing history by ANY prior location, not just by
+	// key. Otherwise a chain A → B → C gets split into two entries
+	// (one keyed at A, another keyed at B) because B is the "src" of
+	// the second move.
+	origKey, locations := findEntry(hist, absSrc)
+	if locations == nil {
+		origKey = absSrc
 		locations = []string{absSrc, absDst}
 	} else {
 		locations = append(locations, absDst)
 	}
 
-	origKey := locations[0]
-	delete(hist, absSrc)
-	hist[origKey] = locations
+	delete(hist, origKey)
+	hist[locations[0]] = locations
 
 	return saveHistory(hist)
 }
@@ -161,16 +309,14 @@ func cmdListAll() error {
 		locations := hist[key]
 		current := locations[len(locations)-1]
 		fmt.Printf("%s\n", key)
-		for j, loc := range locations {
+		// Skip locations[0] because it's identical to the header
+		// (key). Printing it again just duplicates information.
+		for _, loc := range locations[1:] {
 			marker := "  "
 			if loc == current {
 				marker = "* "
 			}
-			if j == 0 {
-				fmt.Printf("  %s%s  (original)\n", marker, loc)
-			} else {
-				fmt.Printf("  %s%s\n", marker, loc)
-			}
+			fmt.Printf("  %s%s\n", marker, loc)
 		}
 	}
 	return nil
@@ -229,7 +375,8 @@ func cmdBack(src string) error {
 	}
 
 	if len(locations) <= 1 {
-		return fmt.Errorf("already at original position: %s", absSrc)
+		fmt.Printf("nothing to move back for %s\n", absSrc)
+		return nil
 	}
 
 	prev := locations[len(locations)-2]
@@ -239,11 +386,7 @@ func cmdBack(src string) error {
 	fmt.Printf("moved back: %s → %s\n", absSrc, prev)
 
 	locations = locations[:len(locations)-1]
-	if len(locations) <= 1 {
-		delete(hist, origKey)
-	} else {
-		hist[origKey] = locations
-	}
+	hist[origKey] = locations
 
 	return saveHistory(hist)
 }
@@ -268,6 +411,15 @@ func findEntry(hist History, path string) (string, []string) {
 	return "", nil
 }
 
+func containsPath(paths []string, target string) bool {
+	for _, path := range paths {
+		if path == target {
+			return true
+		}
+	}
+	return false
+}
+
 func historyPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".mvd", "history.json")
@@ -286,7 +438,45 @@ func loadHistory() (History, error) {
 	if err := json.Unmarshal(data, &hist); err != nil {
 		return nil, fmt.Errorf("parse history: %w", err)
 	}
-	return hist, nil
+	return mergeChains(hist), nil
+}
+
+// mergeChains stitches together entries whose tail matches another
+// entry's head. Older versions of mvd stored A→B and B→C as two
+// separate entries whenever the user ran `mvd B C`; this produces the
+// unified chain A→B→C that the user actually moved around.
+//
+// The merge is repeated until no more chains can be joined, which
+// handles arbitrary-length splits (A→B, B→C, C→D, ...). Duplicate
+// adjacent locations introduced by the overlap at the seam are also
+// collapsed.
+func mergeChains(hist History) History {
+	for {
+		merged := false
+		for key, locs := range hist {
+			if len(locs) == 0 {
+				continue
+			}
+			tail := locs[len(locs)-1]
+			if tail == key {
+				continue
+			}
+			next, ok := hist[tail]
+			if !ok || len(next) == 0 {
+				continue
+			}
+			combined := append([]string{}, locs...)
+			// Skip next[0] because it duplicates tail.
+			combined = append(combined, next[1:]...)
+			hist[key] = combined
+			delete(hist, tail)
+			merged = true
+			break
+		}
+		if !merged {
+			return hist
+		}
+	}
 }
 
 func saveHistory(hist History) error {
