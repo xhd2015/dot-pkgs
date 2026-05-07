@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestRunAddStoresSingleEntry(t *testing.T) {
+func TestRunAddFlagStoresSingleEntry(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()
 	t.Setenv("HOME", home)
@@ -17,8 +17,8 @@ func TestRunAddStoresSingleEntry(t *testing.T) {
 	dir := filepath.Join(work, "tracked")
 	mustMkdirAll(t, dir)
 
-	if err := run([]string{"add", dir}); err != nil {
-		t.Fatalf("run add: %v", err)
+	if err := run([]string{"--add", dir}); err != nil {
+		t.Fatalf("run --add: %v", err)
 	}
 
 	hist, err := loadHistory()
@@ -28,6 +28,35 @@ func TestRunAddStoresSingleEntry(t *testing.T) {
 	locs := hist[dir]
 	if len(locs) != 1 || locs[0] != dir {
 		t.Fatalf("expected single record entry for %s, got %#v", dir, locs)
+	}
+}
+
+func TestRunMoveCanUseAddAsSource(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cwd := filepath.Join(work, "cwd")
+	dst := filepath.Join(work, "dst")
+	mustMkdirAll(t, cwd)
+	mustMkdirAll(t, dst)
+	t.Chdir(cwd)
+
+	src := filepath.Join(cwd, "add")
+	if err := os.WriteFile(src, []byte("content"), 0644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := run([]string{"add", dst}); err != nil {
+		t.Fatalf("run move with add source: %v", err)
+	}
+
+	movedPath := filepath.Join(dst, "add")
+	if !pathExists(movedPath) {
+		t.Fatalf("expected %s to exist after move", movedPath)
+	}
+	if pathExists(src) {
+		t.Fatalf("expected %s to be moved", src)
 	}
 }
 
@@ -286,6 +315,172 @@ func TestRebaseRejectsNewBaseOwnedByAnotherEntry(t *testing.T) {
 		t.Fatalf("expected cmdRebase to reject duplicate new base")
 	}
 	if !strings.Contains(err.Error(), "already recorded in another entry") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMoveAcceptsOriginalRootPath(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "a", "dir")
+	dst1 := filepath.Join(work, "b")
+	dst2 := filepath.Join(work, "c")
+
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst1)
+	mustMkdirAll(t, dst2)
+
+	if err := cmdMove(src, dst1); err != nil {
+		t.Fatalf("first cmdMove: %v", err)
+	}
+	if err := cmdMove(src, dst2); err != nil {
+		t.Fatalf("second cmdMove with root path: %v", err)
+	}
+
+	firstPath := filepath.Join(dst1, "dir")
+	secondPath := filepath.Join(dst2, "dir")
+	if pathExists(firstPath) {
+		t.Fatalf("expected %s to be moved onward", firstPath)
+	}
+	if !pathExists(secondPath) {
+		t.Fatalf("expected %s to exist after root-path move", secondPath)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	locs := hist[src]
+	if len(locs) != 3 || locs[0] != src || locs[1] != firstPath || locs[2] != secondPath {
+		t.Fatalf("expected move history [%s %s %s], got %#v", src, firstPath, secondPath, locs)
+	}
+}
+
+func TestMoveAcceptsUniqueOriginalBasename(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "projects", "kool")
+	dst1 := filepath.Join(work, "scratch")
+	dst2 := filepath.Join(work, "final")
+	cwd := filepath.Join(work, "cwd")
+
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst1)
+	mustMkdirAll(t, dst2)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdMove(src, dst1); err != nil {
+		t.Fatalf("first cmdMove: %v", err)
+	}
+
+	t.Chdir(cwd)
+	if err := cmdMove("kool", dst2); err != nil {
+		t.Fatalf("second cmdMove with unique root basename: %v", err)
+	}
+
+	firstPath := filepath.Join(dst1, "kool")
+	secondPath := filepath.Join(dst2, "kool")
+	if pathExists(firstPath) {
+		t.Fatalf("expected %s to be moved onward", firstPath)
+	}
+	if !pathExists(secondPath) {
+		t.Fatalf("expected %s to exist after basename move", secondPath)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	locs := hist[src]
+	if len(locs) != 3 || locs[0] != src || locs[1] != firstPath || locs[2] != secondPath {
+		t.Fatalf("expected move history [%s %s %s], got %#v", src, firstPath, secondPath, locs)
+	}
+}
+
+func TestMoveDoesNotUseBasenameShortcutWhenLocalPathExists(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	tracked := filepath.Join(work, "projects", "kool")
+	trackedDst := filepath.Join(work, "scratch")
+	localDst := filepath.Join(work, "local-dst")
+	cwd := filepath.Join(work, "cwd")
+
+	mustMkdirAll(t, tracked)
+	mustMkdirAll(t, trackedDst)
+	mustMkdirAll(t, localDst)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdMove(tracked, trackedDst); err != nil {
+		t.Fatalf("tracked cmdMove: %v", err)
+	}
+
+	t.Chdir(cwd)
+	local := filepath.Join(cwd, "kool")
+	if err := os.WriteFile(local, []byte("local"), 0644); err != nil {
+		t.Fatalf("write local src: %v", err)
+	}
+
+	if err := cmdMove("kool", localDst); err != nil {
+		t.Fatalf("cmdMove should use local source: %v", err)
+	}
+
+	localMoved := filepath.Join(localDst, "kool")
+	trackedCurrent := filepath.Join(trackedDst, "kool")
+	if !pathExists(localMoved) {
+		t.Fatalf("expected local source to move to %s", localMoved)
+	}
+	if !pathExists(trackedCurrent) {
+		t.Fatalf("expected tracked basename shortcut target %s to remain in place", trackedCurrent)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	trackedLocs := hist[tracked]
+	if len(trackedLocs) != 2 || trackedLocs[0] != tracked || trackedLocs[1] != trackedCurrent {
+		t.Fatalf("expected tracked history unchanged, got %#v", trackedLocs)
+	}
+	localLocs := hist[local]
+	if len(localLocs) != 2 || localLocs[0] != local || localLocs[1] != localMoved {
+		t.Fatalf("expected local move history [%s %s], got %#v", local, localMoved, localLocs)
+	}
+}
+
+func TestMoveRejectsDuplicateOriginalBasename(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	first := filepath.Join(work, "projects", "kool")
+	second := filepath.Join(work, "projects", "v2", "kool")
+	dst := filepath.Join(work, "dst")
+	cwd := filepath.Join(work, "cwd")
+
+	mustMkdirAll(t, first)
+	mustMkdirAll(t, second)
+	mustMkdirAll(t, dst)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdAdd(first); err != nil {
+		t.Fatalf("cmdAdd first: %v", err)
+	}
+	if err := cmdAdd(second); err != nil {
+		t.Fatalf("cmdAdd second: %v", err)
+	}
+
+	t.Chdir(cwd)
+	err := cmdMove("kool", dst)
+	if err == nil {
+		t.Fatalf("expected duplicate basename to fail")
+	}
+	if !strings.Contains(err.Error(), "ambiguous root basename kool") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

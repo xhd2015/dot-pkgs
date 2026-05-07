@@ -16,7 +16,6 @@ type History map[string][]string
 
 const help = `
 Usage: mvd [OPTIONS] SRC [DST]
-       mvd add DIR
        mvd rm [-f] DIR
        mvd rebase DIR NEW-DIR
 
@@ -24,7 +23,7 @@ Move a file/directory and track its location history.
 
 Commands:
   mvd SRC DST          Move SRC to DST (tracked)
-  mvd add DIR          Add DIR to the record file without moving it
+  mvd --add DIR        Add DIR to the record file without moving it
   mvd rm [-f] DIR      Remove the exact recorded entry for DIR
   mvd rebase DIR NEW-DIR
                        Change the entry base to NEW-DIR
@@ -33,6 +32,7 @@ Commands:
   mvd --clear SRC      Clear movement history for SRC
 
 Options:
+  --add                Add a DIR to history without moving it
   --list               Show location history
   --back               Move back to previous location
   --clear              Clear movement history for a specific file
@@ -50,14 +50,6 @@ func main() {
 func run(args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
-		case "add":
-			if len(args) < 2 {
-				return fmt.Errorf("usage: mvd add DIR")
-			}
-			if len(args) > 2 {
-				return fmt.Errorf("usage: mvd add DIR")
-			}
-			return cmdAdd(args[1])
 		case "rm":
 			return runRemove(args[1:])
 		case "rebase":
@@ -68,8 +60,9 @@ func run(args []string) error {
 		}
 	}
 
-	var list, back, clear bool
-	args, err := flags.Bool("--list", &list).
+	var add, list, back, clear bool
+	args, err := flags.Bool("--add", &add).
+		Bool("--list", &list).
 		Bool("--back", &back).
 		Bool("--clear", &clear).
 		Help("-h,--help", help).
@@ -78,6 +71,12 @@ func run(args []string) error {
 		return err
 	}
 
+	if add {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: mvd --add DIR")
+		}
+		return cmdAdd(args[0])
+	}
 	if clear {
 		if len(args) < 1 {
 			return fmt.Errorf("usage: mvd --clear SRC")
@@ -243,10 +242,16 @@ func cmdClear(src string) error {
 }
 
 func cmdMove(src, dst string) error {
-	absSrc, err := filepath.Abs(src)
+	hist, err := loadHistory()
 	if err != nil {
-		return fmt.Errorf("resolve src: %w", err)
+		return err
 	}
+
+	origKey, locations, absSrc, err := resolveMoveSource(hist, src)
+	if err != nil {
+		return err
+	}
+
 	absDst, err := filepath.Abs(dst)
 	if err != nil {
 		return fmt.Errorf("resolve dst: %w", err)
@@ -262,16 +267,6 @@ func cmdMove(src, dst string) error {
 		return fmt.Errorf("move: %w", err)
 	}
 
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-
-	// Look up existing history by ANY prior location, not just by
-	// key. Otherwise a chain A → B → C gets split into two entries
-	// (one keyed at A, another keyed at B) because B is the "src" of
-	// the second move.
-	origKey, locations := findEntry(hist, absSrc)
 	if locations == nil {
 		origKey = absSrc
 		locations = []string{absSrc, absDst}
@@ -283,6 +278,42 @@ func cmdMove(src, dst string) error {
 	hist[locations[0]] = locations
 
 	return saveHistory(hist)
+}
+
+func resolveMoveSource(hist History, src string) (string, []string, string, error) {
+	if useRootBaseNameShortcut(src) {
+		origKey, locations, err := findEntryByRootBaseName(hist, src)
+		if err != nil {
+			return "", nil, "", err
+		}
+		if locations != nil {
+			if len(locations) == 0 {
+				return "", nil, "", fmt.Errorf("empty mv history for %s", src)
+			}
+			return origKey, locations, locations[len(locations)-1], nil
+		}
+	}
+
+	absSrc, err := filepath.Abs(src)
+	if err != nil {
+		return "", nil, "", fmt.Errorf("resolve src: %w", err)
+	}
+
+	origKey, locations := findEntry(hist, absSrc)
+	if locations == nil {
+		return "", nil, absSrc, nil
+	}
+	if len(locations) == 0 {
+		return "", nil, "", fmt.Errorf("empty mv history for %s", absSrc)
+	}
+
+	last := locations[len(locations)-1]
+	root := locations[0]
+	if absSrc != root && absSrc != last {
+		return "", nil, "", fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
+	}
+
+	return origKey, locations, last, nil
 }
 
 func cmdListAll() error {
