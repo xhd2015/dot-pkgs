@@ -327,6 +327,138 @@ func TestBackKeepsOriginalHistoryEntry(t *testing.T) {
 	}
 }
 
+func TestBackAcceptsOriginalRootPath(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "a", "dir")
+	dst := filepath.Join(work, "b")
+
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst)
+
+	if err := cmdMove(src, dst); err != nil {
+		t.Fatalf("cmdMove: %v", err)
+	}
+
+	movedPath := filepath.Join(dst, "dir")
+	if err := cmdBack(src); err != nil {
+		t.Fatalf("cmdBack with root path: %v", err)
+	}
+
+	if !pathExists(src) {
+		t.Fatalf("expected %s to exist after moving back", src)
+	}
+	if pathExists(movedPath) {
+		t.Fatalf("expected %s to be removed after moving back", movedPath)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	locs := hist[src]
+	if len(locs) != 1 || locs[0] != src {
+		t.Fatalf("expected single original history entry for %s, got %#v", src, locs)
+	}
+}
+
+func TestBackAcceptsUniqueOriginalBasename(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "projects", "kool")
+	dst := filepath.Join(work, "scratch")
+
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst)
+
+	if err := cmdMove(src, dst); err != nil {
+		t.Fatalf("cmdMove: %v", err)
+	}
+
+	movedPath := filepath.Join(dst, "kool")
+	if err := cmdBack("kool"); err != nil {
+		t.Fatalf("cmdBack with unique root basename: %v", err)
+	}
+
+	if !pathExists(src) {
+		t.Fatalf("expected %s to exist after moving back", src)
+	}
+	if pathExists(movedPath) {
+		t.Fatalf("expected %s to be removed after moving back", movedPath)
+	}
+}
+
+func TestBackDoesNotUseBasenameShortcutWhenLocalPathExists(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "projects", "kool")
+	dst := filepath.Join(work, "scratch")
+	cwd := filepath.Join(work, "cwd")
+
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdMove(src, dst); err != nil {
+		t.Fatalf("cmdMove: %v", err)
+	}
+
+	t.Chdir(cwd)
+	localFile := filepath.Join(cwd, "kool")
+	if err := os.WriteFile(localFile, []byte("local"), 0644); err != nil {
+		t.Fatalf("write local file: %v", err)
+	}
+
+	err := cmdBack("kool")
+	if err == nil {
+		t.Fatalf("expected local path without history to block basename shortcut")
+	}
+	if !strings.Contains(err.Error(), "no mv history for "+localFile) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	movedPath := filepath.Join(dst, "kool")
+	if !pathExists(movedPath) {
+		t.Fatalf("expected basename shortcut target %s to remain in place", movedPath)
+	}
+	if pathExists(src) {
+		t.Fatalf("expected %s not to be restored via basename shortcut", src)
+	}
+}
+
+func TestBackRejectsDuplicateOriginalBasename(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	first := filepath.Join(work, "projects", "kool")
+	second := filepath.Join(work, "projects", "v2", "kool")
+
+	mustMkdirAll(t, first)
+	mustMkdirAll(t, second)
+
+	if err := cmdAdd(first); err != nil {
+		t.Fatalf("cmdAdd first: %v", err)
+	}
+	if err := cmdAdd(second); err != nil {
+		t.Fatalf("cmdAdd second: %v", err)
+	}
+
+	err := cmdBack("kool")
+	if err == nil {
+		t.Fatalf("expected duplicate basename to fail")
+	}
+	if !strings.Contains(err.Error(), "ambiguous root basename kool") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestBackAtOriginalPositionIsNoOp(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()

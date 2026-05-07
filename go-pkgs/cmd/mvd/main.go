@@ -29,7 +29,7 @@ Commands:
   mvd rebase DIR NEW-DIR
                        Change the entry base to NEW-DIR
   mvd --list [SRC]     Show location history (all if SRC omitted)
-  mvd --back SRC       Move SRC back to its previous location
+  mvd --back SRC       Move back by current path, root path, or unique root basename
   mvd --clear SRC      Clear movement history for SRC
 
 Options:
@@ -354,41 +354,105 @@ func cmdList(src string) error {
 }
 
 func cmdBack(src string) error {
-	absSrc, err := filepath.Abs(src)
-	if err != nil {
-		return fmt.Errorf("resolve: %w", err)
-	}
-
 	hist, err := loadHistory()
 	if err != nil {
 		return err
 	}
 
-	origKey, locations := findEntry(hist, absSrc)
-	if locations == nil {
-		return fmt.Errorf("no mv history for %s", absSrc)
+	origKey, locations, err := resolveBackEntry(hist, src)
+	if err != nil {
+		return err
 	}
 
+	if len(locations) == 0 {
+		return fmt.Errorf("empty mv history for %s", src)
+	}
 	last := locations[len(locations)-1]
-	if last != absSrc {
-		return fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
-	}
-
 	if len(locations) <= 1 {
-		fmt.Printf("nothing to move back for %s\n", absSrc)
+		fmt.Printf("nothing to move back for %s\n", last)
 		return nil
 	}
 
 	prev := locations[len(locations)-2]
-	if err := os.Rename(absSrc, prev); err != nil {
+	if err := os.Rename(last, prev); err != nil {
 		return fmt.Errorf("move back: %w", err)
 	}
-	fmt.Printf("moved back: %s → %s\n", absSrc, prev)
+	fmt.Printf("moved back: %s → %s\n", last, prev)
 
 	locations = locations[:len(locations)-1]
 	hist[origKey] = locations
 
 	return saveHistory(hist)
+}
+
+func resolveBackEntry(hist History, src string) (string, []string, error) {
+	if useRootBaseNameShortcut(src) {
+		origKey, locations, err := findEntryByRootBaseName(hist, src)
+		if err != nil {
+			return "", nil, err
+		}
+		if locations != nil {
+			return origKey, locations, nil
+		}
+	}
+
+	absSrc, err := filepath.Abs(src)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve: %w", err)
+	}
+
+	origKey, locations := findEntry(hist, absSrc)
+	if locations == nil {
+		return "", nil, fmt.Errorf("no mv history for %s", absSrc)
+	}
+	if len(locations) == 0 {
+		return "", nil, fmt.Errorf("empty mv history for %s", absSrc)
+	}
+
+	last := locations[len(locations)-1]
+	root := locations[0]
+	if absSrc != root && absSrc != last {
+		return "", nil, fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
+	}
+
+	return origKey, locations, nil
+}
+
+func useRootBaseNameShortcut(path string) bool {
+	if !isBareBaseName(path) {
+		return false
+	}
+	_, err := os.Lstat(path)
+	return os.IsNotExist(err)
+}
+
+func isBareBaseName(path string) bool {
+	return path != "." && path != ".." && filepath.Base(path) == path
+}
+
+func findEntryByRootBaseName(hist History, baseName string) (string, []string, error) {
+	var matchedKey string
+	var matchedLocations []string
+	var matchedRoots []string
+
+	for key, locations := range hist {
+		if len(locations) == 0 {
+			continue
+		}
+		root := locations[0]
+		if filepath.Base(root) != baseName {
+			continue
+		}
+		matchedRoots = append(matchedRoots, root)
+		matchedKey = key
+		matchedLocations = locations
+	}
+
+	if len(matchedRoots) > 1 {
+		sort.Strings(matchedRoots)
+		return "", nil, fmt.Errorf("ambiguous root basename %s matches multiple roots: %v", baseName, matchedRoots)
+	}
+	return matchedKey, matchedLocations, nil
 }
 
 func findLocations(hist History, path string) []string {
