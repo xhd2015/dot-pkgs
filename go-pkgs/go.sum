@@ -2,3 +2,5 @@ github.com/sashabaranov/go-openai v1.41.2 h1:vfPRBZNMpnqu8ELsclWcAvF19lDNgh1t6TV
 github.com/sashabaranov/go-openai v1.41.2/go.mod h1:lj5b/K+zjTSFxVLijLSTDZuP7adOgerWeFyZLUhAKRg=
 github.com/xhd2015/less-gen v0.0.19 h1:JllrPhx3HzN+f2AB6cTvW9aRCpvuODJFx7affpa0zQY=
 github.com/xhd2015/less-gen v0.0.19/go.mod h1:Ym5HW/yfVnf2mgSo48QsuHAKnMTPv/u7oqty+raTnTQ=
+github.com/xhd2015/lls v0.0.8 h1:KDg7zUi31rBzQqlCrJPuk8l7Eli54WW7W1jJUJ7+VJg=
+github.com/xhd2015/lls v0.0.8/go.mod h1:+apFkQgvVXgO4S8/+ljANKZZzM3LDk78nPTgAYTPNCY=

@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/xhd2015/less-gen/flags"
+	llsconfig "github.com/xhd2015/lls/config"
 )
 
 // History tracks movement history for each file.
@@ -139,12 +141,12 @@ func cmdAdd(dir string) error {
 	}
 
 	if _, locations := findEntry(hist, absDir); locations != nil {
-		fmt.Printf("hint: %s is already recorded, nothing added\n", absDir)
+		fmt.Printf("hint: %s is already recorded, nothing added\n", displayPath(absDir))
 		return nil
 	}
 
 	hist[absDir] = []string{absDir}
-	fmt.Printf("added: %s\n", absDir)
+	fmt.Printf("added: %s\n", displayPath(absDir))
 	return saveHistory(hist)
 }
 
@@ -161,19 +163,19 @@ func cmdRemove(dir string, force bool) error {
 
 	locations, ok := hist[absDir]
 	if !ok {
-		fmt.Printf("hint: no recorded entry for %s\n", absDir)
+		fmt.Printf("hint: no recorded entry for %s\n", displayPath(absDir))
 		return nil
 	}
 
 	if len(locations) > 1 {
 		if !force {
-			return fmt.Errorf("%s has movement history:\n  use `mvd rm -f %s`\n  to clear it", absDir, absDir)
+			return fmt.Errorf("%s has movement history:\n  use `mvd rm -f %s`\n  to clear it", displayPath(absDir), absDir)
 		}
-		fmt.Printf("hint: removing %s will clear %d history entries\n", absDir, len(locations)-1)
+		fmt.Printf("hint: removing %s will clear %d history entries\n", displayPath(absDir), len(locations)-1)
 	}
 
 	delete(hist, absDir)
-	fmt.Printf("removed: %s\n", absDir)
+	fmt.Printf("removed: %s\n", displayPath(absDir))
 	return saveHistory(hist)
 }
 
@@ -202,7 +204,7 @@ func cmdRebase(dir, newDir string) error {
 	}
 
 	if locations[0] == absNewDir {
-		fmt.Printf("base unchanged: %s\n", absNewDir)
+		fmt.Printf("base unchanged: %s\n", displayPath(absNewDir))
 		return nil
 	}
 
@@ -215,7 +217,7 @@ func cmdRebase(dir, newDir string) error {
 
 	delete(hist, origKey)
 	hist[absNewDir] = updated
-	fmt.Printf("rebased: %s → %s\n", origKey, absNewDir)
+	fmt.Printf("rebased: %s → %s\n", displayPath(origKey), displayPath(absNewDir))
 	return saveHistory(hist)
 }
 
@@ -232,12 +234,12 @@ func cmdClear(src string) error {
 
 	origKey, locations := findEntry(hist, absSrc)
 	if locations == nil {
-		fmt.Printf("no movement history for %s\n", absSrc)
+		fmt.Printf("no movement history for %s\n", displayPath(absSrc))
 		return nil
 	}
 
 	delete(hist, origKey)
-	fmt.Printf("cleared history for %s (%d entries)\n", absSrc, len(locations))
+	fmt.Printf("cleared history for %s (%d entries)\n", displayPath(absSrc), len(locations))
 	return saveHistory(hist)
 }
 
@@ -339,7 +341,7 @@ func cmdListAll() error {
 		}
 		locations := hist[key]
 		current := locations[len(locations)-1]
-		fmt.Printf("%s\n", key)
+		fmt.Printf("%s\n", displayPath(key))
 		// Skip locations[0] because it's identical to the header
 		// (key). Printing it again just duplicates information.
 		for _, loc := range locations[1:] {
@@ -347,7 +349,7 @@ func cmdListAll() error {
 			if loc == current {
 				marker = "* "
 			}
-			fmt.Printf("  %s%s\n", marker, loc)
+			fmt.Printf("  %s%s\n", marker, displayPath(loc))
 		}
 	}
 	return nil
@@ -376,9 +378,9 @@ func cmdList(src string) error {
 			marker = "* "
 		}
 		if i == 0 {
-			fmt.Printf("%s%s  (original)\n", marker, loc)
+			fmt.Printf("%s%s  (original)\n", marker, displayPath(loc))
 		} else {
-			fmt.Printf("%s%s\n", marker, loc)
+			fmt.Printf("%s%s\n", marker, displayPath(loc))
 		}
 	}
 	return nil
@@ -400,7 +402,7 @@ func cmdBack(src string) error {
 	}
 	last := locations[len(locations)-1]
 	if len(locations) <= 1 {
-		fmt.Printf("nothing to move back for %s\n", last)
+		fmt.Printf("nothing to move back for %s\n", displayPath(last))
 		return nil
 	}
 
@@ -408,7 +410,7 @@ func cmdBack(src string) error {
 	if err := os.Rename(last, prev); err != nil {
 		return fmt.Errorf("move back: %w", err)
 	}
-	fmt.Printf("moved back: %s → %s\n", last, prev)
+	fmt.Printf("moved back: %s → %s\n", displayPath(last), displayPath(prev))
 
 	locations = locations[:len(locations)-1]
 	hist[origKey] = locations
@@ -481,9 +483,48 @@ func findEntryByRootBaseName(hist History, baseName string) (string, []string, e
 
 	if len(matchedRoots) > 1 {
 		sort.Strings(matchedRoots)
-		return "", nil, fmt.Errorf("ambiguous root basename %s matches multiple roots: %v", baseName, matchedRoots)
+		return "", nil, fmt.Errorf("ambiguous root basename %s matches multiple roots: %v", baseName, displayPaths(matchedRoots))
 	}
 	return matchedKey, matchedLocations, nil
+}
+
+var (
+	displayConfigOnce sync.Once
+	displayConfig     *llsconfig.Config
+)
+
+func displayPath(path string) string {
+	cfg := loadDisplayConfig()
+	if cfg == nil {
+		return path
+	}
+	return llsconfig.CollapsePath(path, cfg.Envs)
+}
+
+func displayPaths(paths []string) []string {
+	displayed := make([]string, len(paths))
+	for i, path := range paths {
+		displayed[i] = displayPath(path)
+	}
+	return displayed
+}
+
+func loadDisplayConfig() *llsconfig.Config {
+	displayConfigOnce.Do(func() {
+		file, err := llsconfig.DefaultFile(false)
+		if err != nil {
+			return
+		}
+		if _, err := os.Stat(file); err != nil {
+			return
+		}
+		cfg, err := llsconfig.Load(file)
+		if err != nil || len(cfg.Envs) == 0 {
+			return
+		}
+		displayConfig = &cfg
+	})
+	return displayConfig
 }
 
 func findLocations(hist History, path string) []string {

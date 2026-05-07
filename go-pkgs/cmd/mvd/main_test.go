@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	llsconfig "github.com/xhd2015/lls/config"
 )
 
 func TestRunAddFlagStoresSingleEntry(t *testing.T) {
@@ -485,6 +488,50 @@ func TestMoveRejectsDuplicateOriginalBasename(t *testing.T) {
 	}
 }
 
+func TestListAllShortensPathsWithLLSConfig(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectRoot := filepath.Join(work, "projects")
+	t.Setenv("X", projectRoot)
+
+	configFile, err := llsconfig.DefaultFile(true)
+	if err != nil {
+		t.Fatalf("DefaultFile: %v", err)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"envs":["X"]}`), 0644); err != nil {
+		t.Fatalf("write lls config: %v", err)
+	}
+
+	src := filepath.Join(projectRoot, "kool")
+	dst := filepath.Join(projectRoot, "archive")
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst)
+
+	if err := cmdMove(src, dst); err != nil {
+		t.Fatalf("cmdMove: %v", err)
+	}
+
+	output := captureStdout(t, func() {
+		if err := cmdListAll(); err != nil {
+			t.Fatalf("cmdListAll: %v", err)
+		}
+	})
+	if !strings.Contains(output, "$X/kool") {
+		t.Fatalf("expected shortened root path, got %q", output)
+	}
+	if !strings.Contains(output, "$X/archive/kool") {
+		t.Fatalf("expected shortened latest path, got %q", output)
+	}
+	if strings.Contains(output, projectRoot) {
+		t.Fatalf("expected output to hide long project root %s, got %q", projectRoot, output)
+	}
+}
+
 func TestBackKeepsOriginalHistoryEntry(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()
@@ -730,4 +777,9 @@ func captureStdout(t *testing.T, fn func()) string {
 		t.Fatalf("close reader: %v", err)
 	}
 	return string(out)
+}
+
+func resetDisplayConfig() {
+	displayConfigOnce = sync.Once{}
+	displayConfig = nil
 }
