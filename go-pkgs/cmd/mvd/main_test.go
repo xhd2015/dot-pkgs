@@ -236,7 +236,7 @@ func TestForceRequiresRemoveFlag(t *testing.T) {
 }
 
 func TestRunRejectsMultipleModeFlags(t *testing.T) {
-	modes := []string{"--rm", "--add", "--rebase", "--list", "--back", "--clear"}
+	modes := []string{"--rm", "--add", "--rebase", "--list", "--back", "--clear", "--print"}
 	for i, first := range modes {
 		for _, second := range modes[i+1:] {
 			t.Run(first+"_"+second, func(t *testing.T) {
@@ -244,7 +244,7 @@ func TestRunRejectsMultipleModeFlags(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected %s and %s to conflict", first, second)
 				}
-				if !strings.Contains(err.Error(), "at most one of --rm, --add, --rebase, --list, --back, --clear") {
+				if !strings.Contains(err.Error(), "at most one of --rm, --add, --rebase, --list, --back, --clear, --print") {
 					t.Fatalf("unexpected error: %v", err)
 				}
 			})
@@ -587,6 +587,67 @@ func TestListAllShortensPathsWithLLSConfig(t *testing.T) {
 	}
 	if strings.Contains(output, projectRoot) {
 		t.Fatalf("expected output to hide long project root %s, got %q", projectRoot, output)
+	}
+}
+
+func TestPrintShowsShortAndFullPathForUniqueBasename(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectRoot := filepath.Join(work, "projects")
+	t.Setenv("X", projectRoot)
+
+	configFile, err := llsconfig.DefaultFile(true)
+	if err != nil {
+		t.Fatalf("DefaultFile: %v", err)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"envs":["X"]}`), 0644); err != nil {
+		t.Fatalf("write lls config: %v", err)
+	}
+
+	src := filepath.Join(projectRoot, "kool")
+	cwd := filepath.Join(work, "cwd")
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, cwd)
+	t.Chdir(cwd)
+
+	if err := cmdAdd(src); err != nil {
+		t.Fatalf("cmdAdd: %v", err)
+	}
+
+	output := captureStdout(t, func() {
+		if err := run([]string{"--print", "kool"}); err != nil {
+			t.Fatalf("run --print: %v", err)
+		}
+	})
+
+	want := "$X/kool -> " + src + "\n"
+	if output != want {
+		t.Fatalf("expected %q, got %q", want, output)
+	}
+}
+
+func TestPrintShortFlagAlias(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "kool")
+	mustMkdirAll(t, src)
+
+	output := captureStdout(t, func() {
+		if err := run([]string{"-p", src}); err != nil {
+			t.Fatalf("run -p: %v", err)
+		}
+	})
+
+	want := src + " -> " + src + "\n"
+	if output != want {
+		t.Fatalf("expected %q, got %q", want, output)
 	}
 }
 

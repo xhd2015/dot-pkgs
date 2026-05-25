@@ -20,6 +20,7 @@ const help = `
 Usage: mvd [OPTIONS] SRC [DST]
        mvd --rm [-f] DIR
        mvd --rebase DIR NEW-DIR
+       mvd --print SRC
 
 Move a file/directory and track its location history.
 
@@ -32,6 +33,7 @@ Commands:
   mvd --list [SRC]     Show location history (all if SRC omitted)
   mvd --back SRC       Move back by current path, root path, or unique root basename
   mvd --clear SRC      Clear movement history for SRC
+  mvd --print SRC      Print shortened and full paths for SRC
 
 Options:
   --add                Add a DIR to history without moving it
@@ -40,6 +42,7 @@ Options:
   --list               Show location history
   --back               Move back to previous location
   --clear              Clear movement history for a specific file
+  -p, --print          Print shortened and full paths
   -f, --force          Force removal for mvd --rm and clear its histories
   -h, --help           Show this help message
 `
@@ -52,13 +55,14 @@ func main() {
 }
 
 func run(args []string) error {
-	var add, remove, rebase, list, back, clear, force bool
+	var add, remove, rebase, list, back, clear, print, force bool
 	args, err := flags.Bool("--add", &add).
 		Bool("--rm", &remove).
 		Bool("--rebase", &rebase).
 		Bool("--list", &list).
 		Bool("--back", &back).
 		Bool("--clear", &clear).
+		Bool("-p,--print", &print).
 		Bool("-f,--force", &force).
 		Help("-h,--help", help).
 		Parse(args)
@@ -67,13 +71,13 @@ func run(args []string) error {
 	}
 
 	modeCount := 0
-	for _, enabled := range []bool{remove, add, rebase, list, back, clear} {
+	for _, enabled := range []bool{remove, add, rebase, list, back, clear, print} {
 		if enabled {
 			modeCount++
 		}
 	}
 	if modeCount > 1 {
-		return fmt.Errorf("at most one of --rm, --add, --rebase, --list, --back, --clear can be specified")
+		return fmt.Errorf("at most one of --rm, --add, --rebase, --list, --back, --clear, --print can be specified")
 	}
 
 	if force && !remove {
@@ -103,6 +107,12 @@ func run(args []string) error {
 			return fmt.Errorf("usage: mvd --clear SRC")
 		}
 		return cmdClear(args[0])
+	}
+	if print {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: mvd --print SRC")
+		}
+		return cmdPrint(args[0])
 	}
 	if list {
 		if len(args) > 0 {
@@ -350,6 +360,42 @@ func cmdListAll() error {
 	return nil
 }
 
+func cmdPrint(src string) error {
+	hist, err := loadHistory()
+	if err != nil {
+		return err
+	}
+
+	fullPath, err := resolvePrintPath(hist, src)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s -> %s\n", displayPath(fullPath), fullPath)
+	return nil
+}
+
+func resolvePrintPath(hist History, src string) (string, error) {
+	if useRootBaseNameShortcut(src) {
+		_, locations, err := findEntryByRootBaseName(hist, src)
+		if err != nil {
+			return "", err
+		}
+		if locations != nil {
+			if len(locations) == 0 {
+				return "", fmt.Errorf("empty mv history for %s", src)
+			}
+			return locations[0], nil
+		}
+	}
+
+	absSrc, err := filepath.Abs(expandConfiguredPath(src))
+	if err != nil {
+		return "", fmt.Errorf("resolve: %w", err)
+	}
+	return absSrc, nil
+}
+
 func cmdList(src string) error {
 	absSrc, err := filepath.Abs(src)
 	if err != nil {
@@ -494,6 +540,14 @@ func displayPath(path string) string {
 		return path
 	}
 	return llsconfig.CollapsePath(path, cfg.Envs)
+}
+
+func expandConfiguredPath(path string) string {
+	cfg := loadDisplayConfig()
+	if cfg == nil {
+		return path
+	}
+	return llsconfig.ExpandPath(path, cfg.Envs)
 }
 
 func displayPaths(paths []string) []string {
