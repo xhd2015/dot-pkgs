@@ -18,16 +18,16 @@ type History map[string][]string
 
 const help = `
 Usage: mvd [OPTIONS] SRC [DST]
-       mvd rm [-f] DIR
-       mvd rebase DIR NEW-DIR
+       mvd --rm [-f] DIR
+       mvd --rebase DIR NEW-DIR
 
 Move a file/directory and track its location history.
 
 Commands:
   mvd SRC DST          Move SRC to DST (tracked)
   mvd --add DIR        Add DIR to the record file without moving it
-  mvd rm [-f] DIR      Remove the exact recorded entry for DIR
-  mvd rebase DIR NEW-DIR
+  mvd --rm [-f] DIR    Remove the exact recorded entry for DIR
+  mvd --rebase DIR NEW-DIR
                        Change the entry base to NEW-DIR
   mvd --list [SRC]     Show location history (all if SRC omitted)
   mvd --back SRC       Move back by current path, root path, or unique root basename
@@ -35,10 +35,12 @@ Commands:
 
 Options:
   --add                Add a DIR to history without moving it
+  --rm                 Remove the exact recorded entry for DIR
+  --rebase             Change the entry base to NEW-DIR
   --list               Show location history
   --back               Move back to previous location
   --clear              Clear movement history for a specific file
-  -f, --force          Force removal for mvd rm and clear its histories
+  -f, --force          Force removal for mvd --rm and clear its histories
   -h, --help           Show this help message
 `
 
@@ -50,27 +52,32 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) > 0 {
-		switch args[0] {
-		case "rm":
-			return runRemove(args[1:])
-		case "rebase":
-			if len(args) != 3 {
-				return fmt.Errorf("usage: mvd rebase DIR NEW-DIR")
-			}
-			return cmdRebase(args[1], args[2])
-		}
-	}
-
-	var add, list, back, clear bool
+	var add, remove, rebase, list, back, clear, force bool
 	args, err := flags.Bool("--add", &add).
+		Bool("--rm", &remove).
+		Bool("--rebase", &rebase).
 		Bool("--list", &list).
 		Bool("--back", &back).
 		Bool("--clear", &clear).
+		Bool("-f,--force", &force).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
 		return err
+	}
+
+	modeCount := 0
+	for _, enabled := range []bool{remove, add, rebase, list, back, clear} {
+		if enabled {
+			modeCount++
+		}
+	}
+	if modeCount > 1 {
+		return fmt.Errorf("at most one of --rm, --add, --rebase, --list, --back, --clear can be specified")
+	}
+
+	if force && !remove {
+		return fmt.Errorf("-f, --force requires --rm")
 	}
 
 	if add {
@@ -78,6 +85,18 @@ func run(args []string) error {
 			return fmt.Errorf("usage: mvd --add DIR")
 		}
 		return cmdAdd(args[0])
+	}
+	if remove {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: mvd --rm [-f] DIR")
+		}
+		return cmdRemove(args[0], force)
+	}
+	if rebase {
+		if len(args) != 2 {
+			return fmt.Errorf("usage: mvd --rebase DIR NEW-DIR")
+		}
+		return cmdRebase(args[0], args[1])
 	}
 	if clear {
 		if len(args) < 1 {
@@ -103,30 +122,6 @@ func run(args []string) error {
 		return nil
 	}
 	return cmdMove(args[0], args[1])
-}
-
-func runRemove(args []string) error {
-	var force bool
-	var dir string
-
-	for _, arg := range args {
-		switch arg {
-		case "-f", "--force":
-			force = true
-		default:
-			if len(arg) > 0 && arg[0] == '-' {
-				return fmt.Errorf("usage: mvd rm [-f] DIR")
-			}
-			if dir != "" {
-				return fmt.Errorf("usage: mvd rm [-f] DIR")
-			}
-			dir = arg
-		}
-	}
-	if dir == "" {
-		return fmt.Errorf("usage: mvd rm [-f] DIR")
-	}
-	return cmdRemove(dir, force)
 }
 
 func cmdAdd(dir string) error {
@@ -169,7 +164,7 @@ func cmdRemove(dir string, force bool) error {
 
 	if len(locations) > 1 {
 		if !force {
-			return fmt.Errorf("%s has movement history:\n  use `mvd rm -f %s`\n  to clear it", displayPath(absDir), absDir)
+			return fmt.Errorf("%s has movement history:\n  use `mvd --rm -f %s`\n  to clear it", displayPath(absDir), absDir)
 		}
 		fmt.Printf("hint: removing %s will clear %d history entries\n", displayPath(absDir), len(locations)-1)
 	}

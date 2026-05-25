@@ -112,8 +112,8 @@ func TestRunRemoveDeletesExactSingleEntry(t *testing.T) {
 	if err := cmdAdd(dir); err != nil {
 		t.Fatalf("cmdAdd: %v", err)
 	}
-	if err := run([]string{"rm", dir}); err != nil {
-		t.Fatalf("run rm: %v", err)
+	if err := run([]string{"--rm", dir}); err != nil {
+		t.Fatalf("run --rm: %v", err)
 	}
 
 	hist, err := loadHistory()
@@ -179,7 +179,7 @@ func TestRemoveWithHistoryRequiresForce(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected cmdRemove to fail without force")
 	}
-	if !strings.Contains(err.Error(), "has movement history:\n  use `mvd rm -f") {
+	if !strings.Contains(err.Error(), "has movement history:\n  use `mvd --rm -f") {
 		t.Fatalf("expected wrapped force hint in error, got %q", err.Error())
 	}
 
@@ -208,8 +208,8 @@ func TestRemoveWithForceClearsHistory(t *testing.T) {
 	}
 
 	output := captureStdout(t, func() {
-		if err := run([]string{"rm", "-f", src}); err != nil {
-			t.Fatalf("run rm -f: %v", err)
+		if err := run([]string{"--rm", "-f", src}); err != nil {
+			t.Fatalf("run --rm -f: %v", err)
 		}
 	})
 	if !strings.Contains(output, "will clear") {
@@ -222,6 +222,33 @@ func TestRemoveWithForceClearsHistory(t *testing.T) {
 	}
 	if _, ok := hist[src]; ok {
 		t.Fatalf("expected %s history to be removed, got %#v", src, hist[src])
+	}
+}
+
+func TestForceRequiresRemoveFlag(t *testing.T) {
+	err := run([]string{"-f", "src", "dst"})
+	if err == nil {
+		t.Fatalf("expected force without remove to fail")
+	}
+	if !strings.Contains(err.Error(), "requires --rm") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunRejectsMultipleModeFlags(t *testing.T) {
+	modes := []string{"--rm", "--add", "--rebase", "--list", "--back", "--clear"}
+	for i, first := range modes {
+		for _, second := range modes[i+1:] {
+			t.Run(first+"_"+second, func(t *testing.T) {
+				err := run([]string{first, second, "src", "dst"})
+				if err == nil {
+					t.Fatalf("expected %s and %s to conflict", first, second)
+				}
+				if !strings.Contains(err.Error(), "at most one of --rm, --add, --rebase, --list, --back, --clear") {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			})
+		}
 	}
 }
 
@@ -255,6 +282,37 @@ func TestRebaseChangesEntryBaseFromKeyMatch(t *testing.T) {
 	expectedCurrent := filepath.Join(dst, "dir")
 	if len(locs) != 3 || locs[0] != newBase || locs[1] != src || locs[2] != expectedCurrent {
 		t.Fatalf("expected rebased history [%s %s %s], got %#v", newBase, src, expectedCurrent, locs)
+	}
+}
+
+func TestRunRebaseFlagChangesEntryBase(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "a", "dir")
+	dst := filepath.Join(work, "b")
+	newBase := filepath.Join(work, "rebased", "dir")
+
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst)
+
+	if err := cmdMove(src, dst); err != nil {
+		t.Fatalf("cmdMove: %v", err)
+	}
+	if err := run([]string{"--rebase", src, newBase}); err != nil {
+		t.Fatalf("run --rebase: %v", err)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	if _, ok := hist[src]; ok {
+		t.Fatalf("expected old base %s to be removed", src)
+	}
+	if locs := hist[newBase]; len(locs) == 0 || locs[0] != newBase {
+		t.Fatalf("expected rebased history under %s, got %#v", newBase, locs)
 	}
 }
 
