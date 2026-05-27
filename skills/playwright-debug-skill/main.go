@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	_ "embed"
 	"fmt"
 	"os"
@@ -10,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/xhd2015/less-gen/flags"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/ai/skills"
 )
 
 //go:embed SKILL.md
@@ -69,87 +68,11 @@ func handle(args []string) error {
 }
 
 func handleInstall(args []string) error {
-	var dryRun, cursor, force bool
-	args, err := flags.Bool("--dry-run", &dryRun).
-		Bool("--cursor", &cursor).
-		Bool("--force", &force).
-		Help("-h,--help", `
-Usage: install [OPTIONS] [<dir>]
-
-Install skill SKILL.md to a directory.
-
-Options:
-  --cursor     Install to .cursor/skills/playwright-debug (no dir argument needed)
-  --force      Overwrite existing non-empty directory without prompting
-  --dry-run    Show what would be created without actually creating anything
-`).Parse(args)
-	if err != nil {
-		return err
-	}
-
-	var dir string
-	if cursor {
-		dir = filepath.Join(".cursor", "skills", "playwright-debug")
-	} else if len(args) > 0 {
-		dir = args[0]
-	} else {
-		return fmt.Errorf("install requires a directory path argument or --cursor flag")
-	}
-
-	dir, err = filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("resolve path: %w", err)
-	}
-
-	entries, readErr := os.ReadDir(dir)
-	if readErr != nil && !os.IsNotExist(readErr) {
-		return fmt.Errorf("read directory %s: %w", dir, readErr)
-	}
-
-	if readErr == nil && len(entries) > 0 && !force {
-		if !confirmOverwrite(dir) {
-			fmt.Println("Aborted.")
-			return nil
-		}
-		if err := os.RemoveAll(dir); err != nil {
-			return fmt.Errorf("remove directory %s: %w", dir, err)
-		}
-		readErr = os.ErrNotExist
-	}
-
-	skillFile := filepath.Join(dir, "SKILL.md")
-
-	if dryRun {
-		fmt.Printf("[dry-run] Would create directory: %s\n", dir)
-		fmt.Printf("[dry-run] Would create file: %s\n", skillFile)
-		return nil
-	}
-
-	if readErr != nil {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("create directory %s: %w", dir, err)
-		}
-	}
-
-	if err := os.WriteFile(skillFile, []byte(skillTemplate), 0644); err != nil {
-		return fmt.Errorf("write SKILL.md: %w", err)
-	}
-
-	fmt.Printf("Installed skill to: %s\n", dir)
-	fmt.Printf("  - %s\n", skillFile)
-	return nil
-}
-
-func confirmOverwrite(dir string) bool {
-	f, _ := os.Stdin.Stat()
-	if f == nil || (f.Mode()&os.ModeCharDevice) == 0 {
-		return false
-	}
-	fmt.Printf("Directory %s is not empty. Overwrite? [y/N] ", dir)
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	return answer == "y" || answer == "yes"
+	return skills.HandleInstall(skills.InstallOptions{
+		SkillDirName: "playwright-debug",
+		SkillContent: skillTemplate,
+		Usage:        "install",
+	}, args)
 }
 
 func cacheDir() string {
