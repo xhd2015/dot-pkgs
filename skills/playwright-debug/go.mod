@@ -1,4 +1,4 @@
-module github.com/xhd2015/dot-pkgs/skills/playwright-debug-skill
+module github.com/xhd2015/dot-pkgs/skills/playwright-debug
 
 go 1.24.11
 

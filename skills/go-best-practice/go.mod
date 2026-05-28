@@ -1,4 +1,4 @@
-module github.com/xhd2015/dot-pkgs/skills/go-best-practice-skill
+module github.com/xhd2015/dot-pkgs/skills/go-best-practice
 
 go 1.24.11
 

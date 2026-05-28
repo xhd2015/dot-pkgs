@@ -81,6 +81,6 @@ flags.String("-o,--output", &output)
 Reveal with:
 
 ```bash
-go-best-practice-skill flags-parsing/types
-go-best-practice-skill flags-parsing/subcommand
+go-best-practice flags-parsing/types
+go-best-practice flags-parsing/subcommand
 ```
