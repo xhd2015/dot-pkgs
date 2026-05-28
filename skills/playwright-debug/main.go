@@ -16,7 +16,7 @@ import (
 var skillTemplate string
 
 const help = `
-Usage: playwright-debug-skill <command> [ARGS]
+Usage: playwright-debug <command> [ARGS]
 
 Commands:
   run <js_script>    Run a Playwright script (default if no command given)
@@ -28,7 +28,7 @@ The run command wraps your script with browser setup. You get:
   - chromium (Playwright chromium object)
 
 Example:
-  playwright-debug-skill 'await page.goto("https://example.com"); console.log(await page.title());'
+  playwright-debug 'await page.goto("https://example.com"); console.log(await page.title());'
 
 Options:
   -h, --help    Show this help message
@@ -55,7 +55,7 @@ func handle(args []string) error {
 	}
 
 	switch args[0] {
-	case "install", "create-skill":
+	case "install":
 		return handleInstall(args[1:])
 	case "run":
 		if len(args) < 2 {

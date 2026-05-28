@@ -22,8 +22,8 @@ var topicsFS embed.FS
 const topicsDir = "topics"
 
 const help = `
-Usage: go-best-practice-skill <command> [ARGS]
-       go-best-practice-skill <topic>[/<sub-topic>[/...]]
+Usage: go-best-practice <command> [ARGS]
+       go-best-practice <topic>[/<sub-topic>[/...]]
 
 Commands:
   install [<dir>]    Install SKILL.md + topics to a directory (or use --cursor)
@@ -56,7 +56,7 @@ func handle(args []string) error {
 		fmt.Print(help)
 		fmt.Println()
 		return printTopicIndex()
-	case "install", "create-skill":
+	case "install":
 		return handleInstall(args[1:])
 	case "topics", "list":
 		return printTopicIndex()
@@ -67,7 +67,7 @@ func handle(args []string) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("unknown command or topic: %s (run `go-best-practice-skill topics` to list available topics)", args[0])
+		return fmt.Errorf("unknown command or topic: %s (run `go-best-practice topics` to list available topics)", args[0])
 	}
 	fmt.Print(content)
 	if !strings.HasSuffix(content, "\n") {

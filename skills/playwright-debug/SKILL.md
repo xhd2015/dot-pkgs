@@ -23,10 +23,10 @@ Available variables in your script:
 
 ```bash
 # Navigate to a page and print the title
-playwright-debug-skill 'await page.goto("https://example.com"); console.log(await page.title());'
+playwright-debug 'await page.goto("https://example.com"); console.log(await page.title());'
 
 # Monitor network requests
-playwright-debug-skill '
+playwright-debug '
   page.on("request", req => console.log("[REQ]", req.method(), req.url()));
   page.on("requestfailed", req => console.log("[FAIL]", req.url(), req.failure()?.errorText));
   await page.goto("https://example.com");
@@ -34,7 +34,7 @@ playwright-debug-skill '
 '
 
 # Fill a form and submit
-playwright-debug-skill '
+playwright-debug '
   await page.goto("https://example.com/login");
   await page.fill("input[name=email]", "test@example.com");
   await page.fill("input[name=password]", "secret");

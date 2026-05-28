@@ -9,7 +9,7 @@ description: >-
 
 # Go Best Practice Skill
 
-This skill is an **index**. Run `go-best-practice-skill <topic>` to
+This skill is an **index**. Run `go-best-practice <topic>` to
 print the detailed recipe for a topic. Topics are organized as a
 tree; address a sub-topic with a slash-separated path, e.g.
 `flags-parsing/types`.
@@ -29,16 +29,16 @@ tree; address a sub-topic with a slash-separated path, e.g.
 
 ```bash
 # list top-level topics
-go-best-practice-skill
+go-best-practice
 
 # reveal a top-level topic
-go-best-practice-skill kool-create
-go-best-practice-skill flags-parsing
+go-best-practice kool-create
+go-best-practice flags-parsing
 
 # reveal a sub-topic (slash-separated path)
-go-best-practice-skill flags-parsing/types
-go-best-practice-skill flags-parsing/subcommand
+go-best-practice flags-parsing/types
+go-best-practice flags-parsing/subcommand
 
 # install this SKILL.md + topics into .cursor/skills/go-best-practice
-go-best-practice-skill install --cursor
+go-best-practice install --cursor
 ```
