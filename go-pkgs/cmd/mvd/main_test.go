@@ -125,6 +125,30 @@ func TestRunRemoveDeletesExactSingleEntry(t *testing.T) {
 	}
 }
 
+func TestRunRemoveLongAliasDeletesExactSingleEntry(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir := filepath.Join(work, "tracked")
+	mustMkdirAll(t, dir)
+
+	if err := cmdAdd(dir); err != nil {
+		t.Fatalf("cmdAdd: %v", err)
+	}
+	if err := run([]string{"--remove", dir}); err != nil {
+		t.Fatalf("run --remove: %v", err)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	if _, ok := hist[dir]; ok {
+		t.Fatalf("expected %s to be removed from history, got %#v", dir, hist)
+	}
+}
+
 func TestRemoveDoesNotMatchHistoryOnlyPath(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()
@@ -157,6 +181,64 @@ func TestRemoveDoesNotMatchHistoryOnlyPath(t *testing.T) {
 	locs := hist[src]
 	if len(locs) != 2 || locs[0] != src || locs[1] != movedPath {
 		t.Fatalf("expected move history to remain unchanged, got %#v", locs)
+	}
+}
+
+func TestRemoveBareNameUsesWhichDefault(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectRoot := filepath.Join(work, "projects")
+	t.Setenv("X", projectRoot)
+
+	configFile, err := llsconfig.DefaultFile(true)
+	if err != nil {
+		t.Fatalf("DefaultFile: %v", err)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"envs":["X"]}`), 0644); err != nil {
+		t.Fatalf("write lls config: %v", err)
+	}
+
+	basenameProject := filepath.Join(projectRoot, "opencode")
+	aliasProject := filepath.Join(projectRoot, "opencode-latest")
+	cwd := filepath.Join(work, "cwd")
+	mustMkdirAll(t, basenameProject)
+	mustMkdirAll(t, aliasProject)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdAdd(basenameProject); err != nil {
+		t.Fatalf("cmdAdd basenameProject: %v", err)
+	}
+	if err := cmdAdd(aliasProject); err != nil {
+		t.Fatalf("cmdAdd aliasProject: %v", err)
+	}
+	if err := cmdAddAlias("opencode", "$X/opencode-latest"); err != nil {
+		t.Fatalf("cmdAddAlias: %v", err)
+	}
+
+	t.Chdir(cwd)
+	output := captureStdout(t, func() {
+		if err := run([]string{"--rm", "opencode"}); err != nil {
+			t.Fatalf("run --rm opencode: %v", err)
+		}
+	})
+	if !strings.Contains(output, "removed: $X/opencode") {
+		t.Fatalf("expected remove output for basename project, got %q", output)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	if _, ok := hist[basenameProject]; ok {
+		t.Fatalf("expected basename project %s to be removed, got %#v", basenameProject, hist)
+	}
+	if _, ok := hist[aliasProject]; !ok {
+		t.Fatalf("expected alias project %s to remain, got %#v", aliasProject, hist)
 	}
 }
 
@@ -244,7 +326,7 @@ func TestRunRejectsMultipleModeFlags(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected %s and %s to conflict", first, second)
 				}
-				if !strings.Contains(err.Error(), "at most one of --rm, --add, --rebase, --list, --back, --clear, --print") {
+				if !strings.Contains(err.Error(), "at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print") {
 					t.Fatalf("unexpected error: %v", err)
 				}
 			})
@@ -546,6 +628,157 @@ func TestMoveRejectsDuplicateOriginalBasename(t *testing.T) {
 	}
 }
 
+func TestRunAddAliasStoresAliasForProjectBasename(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "projects", "kool")
+	mustMkdirAll(t, src)
+
+	if err := cmdAdd(src); err != nil {
+		t.Fatalf("cmdAdd: %v", err)
+	}
+	if err := run([]string{"--add-alias", "kk", "kool"}); err != nil {
+		t.Fatalf("run --add-alias: %v", err)
+	}
+
+	aliases, err := loadAliases()
+	if err != nil {
+		t.Fatalf("loadAliases: %v", err)
+	}
+	if aliases["kk"] != src {
+		t.Fatalf("expected alias kk to point at %s, got %#v", src, aliases)
+	}
+}
+
+func TestMoveAcceptsAliasAfterBasenameMiss(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "projects", "kool")
+	dst1 := filepath.Join(work, "scratch")
+	dst2 := filepath.Join(work, "final")
+	cwd := filepath.Join(work, "cwd")
+
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst1)
+	mustMkdirAll(t, dst2)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdMove(src, dst1); err != nil {
+		t.Fatalf("first cmdMove: %v", err)
+	}
+	if err := cmdAddAlias("kk", "kool"); err != nil {
+		t.Fatalf("cmdAddAlias: %v", err)
+	}
+
+	t.Chdir(cwd)
+	if err := cmdMove("kk", dst2); err != nil {
+		t.Fatalf("second cmdMove with alias: %v", err)
+	}
+
+	firstPath := filepath.Join(dst1, "kool")
+	secondPath := filepath.Join(dst2, "kool")
+	if pathExists(firstPath) {
+		t.Fatalf("expected %s to be moved onward", firstPath)
+	}
+	if !pathExists(secondPath) {
+		t.Fatalf("expected %s to exist after alias move", secondPath)
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	locs := hist[src]
+	if len(locs) != 3 || locs[0] != src || locs[1] != firstPath || locs[2] != secondPath {
+		t.Fatalf("expected move history [%s %s %s], got %#v", src, firstPath, secondPath, locs)
+	}
+}
+
+func TestMovePrefersBasenameOverAlias(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	aliasProject := filepath.Join(work, "projects", "aliased")
+	basenameProject := filepath.Join(work, "projects", "kk")
+	aliasDst := filepath.Join(work, "alias-dst")
+	basenameDst := filepath.Join(work, "basename-dst")
+	cwd := filepath.Join(work, "cwd")
+
+	mustMkdirAll(t, aliasProject)
+	mustMkdirAll(t, basenameProject)
+	mustMkdirAll(t, aliasDst)
+	mustMkdirAll(t, basenameDst)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdMove(aliasProject, aliasDst); err != nil {
+		t.Fatalf("alias project cmdMove: %v", err)
+	}
+	if err := cmdMove(basenameProject, basenameDst); err != nil {
+		t.Fatalf("basename project cmdMove: %v", err)
+	}
+	if err := cmdAddAlias("kk", "aliased"); err != nil {
+		t.Fatalf("cmdAddAlias: %v", err)
+	}
+
+	finalDst := filepath.Join(work, "final")
+	mustMkdirAll(t, finalDst)
+	t.Chdir(cwd)
+	if err := cmdMove("kk", finalDst); err != nil {
+		t.Fatalf("cmdMove should prefer basename over alias: %v", err)
+	}
+
+	if !pathExists(filepath.Join(aliasDst, "aliased")) {
+		t.Fatalf("expected alias target to remain in place")
+	}
+	if !pathExists(filepath.Join(finalDst, "kk")) {
+		t.Fatalf("expected basename target to move")
+	}
+}
+
+func TestMovePrefersLocalPathOverAlias(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	aliasProject := filepath.Join(work, "projects", "aliased")
+	aliasDst := filepath.Join(work, "alias-dst")
+	localDst := filepath.Join(work, "local-dst")
+	cwd := filepath.Join(work, "cwd")
+
+	mustMkdirAll(t, aliasProject)
+	mustMkdirAll(t, aliasDst)
+	mustMkdirAll(t, localDst)
+	mustMkdirAll(t, cwd)
+
+	if err := cmdMove(aliasProject, aliasDst); err != nil {
+		t.Fatalf("alias project cmdMove: %v", err)
+	}
+	if err := cmdAddAlias("kk", "aliased"); err != nil {
+		t.Fatalf("cmdAddAlias: %v", err)
+	}
+
+	t.Chdir(cwd)
+	local := filepath.Join(cwd, "kk")
+	if err := os.WriteFile(local, []byte("local"), 0644); err != nil {
+		t.Fatalf("write local src: %v", err)
+	}
+	if err := cmdMove("kk", localDst); err != nil {
+		t.Fatalf("cmdMove should prefer local path over alias: %v", err)
+	}
+
+	if !pathExists(filepath.Join(localDst, "kk")) {
+		t.Fatalf("expected local source to move")
+	}
+	if !pathExists(filepath.Join(aliasDst, "aliased")) {
+		t.Fatalf("expected alias target to remain in place")
+	}
+}
+
 func TestListAllShortensPathsWithLLSConfig(t *testing.T) {
 	resetDisplayConfig()
 	t.Cleanup(resetDisplayConfig)
@@ -587,6 +820,106 @@ func TestListAllShortensPathsWithLLSConfig(t *testing.T) {
 	}
 	if strings.Contains(output, projectRoot) {
 		t.Fatalf("expected output to hide long project root %s, got %q", projectRoot, output)
+	}
+}
+
+func TestListAllShowsAliasesOnRootLine(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectRoot := filepath.Join(work, "projects")
+	t.Setenv("X", projectRoot)
+
+	configFile, err := llsconfig.DefaultFile(true)
+	if err != nil {
+		t.Fatalf("DefaultFile: %v", err)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"envs":["X"]}`), 0644); err != nil {
+		t.Fatalf("write lls config: %v", err)
+	}
+
+	src := filepath.Join(projectRoot, "opencode-latest")
+	dst := filepath.Join(projectRoot, "archive")
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst)
+
+	if err := cmdMove(src, dst); err != nil {
+		t.Fatalf("cmdMove: %v", err)
+	}
+	if err := cmdAddAlias("opencode", "$X/opencode-latest"); err != nil {
+		t.Fatalf("cmdAddAlias: %v", err)
+	}
+
+	output := captureStdout(t, func() {
+		if err := cmdListAll(); err != nil {
+			t.Fatalf("cmdListAll: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "$X/opencode-latest (aliases: opencode)") {
+		t.Fatalf("expected list output to include alias on root line, got %q", output)
+	}
+}
+
+func TestWhichShowsAllMatchesInMoveResolutionOrder(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectRoot := filepath.Join(work, "projects")
+	t.Setenv("X", projectRoot)
+
+	configFile, err := llsconfig.DefaultFile(true)
+	if err != nil {
+		t.Fatalf("DefaultFile: %v", err)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"envs":["X"]}`), 0644); err != nil {
+		t.Fatalf("write lls config: %v", err)
+	}
+
+	localDir := filepath.Join(work, "cwd")
+	local := filepath.Join(localDir, "opencode")
+	basenameProject := filepath.Join(projectRoot, "opencode")
+	aliasProject := filepath.Join(projectRoot, "opencode-latest")
+	mustMkdirAll(t, localDir)
+	mustMkdirAll(t, basenameProject)
+	mustMkdirAll(t, aliasProject)
+	t.Chdir(localDir)
+
+	if err := cmdAdd(basenameProject); err != nil {
+		t.Fatalf("cmdAdd basenameProject: %v", err)
+	}
+	if err := cmdAdd(aliasProject); err != nil {
+		t.Fatalf("cmdAdd aliasProject: %v", err)
+	}
+	if err := cmdAddAlias("opencode", "$X/opencode-latest"); err != nil {
+		t.Fatalf("cmdAddAlias: %v", err)
+	}
+	if err := os.WriteFile(local, []byte("local"), 0644); err != nil {
+		t.Fatalf("write local: %v", err)
+	}
+
+	output := captureStdout(t, func() {
+		if err := run([]string{"--which", "opencode"}); err != nil {
+			t.Fatalf("run --which: %v", err)
+		}
+	})
+
+	want := strings.Join([]string{
+		local + " (local)",
+		"$X/opencode (project basename)",
+		"$X/opencode-latest (alias: opencode)",
+		"",
+	}, "\n")
+	if output != want {
+		t.Fatalf("expected %q, got %q", want, output)
 	}
 }
 

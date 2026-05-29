@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/xhd2015/less-gen/flags"
@@ -18,8 +19,10 @@ type History map[string][]string
 
 const help = `
 Usage: mvd [OPTIONS] SRC [DST]
-       mvd --rm [-f] DIR
+       mvd --rm|--remove [-f] DIR
+       mvd --add-alias ALIAS PROJECT
        mvd --rebase DIR NEW-DIR
+       mvd --which SRC
        mvd --print SRC
 
 Move a file/directory and track its location history.
@@ -27,19 +30,25 @@ Move a file/directory and track its location history.
 Commands:
   mvd SRC DST          Move SRC to DST (tracked)
   mvd --add DIR        Add DIR to the record file without moving it
-  mvd --rm [-f] DIR    Remove the exact recorded entry for DIR
+  mvd --add-alias ALIAS PROJECT
+                       Set ALIAS to a tracked project
+  mvd --rm|--remove [-f] DIR
+                       Remove the exact recorded entry for DIR
   mvd --rebase DIR NEW-DIR
                        Change the entry base to NEW-DIR
   mvd --list [SRC]     Show location history (all if SRC omitted)
+  mvd --which SRC      Show all move-source matches in resolution order
   mvd --back SRC       Move back by current path, root path, or unique root basename
   mvd --clear SRC      Clear movement history for SRC
   mvd --print SRC      Print shortened and full paths for SRC
 
 Options:
   --add                Add a DIR to history without moving it
-  --rm                 Remove the exact recorded entry for DIR
+  --add-alias          Set an alias for a tracked project
+  --rm, --remove       Remove the exact recorded entry for DIR
   --rebase             Change the entry base to NEW-DIR
   --list               Show location history
+  --which              Show all move-source matches
   --back               Move back to previous location
   --clear              Clear movement history for a specific file
   -p, --print          Print shortened and full paths
@@ -55,11 +64,14 @@ func main() {
 }
 
 func run(args []string) error {
-	var add, remove, rebase, list, back, clear, print, force bool
+	var add, remove, rebase, list, which, back, clear, print, force bool
+	var addAlias string
 	args, err := flags.Bool("--add", &add).
-		Bool("--rm", &remove).
+		String("--add-alias", &addAlias).
+		Bool("--rm,--remove", &remove).
 		Bool("--rebase", &rebase).
 		Bool("--list", &list).
+		Bool("--which", &which).
 		Bool("--back", &back).
 		Bool("--clear", &clear).
 		Bool("-p,--print", &print).
@@ -71,13 +83,13 @@ func run(args []string) error {
 	}
 
 	modeCount := 0
-	for _, enabled := range []bool{remove, add, rebase, list, back, clear, print} {
+	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print} {
 		if enabled {
 			modeCount++
 		}
 	}
 	if modeCount > 1 {
-		return fmt.Errorf("at most one of --rm, --add, --rebase, --list, --back, --clear, --print can be specified")
+		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print can be specified")
 	}
 
 	if force && !remove {
@@ -89,6 +101,12 @@ func run(args []string) error {
 			return fmt.Errorf("usage: mvd --add DIR")
 		}
 		return cmdAdd(args[0])
+	}
+	if addAlias != "" {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: mvd --add-alias ALIAS PROJECT")
+		}
+		return cmdAddAlias(addAlias, args[0])
 	}
 	if remove {
 		if len(args) != 1 {
@@ -120,6 +138,12 @@ func run(args []string) error {
 		}
 		return cmdListAll()
 	}
+	if which {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: mvd --which SRC")
+		}
+		return cmdWhich(args[0])
+	}
 	if back {
 		if len(args) < 1 {
 			return fmt.Errorf("usage: mvd --back SRC")
@@ -134,10 +158,9 @@ func run(args []string) error {
 	return cmdMove(args[0], args[1])
 }
 
-func cmdAdd(dir string) error {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("resolve: %w", err)
+func cmdAddAlias(alias, project string) error {
+	if err := validateAliasName(alias); err != nil {
+		return err
 	}
 
 	hist, err := loadHistory()
@@ -145,7 +168,32 @@ func cmdAdd(dir string) error {
 		return err
 	}
 
-	if _, locations := findEntry(hist, absDir); locations != nil {
+	root, err := resolveAliasProject(hist, project)
+	if err != nil {
+		return err
+	}
+
+	aliases, err := loadAliases()
+	if err != nil {
+		return err
+	}
+	aliases[alias] = root
+	fmt.Printf("alias: %s -> %s\n", alias, displayPath(root))
+	return saveAliases(aliases)
+}
+
+func cmdAdd(dir string) error {
+	absDir, err := resolveAddPath(dir)
+	if err != nil {
+		return err
+	}
+
+	hist, err := loadHistory()
+	if err != nil {
+		return err
+	}
+
+	if isRecordedPath(hist, absDir) {
 		fmt.Printf("hint: %s is already recorded, nothing added\n", displayPath(absDir))
 		return nil
 	}
@@ -156,56 +204,55 @@ func cmdAdd(dir string) error {
 }
 
 func cmdRemove(dir string, force bool) error {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("resolve: %w", err)
-	}
-
 	hist, err := loadHistory()
 	if err != nil {
 		return err
 	}
+	aliases, err := loadAliases()
+	if err != nil {
+		return err
+	}
 
-	locations, ok := hist[absDir]
-	if !ok {
+	removeKey, locations, err := resolveRemoveEntry(hist, aliases, dir)
+	if err != nil {
+		return err
+	}
+	if locations == nil {
+		absDir, err := filepath.Abs(expandConfiguredPath(dir))
+		if err != nil {
+			return fmt.Errorf("resolve: %w", err)
+		}
 		fmt.Printf("hint: no recorded entry for %s\n", displayPath(absDir))
+		return nil
+	}
+
+	locations, ok := hist[removeKey]
+	if !ok {
+		fmt.Printf("hint: no recorded entry for %s\n", displayPath(removeKey))
 		return nil
 	}
 
 	if len(locations) > 1 {
 		if !force {
-			return fmt.Errorf("%s has movement history:\n  use `mvd --rm -f %s`\n  to clear it", displayPath(absDir), absDir)
+			return fmt.Errorf("%s has movement history:\n  use `mvd --rm -f %s`\n  to clear it", displayPath(removeKey), removeKey)
 		}
-		fmt.Printf("hint: removing %s will clear %d history entries\n", displayPath(absDir), len(locations)-1)
+		fmt.Printf("hint: removing %s will clear %d history entries\n", displayPath(removeKey), len(locations)-1)
 	}
 
-	delete(hist, absDir)
-	fmt.Printf("removed: %s\n", displayPath(absDir))
+	delete(hist, removeKey)
+	fmt.Printf("removed: %s\n", displayPath(removeKey))
 	return saveHistory(hist)
 }
 
 func cmdRebase(dir, newDir string) error {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("resolve dir: %w", err)
-	}
-	absNewDir, err := filepath.Abs(newDir)
-	if err != nil {
-		return fmt.Errorf("resolve new-dir: %w", err)
-	}
-
 	hist, err := loadHistory()
 	if err != nil {
 		return err
 	}
 
-	origKey, locations := findEntry(hist, absDir)
-	if locations == nil {
-		return fmt.Errorf("no recorded entry for %s", absDir)
-	}
-
-	if otherKey, otherLocations := findEntry(hist, absNewDir); otherLocations != nil && otherKey != origKey {
-		return fmt.Errorf("%s is already recorded in another entry", absNewDir)
+	origKey, locations, absNewDir, err := resolveRebaseEntries(hist, dir, newDir)
+	if err != nil {
+		return err
 	}
 
 	if locations[0] == absNewDir {
@@ -227,17 +274,15 @@ func cmdRebase(dir, newDir string) error {
 }
 
 func cmdClear(src string) error {
-	absSrc, err := filepath.Abs(src)
-	if err != nil {
-		return fmt.Errorf("resolve: %w", err)
-	}
-
 	hist, err := loadHistory()
 	if err != nil {
 		return err
 	}
 
-	origKey, locations := findEntry(hist, absSrc)
+	absSrc, origKey, locations, err := resolveClearEntry(hist, src)
+	if err != nil {
+		return err
+	}
 	if locations == nil {
 		fmt.Printf("no movement history for %s\n", displayPath(absSrc))
 		return nil
@@ -248,79 +293,27 @@ func cmdClear(src string) error {
 	return saveHistory(hist)
 }
 
-func cmdMove(src, dst string) error {
+func cmdWhich(src string) error {
 	hist, err := loadHistory()
 	if err != nil {
 		return err
 	}
-
-	origKey, locations, absSrc, err := resolveMoveSource(hist, src)
+	aliases, err := loadAliases()
 	if err != nil {
 		return err
 	}
 
-	absDst, err := filepath.Abs(dst)
+	matches, err := findWhichMatches(hist, aliases, src)
 	if err != nil {
-		return fmt.Errorf("resolve dst: %w", err)
+		return err
 	}
-
-	// If dst is a directory, move src into it
-	info, err := os.Stat(absDst)
-	if err == nil && info.IsDir() {
-		absDst = filepath.Join(absDst, filepath.Base(absSrc))
+	if len(matches) == 0 {
+		return fmt.Errorf("%s not found", src)
 	}
-
-	if err := os.Rename(absSrc, absDst); err != nil {
-		return fmt.Errorf("move: %w", err)
+	for _, match := range matches {
+		fmt.Printf("%s (%s)\n", displayPath(match.path), match.label)
 	}
-
-	if locations == nil {
-		origKey = absSrc
-		locations = []string{absSrc, absDst}
-	} else {
-		locations = append(locations, absDst)
-	}
-
-	delete(hist, origKey)
-	hist[locations[0]] = locations
-
-	return saveHistory(hist)
-}
-
-func resolveMoveSource(hist History, src string) (string, []string, string, error) {
-	if useRootBaseNameShortcut(src) {
-		origKey, locations, err := findEntryByRootBaseName(hist, src)
-		if err != nil {
-			return "", nil, "", err
-		}
-		if locations != nil {
-			if len(locations) == 0 {
-				return "", nil, "", fmt.Errorf("empty mv history for %s", src)
-			}
-			return origKey, locations, locations[len(locations)-1], nil
-		}
-	}
-
-	absSrc, err := filepath.Abs(src)
-	if err != nil {
-		return "", nil, "", fmt.Errorf("resolve src: %w", err)
-	}
-
-	origKey, locations := findEntry(hist, absSrc)
-	if locations == nil {
-		return "", nil, absSrc, nil
-	}
-	if len(locations) == 0 {
-		return "", nil, "", fmt.Errorf("empty mv history for %s", absSrc)
-	}
-
-	last := locations[len(locations)-1]
-	root := locations[0]
-	if absSrc != root && absSrc != last {
-		return "", nil, "", fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
-	}
-
-	return origKey, locations, last, nil
+	return nil
 }
 
 func cmdListAll() error {
@@ -328,10 +321,15 @@ func cmdListAll() error {
 	if err != nil {
 		return err
 	}
+	aliases, err := loadAliases()
+	if err != nil {
+		return err
+	}
 	if len(hist) == 0 {
 		fmt.Println("(no mv history)")
 		return nil
 	}
+	aliasesByRoot := groupAliasesByRoot(aliases)
 
 	// Sort keys for stable output
 	keys := make([]string, 0, len(hist))
@@ -346,7 +344,7 @@ func cmdListAll() error {
 		}
 		locations := hist[key]
 		current := locations[len(locations)-1]
-		fmt.Printf("%s\n", displayPath(key))
+		fmt.Printf("%s%s\n", displayPath(key), formatAliases(aliasesByRoot[key]))
 		// Skip locations[0] because it's identical to the header
 		// (key). Printing it again just duplicates information.
 		for _, loc := range locations[1:] {
@@ -358,6 +356,24 @@ func cmdListAll() error {
 		}
 	}
 	return nil
+}
+
+func groupAliasesByRoot(aliases map[string]string) map[string][]string {
+	aliasesByRoot := make(map[string][]string)
+	for alias, root := range aliases {
+		aliasesByRoot[root] = append(aliasesByRoot[root], alias)
+	}
+	for root := range aliasesByRoot {
+		sort.Strings(aliasesByRoot[root])
+	}
+	return aliasesByRoot
+}
+
+func formatAliases(aliases []string) string {
+	if len(aliases) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (aliases: %s)", strings.Join(aliases, ", "))
 }
 
 func cmdPrint(src string) error {
@@ -375,39 +391,16 @@ func cmdPrint(src string) error {
 	return nil
 }
 
-func resolvePrintPath(hist History, src string) (string, error) {
-	if useRootBaseNameShortcut(src) {
-		_, locations, err := findEntryByRootBaseName(hist, src)
-		if err != nil {
-			return "", err
-		}
-		if locations != nil {
-			if len(locations) == 0 {
-				return "", fmt.Errorf("empty mv history for %s", src)
-			}
-			return locations[0], nil
-		}
-	}
-
-	absSrc, err := filepath.Abs(expandConfiguredPath(src))
-	if err != nil {
-		return "", fmt.Errorf("resolve: %w", err)
-	}
-	return absSrc, nil
-}
-
 func cmdList(src string) error {
-	absSrc, err := filepath.Abs(src)
-	if err != nil {
-		return fmt.Errorf("resolve: %w", err)
-	}
-
 	hist, err := loadHistory()
 	if err != nil {
 		return err
 	}
 
-	locations := findLocations(hist, absSrc)
+	absSrc, locations, err := resolveListEntry(hist, src)
+	if err != nil {
+		return err
+	}
 	if locations == nil {
 		fmt.Println("(no mv history)")
 		return nil
@@ -425,108 +418,6 @@ func cmdList(src string) error {
 		}
 	}
 	return nil
-}
-
-func cmdBack(src string) error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-
-	origKey, locations, err := resolveBackEntry(hist, src)
-	if err != nil {
-		return err
-	}
-
-	if len(locations) == 0 {
-		return fmt.Errorf("empty mv history for %s", src)
-	}
-	last := locations[len(locations)-1]
-	if len(locations) <= 1 {
-		fmt.Printf("nothing to move back for %s\n", displayPath(last))
-		return nil
-	}
-
-	prev := locations[len(locations)-2]
-	if err := os.Rename(last, prev); err != nil {
-		return fmt.Errorf("move back: %w", err)
-	}
-	fmt.Printf("moved back: %s → %s\n", displayPath(last), displayPath(prev))
-
-	locations = locations[:len(locations)-1]
-	hist[origKey] = locations
-
-	return saveHistory(hist)
-}
-
-func resolveBackEntry(hist History, src string) (string, []string, error) {
-	if useRootBaseNameShortcut(src) {
-		origKey, locations, err := findEntryByRootBaseName(hist, src)
-		if err != nil {
-			return "", nil, err
-		}
-		if locations != nil {
-			return origKey, locations, nil
-		}
-	}
-
-	absSrc, err := filepath.Abs(src)
-	if err != nil {
-		return "", nil, fmt.Errorf("resolve: %w", err)
-	}
-
-	origKey, locations := findEntry(hist, absSrc)
-	if locations == nil {
-		return "", nil, fmt.Errorf("no mv history for %s", absSrc)
-	}
-	if len(locations) == 0 {
-		return "", nil, fmt.Errorf("empty mv history for %s", absSrc)
-	}
-
-	last := locations[len(locations)-1]
-	root := locations[0]
-	if absSrc != root && absSrc != last {
-		return "", nil, fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
-	}
-
-	return origKey, locations, nil
-}
-
-func useRootBaseNameShortcut(path string) bool {
-	if !isBareBaseName(path) {
-		return false
-	}
-	_, err := os.Lstat(path)
-	return os.IsNotExist(err)
-}
-
-func isBareBaseName(path string) bool {
-	return path != "." && path != ".." && filepath.Base(path) == path
-}
-
-func findEntryByRootBaseName(hist History, baseName string) (string, []string, error) {
-	var matchedKey string
-	var matchedLocations []string
-	var matchedRoots []string
-
-	for key, locations := range hist {
-		if len(locations) == 0 {
-			continue
-		}
-		root := locations[0]
-		if filepath.Base(root) != baseName {
-			continue
-		}
-		matchedRoots = append(matchedRoots, root)
-		matchedKey = key
-		matchedLocations = locations
-	}
-
-	if len(matchedRoots) > 1 {
-		sort.Strings(matchedRoots)
-		return "", nil, fmt.Errorf("ambiguous root basename %s matches multiple roots: %v", baseName, displayPaths(matchedRoots))
-	}
-	return matchedKey, matchedLocations, nil
 }
 
 var (
@@ -576,26 +467,6 @@ func loadDisplayConfig() *llsconfig.Config {
 	return displayConfig
 }
 
-func findLocations(hist History, path string) []string {
-	_, locs := findEntry(hist, path)
-	return locs
-}
-
-func findEntry(hist History, path string) (string, []string) {
-	if locs, ok := hist[path]; ok {
-		return path, locs
-	}
-	for key, locs := range hist {
-		for _, loc := range locs {
-			if loc == path {
-				return key, locs
-			}
-		}
-		_ = key
-	}
-	return "", nil
-}
-
 func containsPath(paths []string, target string) bool {
 	for _, path := range paths {
 		if path == target {
@@ -608,6 +479,11 @@ func containsPath(paths []string, target string) bool {
 func historyPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".mvd", "history.json")
+}
+
+func aliasesPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".mvd", "aliases.json")
 }
 
 func loadHistory() (History, error) {
@@ -624,6 +500,25 @@ func loadHistory() (History, error) {
 		return nil, fmt.Errorf("parse history: %w", err)
 	}
 	return mergeChains(hist), nil
+}
+
+func loadAliases() (map[string]string, error) {
+	p := aliasesPath()
+	data, err := os.ReadFile(p)
+	if os.IsNotExist(err) {
+		return make(map[string]string), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read aliases: %w", err)
+	}
+	var aliases map[string]string
+	if err := json.Unmarshal(data, &aliases); err != nil {
+		return nil, fmt.Errorf("parse aliases: %w", err)
+	}
+	if aliases == nil {
+		aliases = make(map[string]string)
+	}
+	return aliases, nil
 }
 
 // mergeChains stitches together entries whose tail matches another
@@ -675,6 +570,21 @@ func saveHistory(hist History) error {
 	}
 	if err := os.WriteFile(p, data, 0644); err != nil {
 		return fmt.Errorf("write history: %w", err)
+	}
+	return nil
+}
+
+func saveAliases(aliases map[string]string) error {
+	p := aliasesPath()
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+	data, err := json.MarshalIndent(aliases, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal aliases: %w", err)
+	}
+	if err := os.WriteFile(p, data, 0644); err != nil {
+		return fmt.Errorf("write aliases: %w", err)
 	}
 	return nil
 }
