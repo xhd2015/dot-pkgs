@@ -24,6 +24,7 @@ Usage: mvd [OPTIONS] SRC [DST]
        mvd --rebase DIR NEW-DIR
        mvd --which SRC
        mvd --print SRC
+       mvd --cd SRC
 
 Move a file/directory and track its location history.
 
@@ -41,6 +42,8 @@ Commands:
   mvd --back SRC       Move back by current path, root path, or unique root basename
   mvd --clear SRC      Clear movement history for SRC
   mvd --print SRC      Print shortened and full paths for SRC
+  mvd --vscode SRC     Open the target project in VS Code
+  mvd --cd SRC         cd to the target project (launch bash)
 
 Options:
   --add                Add a DIR to history without moving it
@@ -52,6 +55,8 @@ Options:
   --back               Move back to previous location
   --clear              Clear movement history for a specific file
   -p, --print          Print shortened and full paths
+  --vscode             Open the target project in VS Code
+  --cd                 cd to the target project (launch bash)
   -f, --force          Force removal for mvd --rm and clear its histories
   -h, --help           Show this help message
 `
@@ -64,7 +69,7 @@ func main() {
 }
 
 func run(args []string) error {
-	var add, remove, rebase, list, which, back, clear, print, force bool
+	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force bool
 	var addAlias string
 	args, err := flags.Bool("--add", &add).
 		String("--add-alias", &addAlias).
@@ -75,6 +80,8 @@ func run(args []string) error {
 		Bool("--back", &back).
 		Bool("--clear", &clear).
 		Bool("-p,--print", &print).
+		Bool("--vscode", &vscode).
+		Bool("--cd", &cd).
 		Bool("-f,--force", &force).
 		Help("-h,--help", help).
 		Parse(args)
@@ -83,13 +90,13 @@ func run(args []string) error {
 	}
 
 	modeCount := 0
-	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print} {
+	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd} {
 		if enabled {
 			modeCount++
 		}
 	}
 	if modeCount > 1 {
-		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print can be specified")
+		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print, --vscode, --cd can be specified")
 	}
 
 	if force && !remove {
@@ -131,6 +138,18 @@ func run(args []string) error {
 			return fmt.Errorf("usage: mvd --print SRC")
 		}
 		return cmdPrint(args[0])
+	}
+	if vscode {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: mvd --vscode SRC")
+		}
+		return cmdVscode(args[0])
+	}
+	if cd {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: mvd --cd SRC")
+		}
+		return cmdCd(args[0])
 	}
 	if list {
 		if len(args) > 0 {

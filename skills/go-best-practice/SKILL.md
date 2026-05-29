@@ -18,6 +18,9 @@ tree; address a sub-topic with a slash-separated path, e.g.
 
 - `kool-create` — scaffold new projects with `kool create` (react,
   go-react, frontend, server, electron)
+- `cmd-exec` — running external commands with
+  `github.com/xhd2015/xgo/support/cmd` (Debug mode, output capture,
+  env vars, directory, I/O redirect)
 - `flags-parsing` — CLI flag parsing with
   `github.com/xhd2015/less-gen/flags`
   - `types` — supported target types (`*bool`, `*string`, `*int`,
