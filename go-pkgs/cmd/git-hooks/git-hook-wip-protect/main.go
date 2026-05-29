@@ -156,9 +156,12 @@ func phaseFromEnv() string {
 }
 
 func checkHeadIsWip() (bool, string, error) {
-	msg, err := githook.GitOutput("log", "-1", "--format=%B")
+	msg, ok, err := githook.GitOptionalOutput("log", "-1", "--format=%B")
 	if err != nil {
-		return false, "", err
+		return false, "", nil
+	}
+	if !ok {
+		return false, "", nil
 	}
 	msg = strings.TrimSpace(msg)
 	if msg == "" {

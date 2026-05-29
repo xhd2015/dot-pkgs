@@ -22,8 +22,7 @@ tree; address a sub-topic with a slash-separated path, e.g.
   `github.com/xhd2015/less-gen/flags`
   - `types` — supported target types (`*bool`, `*string`, `*int`,
     `*time.Duration`, `*[]string`, and `**T` variants)
-  - `subcommand` — sub-command dispatcher pattern using
-    `StopOnFirstArg`
+  - `subcommand` — sub-command dispatcher patterns (with `StopOnFirstArg` and no-toplevel-flags variants)
 
 ## Usage
 

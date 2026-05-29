@@ -109,9 +109,9 @@ func TestPreCommitAmendAllowsWip(t *testing.T) {
 	mustRun(t, repo, "git", "add", "e.txt")
 
 	var out bytes.Buffer
-	err := runWithOutput([]string{"--amend"}, &out)
+		err := runWithOutput([]string{"--is-amend"}, &out)
 	if err != nil {
-		t.Fatalf("expected --amend to bypass WIP check, got %v\n%s", err, out.String())
+		t.Fatalf("expected --is-amend to bypass WIP check, got %v\n%s", err, out.String())
 	}
 }
 
@@ -122,9 +122,9 @@ func TestPushRejectsWipEvenWithAmend(t *testing.T) {
 	doCommit(t, repo, "WIP: in progress")
 
 	var out bytes.Buffer
-	err := runWithOutput([]string{"--phase", "push", "--amend"}, &out)
+	err := runWithOutput([]string{"--phase", "push", "--is-amend"}, &out)
 	if !errors.Is(err, errWipProtected) {
-		t.Fatalf("expected push to reject WIP even with --amend, got %v\n%s", err, out.String())
+		t.Fatalf("expected push to reject WIP even with --is-amend, got %v\n%s", err, out.String())
 	}
 }
 
@@ -215,6 +215,17 @@ func TestOriginHost(t *testing.T) {
 		if got := githook.OriginHost(remote); got != want {
 			t.Fatalf("OriginHost(%q) = %q, want %q", remote, got, want)
 		}
+	}
+}
+
+func TestNoCommitsYetPasses(t *testing.T) {
+	repo := initGitRepo(t)
+	t.Chdir(repo)
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{}, &out)
+	if err != nil {
+		t.Fatalf("expected no-commits repo to pass, got %v\n%s", err, out.String())
 	}
 }
 
