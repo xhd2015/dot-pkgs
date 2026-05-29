@@ -74,6 +74,16 @@ func runWithOutput(args []string, out io.Writer) error {
 
 	var binaries []binaryFile
 	for _, f := range files {
+		info, err := os.Stat(f)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("stat file %s: %w", f, err)
+		}
+		if info.IsDir() {
+			continue
+		}
 		desc, isBin, err := detect.DetectFileType(f)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {

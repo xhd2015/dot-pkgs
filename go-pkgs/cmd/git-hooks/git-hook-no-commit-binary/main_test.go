@@ -113,6 +113,25 @@ func TestRunAllowsStagedSubmodule(t *testing.T) {
 	}
 }
 
+func TestRunSkipsDirectoryEntries(t *testing.T) {
+	repo := initGitRepo(t)
+	t.Chdir(repo)
+
+	subRepo := initGitRepo(t)
+	writeFile(t, filepath.Join(subRepo, "hello.txt"), "hello\n")
+	mustRun(t, subRepo, "git", "add", "hello.txt")
+	mustRun(t, subRepo, "git", "commit", "-m", "init")
+
+	mustRun(t, repo, "git", "-c", "protocol.file.allow=always", "submodule", "add", subRepo, "dot-pkgs")
+	mustRun(t, repo, "git", "add", "dot-pkgs")
+
+	var out bytes.Buffer
+	err := runWithOutput(nil, &out)
+	if err != nil {
+		t.Fatalf("expected no error when staged entry is a directory (submodule), got %v\n%s", err, out.String())
+	}
+}
+
 func TestOriginDomainGate(t *testing.T) {
 	repo := initGitRepo(t)
 	t.Chdir(repo)

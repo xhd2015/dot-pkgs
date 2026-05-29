@@ -84,17 +84,32 @@ func detectSubModules(files []string) []string {
 	seen := make(map[string]bool)
 	var subModules []string
 	for _, f := range files {
+		checkDir := func(dir string) bool {
+			gitPath := filepath.Join(dir, ".git")
+			info, err := os.Stat(gitPath)
+			if err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+				if !seen[dir] {
+					seen[dir] = true
+					subModules = append(subModules, dir)
+				}
+				return true
+			}
+			return false
+		}
+
+		// Check if the entry itself is a directory containing .git
+		// (e.g., "dot-pkgs" or "opencode-latest" staged as a whole)
+		if checkDir(f) {
+			continue
+		}
+
+		// Walk up parent directories
 		dir := filepath.Dir(f)
 		for {
 			if dir == "." {
 				break
 			}
-			gitPath := filepath.Join(dir, ".git")
-			if info, err := os.Stat(gitPath); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
-				if !seen[dir] {
-					seen[dir] = true
-					subModules = append(subModules, dir)
-				}
+			if checkDir(dir) {
 				break
 			}
 			parent := filepath.Dir(dir)

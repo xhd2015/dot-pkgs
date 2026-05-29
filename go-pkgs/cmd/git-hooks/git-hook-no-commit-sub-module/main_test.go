@@ -202,6 +202,26 @@ func TestExcludeOriginDomainGate(t *testing.T) {
 	}
 }
 
+func TestRunRejectsTopLevelDirAsSubModule(t *testing.T) {
+	repo := initGitRepo(t)
+	t.Chdir(repo)
+
+	smDir := filepath.Join(repo, "dot-pkgs")
+	writeFile(t, filepath.Join(smDir, "src", "main.go"), "package main\n")
+	os.MkdirAll(filepath.Join(smDir, ".git"), 0755)
+	mustRun(t, repo, "git", "add", "dot-pkgs/src/main.go")
+
+	var out bytes.Buffer
+	err := runWithOutput(nil, &out)
+	if !errors.Is(err, errSubModuleFound) {
+		t.Fatalf("expected submodule error for top-level dir, got %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "dot-pkgs/") {
+		t.Fatalf("expected dot-pkgs/ in output, got:\n%s", got)
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
