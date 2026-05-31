@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/dupstat"
-	"github.com/xhd2015/less-gen/flags"
+	"github.com/xhd2015/less-flags"
 )
 
 const help = `
@@ -42,7 +42,7 @@ func runWithOutput(args []string, out io.Writer) error {
 	var dirFlag string
 	var algoFlag string
 
-	_, err := flags.Int("--ngram", &ngramFlag).
+	_, err := lessflags.Int("--ngram", &ngramFlag).
 		String("--threshold", &thresholdStr).
 		String("--algorithm", &algoFlag).
 		String("--dir", &dirFlag).

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/xhd2015/less-gen/flags"
+	"github.com/xhd2015/less-flags"
 	llsconfig "github.com/xhd2015/lls/config"
 )
 
@@ -71,7 +71,7 @@ func main() {
 func run(args []string) error {
 	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force bool
 	var addAlias string
-	args, err := flags.Bool("--add", &add).
+	args, err := lessflags.Bool("--add", &add).
 		String("--add-alias", &addAlias).
 		Bool("--rm,--remove", &remove).
 		Bool("--rebase", &rebase).

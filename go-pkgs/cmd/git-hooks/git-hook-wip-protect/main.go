@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
-	"github.com/xhd2015/less-gen/flags"
+	"github.com/xhd2015/less-flags"
 )
 
 const help = `
@@ -98,7 +98,7 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	var originDomain *string
 	var excludeOriginDomain *string
 
-	_, err := flags.
+	_, err := lessflags.
 		String("--phase", &phase).
 		Bool("--is-amend", &isAmendFlag).
 		String("--origin-domain", &originDomain).
@@ -109,7 +109,7 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 		HelpNoExit().
 		Parse(args)
 	if err != nil {
-		if errors.Is(err, flags.ErrHelp) {
+		if errors.Is(err, lessflags.ErrHelp) {
 			cfg.showHelp = true
 			return cfg, nil
 		}
