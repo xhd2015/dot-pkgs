@@ -85,15 +85,17 @@ func runWithOutput(args []string, out io.Writer) error {
 		return err
 	}
 
-	printResults(out, groups, algorithm)
+	printResults(out, groups, algorithm, ".")
 	return nil
 }
 
-func printResults(out io.Writer, groups []dupstat.Group, algorithm string) {
+func printResults(out io.Writer, groups []dupstat.Group, algorithm string, rootDir string) {
 	if len(groups) == 0 {
 		fmt.Fprintln(out, "No similar function pairs found.")
 		return
 	}
+
+	absRoot, _ := filepath.Abs(rootDir)
 
 	for i, g := range groups {
 		for j, p := range g.Pairs {
@@ -106,8 +108,8 @@ func printResults(out io.Writer, groups []dupstat.Group, algorithm string) {
 				fmt.Fprintln(out, strings.Repeat("-", 50))
 			}
 
-			aFile := shortPath(p.FuncA.File, p.FuncA.PkgPath)
-			bFile := shortPath(p.FuncB.File, p.FuncB.PkgPath)
+			aFile := shortPath(p.FuncA.File, absRoot)
+			bFile := shortPath(p.FuncB.File, absRoot)
 
 			aSig := formatFuncSig(p.FuncA)
 			bSig := formatFuncSig(p.FuncB)
@@ -116,7 +118,7 @@ func printResults(out io.Writer, groups []dupstat.Group, algorithm string) {
 			fmt.Fprintf(out, "  %s:%d  %s\n", bFile, p.FuncB.Line, bSig)
 
 			if algorithm == dupstat.AlgoWordstat {
-				maxScore := maxFloat64(p.WordJaccard, p.WordContainment, p.WordOverlap)
+				maxScore := (p.WordJaccard + p.WordContainment) / 2
 				fmt.Fprintf(out, "  similarity: %.2f  wordstat(j=%.2f c=%.2f o=%.2f)\n",
 					maxScore,
 					p.WordJaccard, p.WordContainment, p.WordOverlap,
@@ -157,12 +159,14 @@ func maxFloat64(vals ...float64) float64 {
 	return m
 }
 
-func shortPath(absPath string, pkgPath string) string {
-	parts := strings.Split(pkgPath, "/")
-	if len(parts) > 0 && parts[0] != "" {
-		return filepath.Join(parts...)
+func shortPath(absPath string, rootDir string) string {
+	absPath = filepath.Clean(absPath)
+	rootDir = filepath.Clean(rootDir)
+	rel, err := filepath.Rel(rootDir, absPath)
+	if err != nil {
+		return filepath.Base(absPath)
 	}
-	return filepath.Base(absPath)
+	return rel
 }
 
 func formatFuncSig(fn *dupstat.Function) string {
