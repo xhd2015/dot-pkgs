@@ -28,6 +28,11 @@ type FuncPair struct {
 }
 
 func CompareFunctions(allFuncs []FunctionTokens, k int, threshold float64, algorithm string) []FuncPair {
+	var stats *WordStats
+	if algorithm == AlgoWordstat {
+		stats = ComputeWordStats(allFuncs)
+	}
+
 	var pairs []FuncPair
 	for i := 0; i < len(allFuncs); i++ {
 		for j := i + 1; j < len(allFuncs); j++ {
@@ -43,10 +48,10 @@ func CompareFunctions(allFuncs []FunctionTokens, k int, threshold float64, algor
 			pair.FuncB = b.Func
 
 			if algorithm == AlgoWordstat {
-				if !computeWordstatPair(&pair, a.Raw, b.Raw) {
+				if !computeWordstatPair(&pair, a.Raw, b.Raw, stats) {
 					continue
 				}
-				maxScore := max3(pair.WordJaccard, pair.WordContainment, pair.WordOverlap)
+				maxScore := (pair.WordJaccard + pair.WordContainment) / 2
 				if maxScore < threshold {
 					continue
 				}
@@ -87,18 +92,24 @@ func CompareFunctions(allFuncs []FunctionTokens, k int, threshold float64, algor
 	return pairs
 }
 
-func computeWordstatPair(pair *FuncPair, tokensA, tokensB []string) bool {
+func computeWordstatPair(pair *FuncPair, tokensA, tokensB []string, stats *WordStats) bool {
 	if len(tokensA) == 0 || len(tokensB) == 0 {
 		return false
 	}
-	freqA := wordFrequency(tokensA)
-	freqB := wordFrequency(tokensB)
+	freqA := wordTFIDF(tokensA, stats)
+	freqB := wordTFIDF(tokensB, stats)
 	if len(freqA) == 0 || len(freqB) == 0 {
 		return false
 	}
-	pair.WordJaccard = weightedJaccard(freqA, freqB)
-	pair.WordContainment = weightedContainment(freqA, freqB)
-	pair.WordOverlap = wordOverlap(freqA, freqB)
+	pair.WordJaccard = weightedJaccardFloat(freqA, freqB)
+	cAB := weightedContainmentFloat(freqA, freqB)
+	cBA := weightedContainmentFloat(freqB, freqA)
+	if cAB < cBA {
+		pair.WordContainment = cAB
+	} else {
+		pair.WordContainment = cBA
+	}
+	pair.WordOverlap = wordOverlapFloat(freqA, freqB)
 	return true
 }
 
