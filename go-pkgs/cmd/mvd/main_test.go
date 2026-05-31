@@ -1235,3 +1235,254 @@ func resetDisplayConfig() {
 	displayConfigOnce = sync.Once{}
 	displayConfig = nil
 }
+
+func TestBuildProjectListEmptyHistory(t *testing.T) {
+	hist := History{}
+	aliases := map[string]string{}
+
+	entries := buildProjectList(hist, aliases)
+	if len(entries) != 0 {
+		t.Fatalf("expected empty list, got %#v", entries)
+	}
+}
+
+func TestBuildProjectListBasicEntries(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	hist := History{
+		"/path/to/foo": {"/path/to/foo", "/path/to/foo-new"},
+		"/path/to/bar": {"/path/to/bar"},
+	}
+	aliases := map[string]string{}
+
+	entries := buildProjectList(hist, aliases)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+
+	if entries[0].display != "/path/to/bar" || entries[0].full != "/path/to/bar" {
+		t.Fatalf("expected first entry bar, got %#v", entries[0])
+	}
+	if entries[1].display != "/path/to/foo-new" || entries[1].full != "/path/to/foo-new" {
+		t.Fatalf("expected second entry foo-new, got %#v", entries[1])
+	}
+}
+
+func TestBuildProjectListSkipsEmptyLocations(t *testing.T) {
+	hist := History{
+		"/path/to/empty": {},
+		"/path/to/real":  {"/path/to/real"},
+	}
+
+	entries := buildProjectList(hist, nil)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].full != "/path/to/real" {
+		t.Fatalf("expected real entry, got %#v", entries[0])
+	}
+}
+
+func TestBuildProjectListAnnotatesAliases(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	hist := History{
+		"/path/to/foo": {"/path/to/foo", "/path/to/foo-latest"},
+	}
+	aliases := map[string]string{
+		"f":  "/path/to/foo",
+		"ff": "/path/to/foo",
+	}
+
+	entries := buildProjectList(hist, aliases)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].display, "(aliases:") {
+		t.Fatalf("expected alias annotation, got %q", entries[0].display)
+	}
+	if !strings.Contains(entries[0].display, "ff") {
+		t.Fatalf("expected alias ff in display, got %q", entries[0].display)
+	}
+	if !strings.Contains(entries[0].display, "f") {
+		t.Fatalf("expected alias f in display, got %q", entries[0].display)
+	}
+	if entries[0].full != "/path/to/foo-latest" {
+		t.Fatalf("expected full path to be latest, got %q", entries[0].full)
+	}
+}
+
+func TestBuildProjectListDeduplicatesByDisplayPath(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	hist := History{
+		"/path/to/foo": {"/path/to/foo", "/path/to/shared"},
+		"/path/to/bar": {"/path/to/bar", "/path/to/shared"},
+	}
+
+	entries := buildProjectList(hist, nil)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 deduplicated entry, got %d: %#v", len(entries), entries)
+	}
+	if entries[0].full != "/path/to/shared" {
+		t.Fatalf("expected /path/to/shared, got %q", entries[0].full)
+	}
+}
+
+func TestRunNoArgsNonTTYShowsHelp(t *testing.T) {
+	output := captureStdout(t, func() {
+		if err := run([]string{}); err != nil {
+			t.Fatalf("run(): %v", err)
+		}
+	})
+	if !strings.Contains(output, "Usage:") {
+		t.Fatalf("expected help output, got %q", output)
+	}
+}
+
+func TestRunPrintNoArgsNonTTYReturnsError(t *testing.T) {
+	err := run([]string{"--print"})
+	if err == nil {
+		t.Fatal("expected error for --print with no args on non-TTY")
+	}
+	if !strings.Contains(err.Error(), "usage: mvd --print") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunVscodeNoArgsNonTTYReturnsError(t *testing.T) {
+	err := run([]string{"--vscode"})
+	if err == nil {
+		t.Fatal("expected error for --vscode with no args on non-TTY")
+	}
+	if !strings.Contains(err.Error(), "usage: mvd --vscode") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunCdNoArgsNonTTYReturnsError(t *testing.T) {
+	err := run([]string{"--cd"})
+	if err == nil {
+		t.Fatal("expected error for --cd with no args on non-TTY")
+	}
+	if !strings.Contains(err.Error(), "usage: mvd --cd") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildProjectListAliasesUseRootKey(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	hist := History{
+		"/path/to/root": {"/path/to/root", "/path/to/moved"},
+	}
+	aliases := map[string]string{
+		"alias": "/path/to/moved",
+	}
+
+	entries := buildProjectList(hist, aliases)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+
+	if strings.Contains(entries[0].display, "(aliases:") {
+		t.Fatalf("alias should only annotate root key, got %q", entries[0].display)
+	}
+}
+
+func TestBuildProjectListAliasOnProperRoot(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	hist := History{
+		"/path/to/root": {"/path/to/root", "/path/to/latest"},
+	}
+	aliases := map[string]string{
+		"alias": "/path/to/root",
+	}
+
+	entries := buildProjectList(hist, aliases)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].display, "(aliases: alias)") {
+		t.Fatalf("expected alias annotation on root, got %q", entries[0].display)
+	}
+}
+
+func TestBuildProjectListWithEnvCollapsing(t *testing.T) {
+	resetDisplayConfig()
+	t.Cleanup(resetDisplayConfig)
+
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectRoot := filepath.Join(work, "projects")
+	t.Setenv("X", projectRoot)
+
+	configFile, err := llsconfig.DefaultFile(true)
+	if err != nil {
+		t.Fatalf("DefaultFile: %v", err)
+	}
+	if err := os.WriteFile(configFile, []byte(`{"envs":["X"]}`), 0644); err != nil {
+		t.Fatalf("write lls config: %v", err)
+	}
+
+	hist := History{
+		filepath.Join(projectRoot, "foo"): {filepath.Join(projectRoot, "foo"), filepath.Join(projectRoot, "foo-new")},
+	}
+
+	entries := buildProjectList(hist, nil)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].display, "$X/foo-new") {
+		t.Fatalf("expected env-collapsed display path, got %q", entries[0].display)
+	}
+}
+
+func TestRunNoModeNoArgsPipedStdinShowsHelp(t *testing.T) {
+	_, w, _ := os.Pipe()
+	oldStdin := os.Stdin
+	os.Stdin = w
+	defer func() {
+		os.Stdin = oldStdin
+		w.Close()
+	}()
+
+	output := captureStdout(t, func() {
+		err := run([]string{})
+		if err != nil {
+			t.Fatalf("run(): %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "Usage:") {
+		t.Fatalf("expected help output with piped stdin, got %q", output)
+	}
+}
+
+func TestRunStillAllowsSingleArgMove(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	src := filepath.Join(work, "src")
+	dst := filepath.Join(work, "dst")
+	mustMkdirAll(t, src)
+	mustMkdirAll(t, dst)
+
+	if err := run([]string{src, dst}); err != nil {
+		t.Fatalf("run move: %v", err)
+	}
+
+	movedPath := filepath.Join(dst, "src")
+	if !pathExists(movedPath) {
+		t.Fatalf("expected %s to exist", movedPath)
+	}
+}

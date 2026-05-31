@@ -27,31 +27,35 @@ func cmdCd(src string) error {
 		return err
 	}
 
-	extraEnv := []string{"MVD_SHELL=1", "MVD_PROJECT=" + src}
+	return launchShell(lastLoc, src)
+}
+
+func launchShell(dir string, name string) error {
+	extraEnv := []string{"MVD_SHELL=1", "MVD_PROJECT=" + name}
 
 	var cmd *exec.Cmd
 	switch detect.Shell() {
 	case "zsh":
-		zdotdir, err := zsh.RcFile(src)
+		zdotdir, err := zsh.RcFile(name)
 		if err != nil {
 			return fmt.Errorf("prepare zsh rc: %w", err)
 		}
 		defer os.RemoveAll(zdotdir)
-		cmd = zsh.Login(lastLoc, zdotdir, extraEnv...)
+		cmd = zsh.Login(dir, zdotdir, extraEnv...)
 	case "fish":
-		configHome, err := fish.RcFile(src)
+		configHome, err := fish.RcFile(name)
 		if err != nil {
 			return fmt.Errorf("prepare fish rc: %w", err)
 		}
 		defer os.RemoveAll(configHome)
-		cmd = fish.Login(lastLoc, configHome, extraEnv...)
+		cmd = fish.Login(dir, configHome, extraEnv...)
 	default:
-		rcfile, err := bash.RcFile(src)
+		rcfile, err := bash.RcFile(name)
 		if err != nil {
 			return fmt.Errorf("prepare bash rc: %w", err)
 		}
 		defer os.Remove(rcfile)
-		cmd = bash.Login(lastLoc, rcfile, extraEnv...)
+		cmd = bash.Login(dir, rcfile, extraEnv...)
 	}
 
 	if err := cmd.Run(); err != nil {
