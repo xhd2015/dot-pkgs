@@ -23,27 +23,29 @@ Usage: mvd [OPTIONS] SRC [DST]
        mvd --add-alias ALIAS PROJECT
        mvd --rebase DIR NEW-DIR
        mvd --which SRC
-       mvd --print SRC
-       mvd --cd SRC
+       mvd --print [SRC]
+       mvd --cd [SRC]
+       mvd --vscode [SRC]
 
 Move a file/directory and track its location history.
 
 Commands:
   mvd SRC DST          Move SRC to DST (tracked)
+  mvd                  Interactively pick a tracked project (if TTY)
   mvd --add DIR        Add DIR to the record file without moving it
   mvd --add-alias ALIAS PROJECT
-                       Set ALIAS to a tracked project
+                        Set ALIAS to a tracked project
   mvd --rm|--remove [-f] DIR
-                       Remove the exact recorded entry for DIR
+                        Remove the exact recorded entry for DIR
   mvd --rebase DIR NEW-DIR
-                       Change the entry base to NEW-DIR
+                        Change the entry base to NEW-DIR
   mvd --list [SRC]     Show location history (all if SRC omitted)
   mvd --which SRC      Show all move-source matches in resolution order
   mvd --back SRC       Move back by current path, root path, or unique root basename
   mvd --clear SRC      Clear movement history for SRC
-  mvd --print SRC      Print shortened and full paths for SRC
-  mvd --vscode SRC     Open the target project in VS Code
-  mvd --cd SRC         cd to the target project (launch bash)
+  mvd --print [SRC]    Print shortened and full paths (interactive picker if SRC omitted)
+  mvd --vscode [SRC]   Open the target project in VS Code (interactive picker if SRC omitted)
+  mvd --cd [SRC]       cd to the target project (interactive picker if SRC omitted)
 
 Options:
   --add                Add a DIR to history without moving it
@@ -134,18 +136,27 @@ func run(args []string) error {
 		return cmdClear(args[0])
 	}
 	if print {
+		if len(args) == 0 {
+			return cmdPickAndPrint()
+		}
 		if len(args) != 1 {
 			return fmt.Errorf("usage: mvd --print SRC")
 		}
 		return cmdPrint(args[0])
 	}
 	if vscode {
+		if len(args) == 0 {
+			return cmdPickAndVscode()
+		}
 		if len(args) != 1 {
 			return fmt.Errorf("usage: mvd --vscode SRC")
 		}
 		return cmdVscode(args[0])
 	}
 	if cd {
+		if len(args) == 0 {
+			return cmdPickAndCd()
+		}
 		if len(args) != 1 {
 			return fmt.Errorf("usage: mvd --cd SRC")
 		}
@@ -170,6 +181,9 @@ func run(args []string) error {
 		return cmdBack(args[0])
 	}
 
+	if len(args) == 0 && stdinIsTerminal() {
+		return cmdPickAndPrint()
+	}
 	if len(args) < 2 {
 		fmt.Print(help)
 		return nil
