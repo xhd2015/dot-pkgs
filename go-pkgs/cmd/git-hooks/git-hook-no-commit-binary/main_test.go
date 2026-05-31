@@ -263,6 +263,46 @@ func TestDetectFileType(t *testing.T) {
 	})
 }
 
+func TestRunAutoUnstageBinary(t *testing.T) {
+	repo := initGitRepoWithCommit(t)
+	t.Chdir(repo)
+
+	writeTextFile(t, filepath.Join(repo, "README.md"), "hello\n")
+	writeBinaryFile(t, filepath.Join(repo, "program.bin"), 1024)
+	mustRun(t, repo, "git", "add", "README.md", "program.bin")
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{"--auto-unstage"}, &out)
+	if err != nil {
+		t.Fatalf("expected no error with --auto-unstage, got %v", err)
+	}
+	if !strings.Contains(out.String(), "program.bin") {
+		t.Fatalf("expected program.bin in output, got:\n%s", out.String())
+	}
+
+	staged := getStagedFileNames(t)
+	if containsString(staged, "program.bin") {
+		t.Errorf("program.bin should have been unstaged")
+	}
+	if !containsString(staged, "README.md") {
+		t.Errorf("README.md should still be staged")
+	}
+}
+
+func TestRunAutoUnstageBinaryNoOffendingFiles(t *testing.T) {
+	repo := initGitRepoWithCommit(t)
+	t.Chdir(repo)
+
+	writeTextFile(t, filepath.Join(repo, "README.md"), "hello\n")
+	mustRun(t, repo, "git", "add", "README.md")
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{"--auto-unstage"}, &out)
+	if err != nil {
+		t.Fatalf("expected no error when no binaries, got %v", err)
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
@@ -270,6 +310,44 @@ func initGitRepo(t *testing.T) string {
 	mustRun(t, repo, "git", "config", "user.email", "test@example.com")
 	mustRun(t, repo, "git", "config", "user.name", "Test User")
 	return repo
+}
+
+func initGitRepoWithCommit(t *testing.T) string {
+	t.Helper()
+	repo := initGitRepo(t)
+	writeTextFile(t, filepath.Join(repo, ".gitkeep"), "")
+	mustRun(t, repo, "git", "add", ".gitkeep")
+	mustRun(t, repo, "git", "commit", "-m", "initial")
+	return repo
+}
+
+func getStagedFileNames(t *testing.T) []string {
+	t.Helper()
+	cmd := exec.Command("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git diff --cached --name-only failed: %v", err)
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files
+}
+
+func containsString(items []string, s string) bool {
+	for _, item := range items {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func writeTextFile(t *testing.T, path string, content string) {
+	writeFile(t, path, content)
 }
 
 func writeFile(t *testing.T, path string, content string) {

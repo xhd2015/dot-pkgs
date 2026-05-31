@@ -222,6 +222,57 @@ func TestRunRejectsTopLevelDirAsSubModule(t *testing.T) {
 	}
 }
 
+func TestRunAutoUnstageSubModule(t *testing.T) {
+	repo := initGitRepoWithCommit(t)
+	t.Chdir(repo)
+
+	smDir := filepath.Join(repo, "vendor", "libfoo")
+	mustRun(t, repo, "mkdir", "-p", filepath.Join(smDir, "src"))
+	writeFile(t, filepath.Join(smDir, "src", "main.c"), "int main() { return 0; }\n")
+	os.MkdirAll(filepath.Join(smDir, ".git"), 0755)
+	mustRun(t, repo, "git", "add", "vendor/libfoo/src/main.c")
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{"--auto-unstage"}, &out)
+	if err != nil {
+		t.Fatalf("expected no error with --auto-unstage, got %v", err)
+	}
+	if !strings.Contains(out.String(), "vendor/libfoo/") {
+		t.Fatalf("expected vendor/libfoo/ in output, got:\n%s", out.String())
+	}
+
+	staged := getStagedFileNames(t)
+	if containsString(staged, "vendor/libfoo/src/main.c") {
+		t.Errorf("submodule file should have been unstaged")
+	}
+}
+
+func TestRunAutoUnstageSubModuleWithRegularFile(t *testing.T) {
+	repo := initGitRepoWithCommit(t)
+	t.Chdir(repo)
+
+	writeFile(t, filepath.Join(repo, "README.md"), "hello\n")
+	smDir := filepath.Join(repo, "vendor", "libbar")
+	mustRun(t, repo, "mkdir", "-p", smDir)
+	writeFile(t, filepath.Join(smDir, "config.h"), "#define VERSION 1\n")
+	os.MkdirAll(filepath.Join(smDir, ".git"), 0755)
+	mustRun(t, repo, "git", "add", "README.md", "vendor/libbar/config.h")
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{"--auto-unstage"}, &out)
+	if err != nil {
+		t.Fatalf("expected no error with --auto-unstage, got %v", err)
+	}
+
+	staged := getStagedFileNames(t)
+	if containsString(staged, "vendor/libbar/config.h") {
+		t.Errorf("submodule file should have been unstaged")
+	}
+	if !containsString(staged, "README.md") {
+		t.Errorf("README.md should still be staged")
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
@@ -229,6 +280,40 @@ func initGitRepo(t *testing.T) string {
 	mustRun(t, repo, "git", "config", "user.email", "test@example.com")
 	mustRun(t, repo, "git", "config", "user.name", "Test User")
 	return repo
+}
+
+func initGitRepoWithCommit(t *testing.T) string {
+	t.Helper()
+	repo := initGitRepo(t)
+	writeFile(t, filepath.Join(repo, ".gitkeep"), "")
+	mustRun(t, repo, "git", "add", ".gitkeep")
+	mustRun(t, repo, "git", "commit", "-m", "initial")
+	return repo
+}
+
+func getStagedFileNames(t *testing.T) []string {
+	t.Helper()
+	cmd := exec.Command("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git diff --cached --name-only failed: %v", err)
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files
+}
+
+func containsString(items []string, s string) bool {
+	for _, item := range items {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }
 
 func writeFile(t *testing.T, path string, content string) {

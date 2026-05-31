@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/submodule"
 )
 
 const help = `
@@ -21,6 +21,8 @@ to prevent accidentally committing submodule contents.
 Options:
   --origin-domain DOMAIN            only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
+  --auto-unstage                    automatically unstage submodule files instead of
+                                    failing (use for hooks that run early)
   -h, --help                        show help message
 `
 
@@ -29,6 +31,7 @@ var errSubModuleFound = errors.New("submodule files found in staged changes")
 type config struct {
 	domainFilter githook.DomainFilter
 	showHelp     bool
+	autoUnstage  bool
 }
 
 func main() {
@@ -68,58 +71,31 @@ func runWithOutput(args []string, out io.Writer) error {
 		return err
 	}
 
-	subModules := detectSubModules(files)
+	subModules := submodule.DetectSubModules(files)
 	if len(subModules) > 0 {
 		fmt.Fprintln(out, "Staged files belong to submodules:")
 		for _, sm := range subModules {
 			fmt.Fprintf(out, "  %s/\n", sm)
 		}
-		fmt.Fprintln(out, "\nUse git rm --cached <file> to unstage, or use git submodule instead.")
+		if cfg.autoUnstage {
+			var paths []string
+			for _, f := range files {
+				for _, smDir := range subModules {
+					if strings.HasPrefix(f, smDir+"/") || f == smDir {
+						paths = append(paths, f)
+						break
+					}
+				}
+			}
+			if err := githook.RestoreStaged(paths...); err != nil {
+				return err
+			}
+			return nil
+		}
+		fmt.Fprintln(out, "\nUse git restore --staged <file> to unstage, or use git submodule instead.")
 		return errSubModuleFound
 	}
 	return nil
-}
-
-func detectSubModules(files []string) []string {
-	seen := make(map[string]bool)
-	var subModules []string
-	for _, f := range files {
-		checkDir := func(dir string) bool {
-			gitPath := filepath.Join(dir, ".git")
-			info, err := os.Stat(gitPath)
-			if err == nil && (info.IsDir() || info.Mode().IsRegular()) {
-				if !seen[dir] {
-					seen[dir] = true
-					subModules = append(subModules, dir)
-				}
-				return true
-			}
-			return false
-		}
-
-		// Check if the entry itself is a directory containing .git
-		// (e.g., "dot-pkgs" or "opencode-latest" staged as a whole)
-		if checkDir(f) {
-			continue
-		}
-
-		// Walk up parent directories
-		dir := filepath.Dir(f)
-		for {
-			if dir == "." {
-				break
-			}
-			if checkDir(dir) {
-				break
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	}
-	return subModules
 }
 
 func parseArgs(args []string) (config, error) {
@@ -137,6 +113,8 @@ func parseArgs(args []string) (config, error) {
 		case arg == "-h" || arg == "--help":
 			cfg.showHelp = true
 			return cfg, nil
+		case arg == "--auto-unstage":
+			cfg.autoUnstage = true
 		case strings.HasPrefix(arg, "-"):
 			return cfg, fmt.Errorf("unknown flag: %s", arg)
 		default:

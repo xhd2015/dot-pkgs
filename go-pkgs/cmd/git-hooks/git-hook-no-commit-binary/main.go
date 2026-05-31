@@ -20,6 +20,8 @@ Reject staged binary files to prevent accidentally committing them.
 Options:
   --origin-domain DOMAIN            only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
+  --auto-unstage                    automatically unstage binary files instead of
+                                    failing (use for hooks that run early)
   -h, --help                        show help message
 `
 
@@ -28,6 +30,7 @@ var errBinaryFilesFound = errors.New("binary files found")
 type config struct {
 	domainFilter githook.DomainFilter
 	showHelp     bool
+	autoUnstage  bool
 }
 
 type binaryFile struct {
@@ -101,7 +104,17 @@ func runWithOutput(args []string, out io.Writer) error {
 		for _, bf := range binaries {
 			fmt.Fprintf(out, "  %s (%s)\n", bf.path, bf.desc)
 		}
-		fmt.Fprintln(out, "\nUse git rm --cached <file> to unstage, or add to .gitignore if needed.")
+		if cfg.autoUnstage {
+			var paths []string
+			for _, bf := range binaries {
+				paths = append(paths, bf.path)
+			}
+			if err := githook.RestoreStaged(paths...); err != nil {
+				return err
+			}
+			return nil
+		}
+		fmt.Fprintln(out, "\nUse git restore --staged <file> to unstage, or add to .gitignore if needed.")
 		return errBinaryFilesFound
 	}
 	return nil
@@ -122,6 +135,8 @@ func parseArgs(args []string) (config, error) {
 		case arg == "-h" || arg == "--help":
 			cfg.showHelp = true
 			return cfg, nil
+		case arg == "--auto-unstage":
+			cfg.autoUnstage = true
 		case strings.HasPrefix(arg, "-"):
 			return cfg, fmt.Errorf("unknown flag: %s", arg)
 		default:
