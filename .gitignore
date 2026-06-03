@@ -15,3 +15,8 @@ dist-ssr
 .env.*.local
 
 Thumbs.db
+
+/external
+
+/.decisions
+/TODO
