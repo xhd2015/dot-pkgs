@@ -467,7 +467,7 @@ func TestCmdMoveNewDir(t *testing.T) {
 		t.Fatalf("expected 1 history entry, got %d", len(hist))
 	}
 	locs := hist[srcDir]
-	if len(locs) != 2 || locs[0] != srcDir || locs[1] != dstDir {
+	if len(locs) != 2 || locs[0].Path != srcDir || locs[1].Path != dstDir {
 		t.Fatalf("expected history [%s %s], got %v", srcDir, dstDir, locs)
 	}
 }

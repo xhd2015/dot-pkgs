@@ -22,7 +22,7 @@ func resolveAliasProject(hist History, project string) (string, error) {
 			if len(locations) == 0 {
 				return "", fmt.Errorf("empty mv history for %s", project)
 			}
-			return locations[0], nil
+			return locations[0].Path, nil
 		}
 	}
 
@@ -37,7 +37,7 @@ func resolveAliasProject(hist History, project string) (string, error) {
 	if len(locations) == 0 {
 		return "", fmt.Errorf("empty mv history for %s", absProject)
 	}
-	return locations[0], nil
+	return locations[0].Path, nil
 }
 
 func validateAliasName(alias string) error {
@@ -60,7 +60,7 @@ func isRecordedPath(hist History, path string) bool {
 	return locations != nil
 }
 
-func resolveRemoveEntry(hist History, aliases map[string]string, dir string) (string, []string, error) {
+func resolveRemoveEntry(hist History, aliases map[string]string, dir string) (string, []LocationEntry, error) {
 	if useRootBaseNameShortcut(dir) {
 		origKey, locations, err := findEntryByRootBaseName(hist, dir)
 		if err != nil {
@@ -88,7 +88,7 @@ func resolveRemoveEntry(hist History, aliases map[string]string, dir string) (st
 	return "", nil, nil
 }
 
-func resolveRebaseEntries(hist History, dir, newDir string) (string, []string, string, error) {
+func resolveRebaseEntries(hist History, dir, newDir string) (string, []LocationEntry, string, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", nil, "", fmt.Errorf("resolve dir: %w", err)
@@ -110,7 +110,7 @@ func resolveRebaseEntries(hist History, dir, newDir string) (string, []string, s
 	return origKey, locations, absNewDir, nil
 }
 
-func resolveClearEntry(hist History, src string) (string, string, []string, error) {
+func resolveClearEntry(hist History, src string) (string, string, []LocationEntry, error) {
 	absSrc, err := filepath.Abs(src)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("resolve: %w", err)
@@ -120,7 +120,7 @@ func resolveClearEntry(hist History, src string) (string, string, []string, erro
 	return absSrc, origKey, locations, nil
 }
 
-func resolveMoveSource(hist History, aliases map[string]string, src string) (string, []string, string, error) {
+func resolveMoveSource(hist History, aliases map[string]string, src string) (string, []LocationEntry, string, error) {
 	if useRootBaseNameShortcut(src) {
 		origKey, locations, err := findEntryByRootBaseName(hist, src)
 		if err != nil {
@@ -130,7 +130,7 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 			if len(locations) == 0 {
 				return "", nil, "", fmt.Errorf("empty mv history for %s", src)
 			}
-			return origKey, locations, locations[len(locations)-1], nil
+			return origKey, locations, locations[len(locations)-1].Path, nil
 		}
 		origKey, locations, err = findEntryByAlias(hist, aliases, src)
 		if err != nil {
@@ -140,7 +140,7 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 			if len(locations) == 0 {
 				return "", nil, "", fmt.Errorf("empty mv history for alias %s", src)
 			}
-			return origKey, locations, locations[len(locations)-1], nil
+			return origKey, locations, locations[len(locations)-1].Path, nil
 		}
 	}
 
@@ -157,8 +157,8 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 		return "", nil, "", fmt.Errorf("empty mv history for %s", absSrc)
 	}
 
-	last := locations[len(locations)-1]
-	root := locations[0]
+	last := locations[len(locations)-1].Path
+	root := locations[0].Path
 	if absSrc != root && absSrc != last {
 		return "", nil, "", fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
 	}
@@ -166,7 +166,7 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 	return origKey, locations, last, nil
 }
 
-func resolveListEntry(hist History, src string) (string, []string, error) {
+func resolveListEntry(hist History, src string) (string, []LocationEntry, error) {
 	absSrc, err := filepath.Abs(src)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolve: %w", err)
@@ -184,7 +184,7 @@ func resolvePrintPath(hist History, src string) (string, error) {
 			if len(locations) == 0 {
 				return "", fmt.Errorf("empty mv history for %s", src)
 			}
-			return locations[0], nil
+			return locations[0].Path, nil
 		}
 	}
 
@@ -195,7 +195,7 @@ func resolvePrintPath(hist History, src string) (string, error) {
 	return absSrc, nil
 }
 
-func resolveBackEntry(hist History, src string) (string, []string, error) {
+func resolveBackEntry(hist History, src string) (string, []LocationEntry, error) {
 	if useRootBaseNameShortcut(src) {
 		origKey, locations, err := findEntryByRootBaseName(hist, src)
 		if err != nil {
@@ -219,8 +219,8 @@ func resolveBackEntry(hist History, src string) (string, []string, error) {
 		return "", nil, fmt.Errorf("empty mv history for %s", absSrc)
 	}
 
-	last := locations[len(locations)-1]
-	root := locations[0]
+	last := locations[len(locations)-1].Path
+	root := locations[0].Path
 	if absSrc != root && absSrc != last {
 		return "", nil, fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
 	}
@@ -228,7 +228,7 @@ func resolveBackEntry(hist History, src string) (string, []string, error) {
 	return origKey, locations, nil
 }
 
-func findEntryByAlias(hist History, aliases map[string]string, alias string) (string, []string, error) {
+func findEntryByAlias(hist History, aliases map[string]string, alias string) (string, []LocationEntry, error) {
 	root, ok := aliases[alias]
 	if !ok {
 		return "", nil, nil
@@ -258,7 +258,7 @@ func findWhichMatches(hist History, aliases map[string]string, src string) ([]wh
 			if len(locations) == 0 {
 				return nil, fmt.Errorf("empty mv history for %s", absSrc)
 			}
-			matches = append(matches, whichMatch{path: locations[len(locations)-1], label: "tracked"})
+			matches = append(matches, whichMatch{path: locations[len(locations)-1].Path, label: "tracked"})
 		}
 		return matches, nil
 	}
@@ -267,7 +267,7 @@ func findWhichMatches(hist History, aliases map[string]string, src string) ([]wh
 		if len(locations) == 0 {
 			return nil, fmt.Errorf("empty mv history for %s", src)
 		}
-		matches = append(matches, whichMatch{path: locations[len(locations)-1], label: "project basename"})
+		matches = append(matches, whichMatch{path: locations[len(locations)-1].Path, label: "project basename"})
 	}
 
 	if root, ok := aliases[src]; ok {
@@ -278,7 +278,7 @@ func findWhichMatches(hist History, aliases map[string]string, src string) ([]wh
 		if len(locations) == 0 {
 			return nil, fmt.Errorf("empty mv history for alias %s", src)
 		}
-		matches = append(matches, whichMatch{path: locations[len(locations)-1], label: "alias: " + src})
+		matches = append(matches, whichMatch{path: locations[len(locations)-1].Path, label: "alias: " + src})
 	}
 
 	return matches, nil
@@ -296,13 +296,13 @@ func isBareBaseName(path string) bool {
 	return path != "." && path != ".." && filepath.Base(path) == path
 }
 
-func findEntryByRootBaseName(hist History, baseName string) (string, []string, error) {
+func findEntryByRootBaseName(hist History, baseName string) (string, []LocationEntry, error) {
 	var matchedKey string
-	var matchedLocations []string
+	var matchedLocations []LocationEntry
 	var matchedRoots []string
 
 	for _, match := range findEntriesByRootBaseName(hist, baseName) {
-		root := match[0]
+		root := match[0].Path
 		matchedRoots = append(matchedRoots, root)
 		matchedKey = root
 		matchedLocations = match
@@ -315,14 +315,14 @@ func findEntryByRootBaseName(hist History, baseName string) (string, []string, e
 	return matchedKey, matchedLocations, nil
 }
 
-func findEntriesByRootBaseName(hist History, baseName string) [][]string {
+func findEntriesByRootBaseName(hist History, baseName string) [][]LocationEntry {
 	roots := make([]string, 0, len(hist))
-	byRoot := make(map[string][]string)
+	byRoot := make(map[string][]LocationEntry)
 	for _, locations := range hist {
 		if len(locations) == 0 {
 			continue
 		}
-		root := locations[0]
+		root := locations[0].Path
 		if filepath.Base(root) != baseName {
 			continue
 		}
@@ -331,25 +331,25 @@ func findEntriesByRootBaseName(hist History, baseName string) [][]string {
 	}
 	sort.Strings(roots)
 
-	matches := make([][]string, 0, len(roots))
+	matches := make([][]LocationEntry, 0, len(roots))
 	for _, root := range roots {
 		matches = append(matches, byRoot[root])
 	}
 	return matches
 }
 
-func findLocations(hist History, path string) []string {
+func findLocations(hist History, path string) []LocationEntry {
 	_, locs := findEntry(hist, path)
 	return locs
 }
 
-func findEntry(hist History, path string) (string, []string) {
+func findEntry(hist History, path string) (string, []LocationEntry) {
 	if locs, ok := hist[path]; ok {
 		return path, locs
 	}
 	for key, locs := range hist {
 		for _, loc := range locs {
-			if loc == path {
+			if loc.Path == path {
 				return key, locs
 			}
 		}

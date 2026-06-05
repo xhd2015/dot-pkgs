@@ -25,8 +25,8 @@ func buildProjectList(hist History, aliases map[string]string) []pickerEntry {
 		if len(locations) == 0 {
 			continue
 		}
-		root := locations[0]
-		latest := locations[len(locations)-1]
+		root := locations[0].Path
+		latest := locations[len(locations)-1].Path
 		disp := displayPath(latest)
 		if seen[disp] {
 			continue

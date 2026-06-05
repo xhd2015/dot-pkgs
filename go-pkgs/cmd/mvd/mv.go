@@ -44,13 +44,13 @@ func cmdMove(src, dst string) error {
 
 	if locations == nil {
 		origKey = absSrc
-		locations = []string{absSrc, absDst}
+		locations = []LocationEntry{{Path: absSrc}, {Path: absDst}}
 	} else {
-		locations = append(locations, absDst)
+		locations = append(locations, LocationEntry{Path: absDst})
 	}
 
 	delete(hist, origKey)
-	hist[locations[0]] = locations
+	hist[locations[0].Path] = locations
 
 	return saveHistory(hist)
 }
@@ -71,20 +71,24 @@ func cmdBack(src string) error {
 	}
 	last := locations[len(locations)-1]
 	if len(locations) <= 1 {
-		fmt.Printf("nothing to move back for %s\n", displayPath(last))
+		fmt.Printf("nothing to move back for %s\n", displayPath(last.Path))
 		return nil
 	}
 
 	prev := locations[len(locations)-2]
 
-	isWt := isGitWorktree(last)
-	if err := moveDir(last, prev); err != nil {
+	if last.Git != nil && last.Git.Type == "worktree" {
+		return cmdWorktreeBack(origKey, locations)
+	}
+
+	isWt := isGitWorktree(last.Path)
+	if err := moveDir(last.Path, prev.Path); err != nil {
 		return err
 	}
 	if isWt {
-		fmt.Printf("moved worktree back: %s → %s\n", displayPath(last), displayPath(prev))
+		fmt.Printf("moved worktree back: %s → %s\n", displayPath(last.Path), displayPath(prev.Path))
 	} else {
-		fmt.Printf("moved back: %s → %s\n", displayPath(last), displayPath(prev))
+		fmt.Printf("moved back: %s → %s\n", displayPath(last.Path), displayPath(prev.Path))
 	}
 
 	locations = locations[:len(locations)-1]

@@ -29,7 +29,7 @@ func TestRunAddFlagStoresSingleEntry(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[dir]
-	if len(locs) != 1 || locs[0] != dir {
+	if len(locs) != 1 || locs[0].Path != dir {
 		t.Fatalf("expected single record entry for %s, got %#v", dir, locs)
 	}
 }
@@ -96,7 +96,7 @@ func TestAddExistingHistoryPathDoesNothing(t *testing.T) {
 		t.Fatalf("expected duplicate add to leave history unchanged, got %#v", hist)
 	}
 	locs := hist[src]
-	if len(locs) != 2 || locs[0] != src || locs[1] != movedPath {
+	if len(locs) != 2 || locs[0].Path != src || locs[1].Path != movedPath {
 		t.Fatalf("expected original move history to remain unchanged, got %#v", locs)
 	}
 }
@@ -179,7 +179,7 @@ func TestRemoveDoesNotMatchHistoryOnlyPath(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[src]
-	if len(locs) != 2 || locs[0] != src || locs[1] != movedPath {
+	if len(locs) != 2 || locs[0].Path != src || locs[1].Path != movedPath {
 		t.Fatalf("expected move history to remain unchanged, got %#v", locs)
 	}
 }
@@ -318,7 +318,7 @@ func TestForceRequiresRemoveFlag(t *testing.T) {
 }
 
 func TestRunRejectsMultipleModeFlags(t *testing.T) {
-	modes := []string{"--rm", "--add", "--rebase", "--list", "--back", "--clear", "--print"}
+	modes := []string{"--rm", "--add", "--rebase", "--list", "--back", "--clear", "--print", "--worktree"}
 	for i, first := range modes {
 		for _, second := range modes[i+1:] {
 			t.Run(first+"_"+second, func(t *testing.T) {
@@ -362,7 +362,7 @@ func TestRebaseChangesEntryBaseFromKeyMatch(t *testing.T) {
 	}
 	locs := hist[newBase]
 	expectedCurrent := filepath.Join(dst, "dir")
-	if len(locs) != 3 || locs[0] != newBase || locs[1] != src || locs[2] != expectedCurrent {
+	if len(locs) != 3 || locs[0].Path != newBase || locs[1].Path != src || locs[2].Path != expectedCurrent {
 		t.Fatalf("expected rebased history [%s %s %s], got %#v", newBase, src, expectedCurrent, locs)
 	}
 }
@@ -393,7 +393,7 @@ func TestRunRebaseFlagChangesEntryBase(t *testing.T) {
 	if _, ok := hist[src]; ok {
 		t.Fatalf("expected old base %s to be removed", src)
 	}
-	if locs := hist[newBase]; len(locs) == 0 || locs[0] != newBase {
+	if locs := hist[newBase]; len(locs) == 0 || locs[0].Path != newBase {
 		t.Fatalf("expected rebased history under %s, got %#v", newBase, locs)
 	}
 }
@@ -430,7 +430,7 @@ func TestRebaseFindsEntryByHistoryMatch(t *testing.T) {
 	}
 	expectedCurrent := filepath.Join(dst2, "dir")
 	locs := hist[newBase]
-	if len(locs) != 4 || locs[0] != newBase || locs[1] != src || locs[2] != historyPath || locs[3] != expectedCurrent {
+	if len(locs) != 4 || locs[0].Path != newBase || locs[1].Path != src || locs[2].Path != historyPath || locs[3].Path != expectedCurrent {
 		t.Fatalf("expected rebased history [%s %s %s %s], got %#v", newBase, src, historyPath, expectedCurrent, locs)
 	}
 }
@@ -496,7 +496,7 @@ func TestMoveAcceptsOriginalRootPath(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[src]
-	if len(locs) != 3 || locs[0] != src || locs[1] != firstPath || locs[2] != secondPath {
+	if len(locs) != 3 || locs[0].Path != src || locs[1].Path != firstPath || locs[2].Path != secondPath {
 		t.Fatalf("expected move history [%s %s %s], got %#v", src, firstPath, secondPath, locs)
 	}
 }
@@ -539,7 +539,7 @@ func TestMoveAcceptsUniqueOriginalBasename(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[src]
-	if len(locs) != 3 || locs[0] != src || locs[1] != firstPath || locs[2] != secondPath {
+	if len(locs) != 3 || locs[0].Path != src || locs[1].Path != firstPath || locs[2].Path != secondPath {
 		t.Fatalf("expected move history [%s %s %s], got %#v", src, firstPath, secondPath, locs)
 	}
 }
@@ -587,11 +587,11 @@ func TestMoveDoesNotUseBasenameShortcutWhenLocalPathExists(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	trackedLocs := hist[tracked]
-	if len(trackedLocs) != 2 || trackedLocs[0] != tracked || trackedLocs[1] != trackedCurrent {
+	if len(trackedLocs) != 2 || trackedLocs[0].Path != tracked || trackedLocs[1].Path != trackedCurrent {
 		t.Fatalf("expected tracked history unchanged, got %#v", trackedLocs)
 	}
 	localLocs := hist[local]
-	if len(localLocs) != 2 || localLocs[0] != local || localLocs[1] != localMoved {
+	if len(localLocs) != 2 || localLocs[0].Path != local || localLocs[1].Path != localMoved {
 		t.Fatalf("expected local move history [%s %s], got %#v", local, localMoved, localLocs)
 	}
 }
@@ -693,7 +693,7 @@ func TestMoveAcceptsAliasAfterBasenameMiss(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[src]
-	if len(locs) != 3 || locs[0] != src || locs[1] != firstPath || locs[2] != secondPath {
+	if len(locs) != 3 || locs[0].Path != src || locs[1].Path != firstPath || locs[2].Path != secondPath {
 		t.Fatalf("expected move history [%s %s %s], got %#v", src, firstPath, secondPath, locs)
 	}
 }
@@ -1016,7 +1016,7 @@ func TestBackKeepsOriginalHistoryEntry(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[src]
-	if len(locs) != 1 || locs[0] != src {
+	if len(locs) != 1 || locs[0].Path != src {
 		t.Fatalf("expected single original history entry for %s, got %#v", src, locs)
 	}
 }
@@ -1053,7 +1053,7 @@ func TestBackAcceptsOriginalRootPath(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[src]
-	if len(locs) != 1 || locs[0] != src {
+	if len(locs) != 1 || locs[0].Path != src {
 		t.Fatalf("expected single original history entry for %s, got %#v", src, locs)
 	}
 }
@@ -1185,7 +1185,7 @@ func TestBackAtOriginalPositionIsNoOp(t *testing.T) {
 		t.Fatalf("loadHistory: %v", err)
 	}
 	locs := hist[src]
-	if len(locs) != 1 || locs[0] != src {
+	if len(locs) != 1 || locs[0].Path != src {
 		t.Fatalf("expected history to remain at original location for %s, got %#v", src, locs)
 	}
 }
@@ -1251,8 +1251,8 @@ func TestBuildProjectListBasicEntries(t *testing.T) {
 	t.Cleanup(resetDisplayConfig)
 
 	hist := History{
-		"/path/to/foo": {"/path/to/foo", "/path/to/foo-new"},
-		"/path/to/bar": {"/path/to/bar"},
+		"/path/to/foo": {{Path: "/path/to/foo"}, {Path: "/path/to/foo-new"}},
+		"/path/to/bar": {{Path: "/path/to/bar"}},
 	}
 	aliases := map[string]string{}
 
@@ -1272,7 +1272,7 @@ func TestBuildProjectListBasicEntries(t *testing.T) {
 func TestBuildProjectListSkipsEmptyLocations(t *testing.T) {
 	hist := History{
 		"/path/to/empty": {},
-		"/path/to/real":  {"/path/to/real"},
+		"/path/to/real": {{Path: "/path/to/real"}},
 	}
 
 	entries := buildProjectList(hist, nil)
@@ -1289,7 +1289,7 @@ func TestBuildProjectListAnnotatesAliases(t *testing.T) {
 	t.Cleanup(resetDisplayConfig)
 
 	hist := History{
-		"/path/to/foo": {"/path/to/foo", "/path/to/foo-latest"},
+		"/path/to/foo": {{Path: "/path/to/foo"}, {Path: "/path/to/foo-latest"}},
 	}
 	aliases := map[string]string{
 		"f":  "/path/to/foo",
@@ -1319,8 +1319,8 @@ func TestBuildProjectListDeduplicatesByDisplayPath(t *testing.T) {
 	t.Cleanup(resetDisplayConfig)
 
 	hist := History{
-		"/path/to/foo": {"/path/to/foo", "/path/to/shared"},
-		"/path/to/bar": {"/path/to/bar", "/path/to/shared"},
+		"/path/to/foo": {{Path: "/path/to/foo"}, {Path: "/path/to/shared"}},
+		"/path/to/bar": {{Path: "/path/to/bar"}, {Path: "/path/to/shared"}},
 	}
 
 	entries := buildProjectList(hist, nil)
@@ -1378,7 +1378,7 @@ func TestBuildProjectListAliasesUseRootKey(t *testing.T) {
 	t.Cleanup(resetDisplayConfig)
 
 	hist := History{
-		"/path/to/root": {"/path/to/root", "/path/to/moved"},
+		"/path/to/root": {{Path: "/path/to/root"}, {Path: "/path/to/moved"}},
 	}
 	aliases := map[string]string{
 		"alias": "/path/to/moved",
@@ -1399,7 +1399,7 @@ func TestBuildProjectListAliasOnProperRoot(t *testing.T) {
 	t.Cleanup(resetDisplayConfig)
 
 	hist := History{
-		"/path/to/root": {"/path/to/root", "/path/to/latest"},
+		"/path/to/root": {{Path: "/path/to/root"}, {Path: "/path/to/latest"}},
 	}
 	aliases := map[string]string{
 		"alias": "/path/to/root",
@@ -1434,7 +1434,7 @@ func TestBuildProjectListWithEnvCollapsing(t *testing.T) {
 	}
 
 	hist := History{
-		filepath.Join(projectRoot, "foo"): {filepath.Join(projectRoot, "foo"), filepath.Join(projectRoot, "foo-new")},
+		filepath.Join(projectRoot, "foo"): {{Path: filepath.Join(projectRoot, "foo")}, {Path: filepath.Join(projectRoot, "foo-new")}},
 	}
 
 	entries := buildProjectList(hist, nil)

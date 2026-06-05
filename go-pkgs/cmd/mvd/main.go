@@ -13,9 +13,37 @@ import (
 	llsconfig "github.com/xhd2015/lls/config"
 )
 
+type GitInfo struct {
+	Type     string `json:"type"`
+	MainRepo string `json:"main_repo,omitempty"`
+	Branch   string `json:"branch,omitempty"`
+}
+
+type LocationEntry struct {
+	Path string   `json:"path"`
+	Git  *GitInfo `json:"git,omitempty"`
+}
+
+type ProjectEntry struct {
+	Locations []LocationEntry `json:"locations"`
+}
+
+type HistoryFile struct {
+	Version  string                  `json:"version"`
+	Projects map[string]ProjectEntry `json:"projects"`
+}
+
 // History tracks movement history for each file.
 // Key: original absolute path, Value: list of locations (oldest first).
-type History map[string][]string
+type History map[string][]LocationEntry
+
+func locPaths(locs []LocationEntry) []string {
+	paths := make([]string, len(locs))
+	for i, loc := range locs {
+		paths[i] = loc.Path
+	}
+	return paths
+}
 
 const help = `
 Usage: mvd [OPTIONS] SRC [DST]
@@ -30,37 +58,39 @@ Usage: mvd [OPTIONS] SRC [DST]
 Move a file/directory and track its location history.
 
 Commands:
-  mvd SRC DST          Move SRC to DST (tracked)
-  mvd                  Interactively pick a tracked project (if TTY)
-  mvd --add DIR        Add DIR to the record file without moving it
+  mvd -w SRC DST        Spawn a git worktree at DST from repo SRC
+  mvd SRC DST           Move SRC to DST (tracked)
+  mvd                   Interactively pick a tracked project (if TTY)
+  mvd --add DIR         Add DIR to the record file without moving it
   mvd --add-alias ALIAS PROJECT
-                        Set ALIAS to a tracked project
+                         Set ALIAS to a tracked project
   mvd --rm|--remove [-f] DIR
-                        Remove the exact recorded entry for DIR
+                         Remove the exact recorded entry for DIR
   mvd --rebase DIR NEW-DIR
-                        Change the entry base to NEW-DIR
-  mvd --list [SRC]     Show location history (all if SRC omitted)
-  mvd --which SRC      Show all move-source matches in resolution order
-  mvd --back SRC       Move back by current path, root path, or unique root basename
-  mvd --clear SRC      Clear movement history for SRC
-  mvd --print [SRC]    Print shortened and full paths (interactive picker if SRC omitted)
-  mvd --vscode [SRC]   Open the target project in VS Code (interactive picker if SRC omitted)
-  mvd --cd [SRC]       cd to the target project (interactive picker if SRC omitted)
+                         Change the entry base to NEW-DIR
+  mvd --list [SRC]      Show location history (all if SRC omitted)
+  mvd --which SRC       Show all move-source matches in resolution order
+  mvd --back SRC        Move back by current path, root path, or unique root basename
+  mvd --clear SRC       Clear movement history for SRC
+  mvd --print [SRC]     Print shortened and full paths (interactive picker if SRC omitted)
+  mvd --vscode [SRC]    Open the target project in VS Code (interactive picker if SRC omitted)
+  mvd --cd [SRC]        cd to the target project (interactive picker if SRC omitted)
 
 Options:
-  --add                Add a DIR to history without moving it
-  --add-alias          Set an alias for a tracked project
-  --rm, --remove       Remove the exact recorded entry for DIR
-  --rebase             Change the entry base to NEW-DIR
-  --list               Show location history
-  --which              Show all move-source matches
-  --back               Move back to previous location
-  --clear              Clear movement history for a specific file
-  -p, --print          Print shortened and full paths
-  --vscode             Open the target project in VS Code
-  --cd                 cd to the target project (launch bash)
-  -f, --force          Force removal for mvd --rm and clear its histories
-  -h, --help           Show this help message
+  -w, --worktree        Spawn a git worktree at DST from repo SRC (instead of move)
+  --add                 Add a DIR to history without moving it
+  --add-alias           Set an alias for a tracked project
+  --rm, --remove        Remove the exact recorded entry for DIR
+  --rebase              Change the entry base to NEW-DIR
+  --list                Show location history
+  --which               Show all move-source matches
+  --back                Move back to previous location
+  --clear               Clear movement history for a specific file
+  -p, --print           Print shortened and full paths
+  --vscode              Open the target project in VS Code
+  --cd                  cd to the target project (launch bash)
+  -f, --force           Force removal for mvd --rm and clear its histories
+  -h, --help            Show this help message
 `
 
 func main() {
@@ -71,7 +101,7 @@ func main() {
 }
 
 func run(args []string) error {
-	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force bool
+	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree bool
 	var addAlias string
 	args, err := lessflags.Bool("--add", &add).
 		String("--add-alias", &addAlias).
@@ -84,6 +114,7 @@ func run(args []string) error {
 		Bool("-p,--print", &print).
 		Bool("--vscode", &vscode).
 		Bool("--cd", &cd).
+		Bool("-w,--worktree", &worktree).
 		Bool("-f,--force", &force).
 		Help("-h,--help", help).
 		Parse(args)
@@ -92,13 +123,13 @@ func run(args []string) error {
 	}
 
 	modeCount := 0
-	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd} {
+	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd, worktree} {
 		if enabled {
 			modeCount++
 		}
 	}
 	if modeCount > 1 {
-		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print, --vscode, --cd can be specified")
+		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print, --vscode, --cd, --worktree can be specified")
 	}
 
 	if force && !remove {
@@ -181,6 +212,13 @@ func run(args []string) error {
 		return cmdBack(args[0])
 	}
 
+	if worktree {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: mvd -w SRC DST")
+		}
+		return cmdWorktreeMove(args[0], args[1])
+	}
+
 	if len(args) == 0 && stdinIsTerminal() {
 		return cmdPickAndPrint()
 	}
@@ -231,7 +269,7 @@ func cmdAdd(dir string) error {
 		return nil
 	}
 
-	hist[absDir] = []string{absDir}
+	hist[absDir] = []LocationEntry{{Path: absDir}}
 	fmt.Printf("added: %s\n", displayPath(absDir))
 	return saveHistory(hist)
 }
@@ -288,15 +326,15 @@ func cmdRebase(dir, newDir string) error {
 		return err
 	}
 
-	if locations[0] == absNewDir {
+	if locations[0].Path == absNewDir {
 		fmt.Printf("base unchanged: %s\n", displayPath(absNewDir))
 		return nil
 	}
 
-	oldBase := locations[0]
-	updated := []string{absNewDir}
+	oldBase := locations[0].Path
+	updated := []LocationEntry{{Path: absNewDir}}
 	if oldBase != absNewDir && !containsPath(locations[1:], oldBase) {
-		updated = append(updated, oldBase)
+		updated = append(updated, LocationEntry{Path: oldBase})
 	}
 	updated = append(updated, locations[1:]...)
 
@@ -376,16 +414,16 @@ func cmdListAll() error {
 			fmt.Println()
 		}
 		locations := hist[key]
-		current := locations[len(locations)-1]
+		current := locations[len(locations)-1].Path
 		fmt.Printf("%s%s\n", displayPath(key), formatAliases(aliasesByRoot[key]))
 		// Skip locations[0] because it's identical to the header
 		// (key). Printing it again just duplicates information.
 		for _, loc := range locations[1:] {
 			marker := "  "
-			if loc == current {
+			if loc.Path == current {
 				marker = "* "
 			}
-			fmt.Printf("  %s%s\n", marker, displayPath(loc))
+			fmt.Printf("  %s%s\n", marker, displayPath(loc.Path))
 		}
 	}
 	return nil
@@ -441,13 +479,13 @@ func cmdList(src string) error {
 
 	for i, loc := range locations {
 		marker := "  "
-		if loc == absSrc {
+		if loc.Path == absSrc {
 			marker = "* "
 		}
 		if i == 0 {
-			fmt.Printf("%s%s  (original)\n", marker, displayPath(loc))
+			fmt.Printf("%s%s  (original)\n", marker, displayPath(loc.Path))
 		} else {
-			fmt.Printf("%s%s\n", marker, displayPath(loc))
+			fmt.Printf("%s%s\n", marker, displayPath(loc.Path))
 		}
 	}
 	return nil
@@ -500,23 +538,29 @@ func loadDisplayConfig() *llsconfig.Config {
 	return displayConfig
 }
 
-func containsPath(paths []string, target string) bool {
-	for _, path := range paths {
-		if path == target {
+func containsPath(locs []LocationEntry, target string) bool {
+	for _, loc := range locs {
+		if loc.Path == target {
 			return true
 		}
 	}
 	return false
 }
 
-func historyPath() string {
+func configDir() string {
+	if dir := os.Getenv("MVD_DEBUG_CONFIG_HOME"); dir != "" {
+		return dir
+	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".mvd", "history.json")
+	return filepath.Join(home, ".mvd")
+}
+
+func historyPath() string {
+	return filepath.Join(configDir(), "history.json")
 }
 
 func aliasesPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".mvd", "aliases.json")
+	return filepath.Join(configDir(), "aliases.json")
 }
 
 func loadHistory() (History, error) {
@@ -528,9 +572,31 @@ func loadHistory() (History, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read history: %w", err)
 	}
-	var hist History
-	if err := json.Unmarshal(data, &hist); err != nil {
+
+	var file HistoryFile
+	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("parse history: %w", err)
+	}
+
+	if file.Projects != nil {
+		hist := make(History, len(file.Projects))
+		for key, proj := range file.Projects {
+			hist[key] = proj.Locations
+		}
+		return mergeChains(hist), nil
+	}
+
+	var legacy map[string][]string
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return nil, fmt.Errorf("parse history: %w", err)
+	}
+	hist := make(History, len(legacy))
+	for key, locs := range legacy {
+		entries := make([]LocationEntry, len(locs))
+		for i, loc := range locs {
+			entries[i] = LocationEntry{Path: loc}
+		}
+		hist[key] = entries
 	}
 	return mergeChains(hist), nil
 }
@@ -570,7 +636,7 @@ func mergeChains(hist History) History {
 			if len(locs) == 0 {
 				continue
 			}
-			tail := locs[len(locs)-1]
+			tail := locs[len(locs)-1].Path
 			if tail == key {
 				continue
 			}
@@ -578,8 +644,7 @@ func mergeChains(hist History) History {
 			if !ok || len(next) == 0 {
 				continue
 			}
-			combined := append([]string{}, locs...)
-			// Skip next[0] because it duplicates tail.
+			combined := append([]LocationEntry{}, locs...)
 			combined = append(combined, next[1:]...)
 			hist[key] = combined
 			delete(hist, tail)
@@ -597,7 +662,15 @@ func saveHistory(hist History) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
-	data, err := json.MarshalIndent(hist, "", "  ")
+	projects := make(map[string]ProjectEntry, len(hist))
+	for key, locs := range hist {
+		projects[key] = ProjectEntry{Locations: locs}
+	}
+	file := HistoryFile{
+		Version:  "1.1",
+		Projects: projects,
+	}
+	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
