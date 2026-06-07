@@ -7,14 +7,97 @@ import (
 	"io"
 	"os"
 	"path"
+	go_filepath "path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
 
-// watchFile monitors a file for changes and calls onWrite on each write event.
-// onWrite receives a pointer to lastPos so it can update the read position.
-func watchFile(ctx context.Context, filepath string, onWrite func(lastPos *int64) error) error {
+// FileOp describes the kind of file system operation that triggered an event.
+type FileOp int
+
+const (
+	FileCreated FileOp = iota
+	FileModified
+)
+
+// FileEvent describes a file system event delivered to WatchFileEvents callbacks.
+type FileEvent struct {
+	Path string
+	Op   FileOp
+}
+
+// WatchFileEventsOptions controls debounce behaviour for WatchFileEvents.
+type WatchFileEventsOptions struct {
+	// DisableDebounce disables event coalescing.
+	// When true every fsnotify event fires the callback immediately.
+	DisableDebounce bool
+
+	// Debounce is the quiet period to wait before firing the callback.
+	// Defaults to 20 ms. Ignored when DisableDebounce is true.
+	Debounce time.Duration
+}
+
+// WatchContentOptions controls behaviour for Watch.
+type WatchContentOptions struct {
+	// DisableDebounce disables event coalescing.
+	// When true every fsnotify event fires the callback immediately.
+	DisableDebounce bool
+
+	// Debounce is the quiet period to wait before firing the callback.
+	// Defaults to 20 ms. Ignored when DisableDebounce is true.
+	Debounce time.Duration
+}
+
+// WatchLineOptions controls behaviour for WatchLine.
+type WatchLineOptions struct {
+	// DisableDebounce disables event coalescing.
+	// When true every fsnotify event fires the callback immediately.
+	DisableDebounce bool
+
+	// Debounce is the quiet period to wait before firing the callback.
+	// Defaults to 20 ms. Ignored when DisableDebounce is true.
+	Debounce time.Duration
+}
+
+func contentDebounce(opts WatchContentOptions) time.Duration {
+	if opts.DisableDebounce {
+		return 0
+	}
+	if opts.Debounce > 0 {
+		return opts.Debounce
+	}
+	return 20 * time.Millisecond
+}
+
+func lineDebounce(opts WatchLineOptions) time.Duration {
+	if opts.DisableDebounce {
+		return 0
+	}
+	if opts.Debounce > 0 {
+		return opts.Debounce
+	}
+	return 20 * time.Millisecond
+}
+
+type fileEventKind int
+
+const (
+	fileKindCreated fileEventKind = iota
+	fileKindModified
+)
+
+// watchFileEvents is the lowest-level core. It sets up the fsnotify watcher,
+// registers the directory and file, and dispatches events through onEvent.
+// onEvent receives fileKindCreated for creation events and fileKindModified
+// for writes. A single os.WriteFile on a new file produces one Create event
+// (even when the OS combines Create|Write in the raw mask).
+func watchFileEvents(ctx context.Context, filepath string, onEvent func(kind fileEventKind) error) error {
+	if realPath, err := go_filepath.EvalSymlinks(filepath); err == nil {
+		filepath = realPath
+	}
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create watcher: %w", err)
@@ -27,23 +110,10 @@ func watchFile(ctx context.Context, filepath string, onWrite func(lastPos *int64
 		return fmt.Errorf("failed to watch directory %s: %w", dir, err)
 	}
 
-	// Keep track of last read position
-	lastPos := int64(0)
-
 	// If file exists, add it to the watcher and initialize lastPos to current size
 	if fileExists(filepath) {
 		if err := watcher.Add(filepath); err != nil {
 			return fmt.Errorf("failed to watch file %s: %w", filepath, err)
-		}
-
-		// Get the current file size to start watching only new content
-		file, err := os.Open(filepath)
-		if err == nil {
-			fileInfo, err := file.Stat()
-			if err == nil {
-				lastPos = fileInfo.Size()
-			}
-			file.Close()
 		}
 	}
 
@@ -55,15 +125,20 @@ func watchFile(ctx context.Context, filepath string, onWrite func(lastPos *int64
 			}
 
 			// If the file was created, start watching it
-			if event.Op&fsnotify.Create == fsnotify.Create && event.Name == filepath {
+			if event.Op&fsnotify.Create != 0 && event.Name == filepath {
 				if err := watcher.Add(filepath); err != nil {
 					return fmt.Errorf("failed to watch newly created file %s: %w", filepath, err)
 				}
 			}
 
 			// If the file was modified or created, notify
-			if event.Name == filepath && (event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create) {
-				if err := onWrite(&lastPos); err != nil {
+
+			if event.Name == filepath && (event.Op&fsnotify.Create != 0 || event.Op&fsnotify.Write != 0) {
+				kind := fileKindModified
+				if event.Op&fsnotify.Create != 0 {
+					kind = fileKindCreated
+				}
+				if err := onEvent(kind); err != nil {
 					return err
 				}
 			}
@@ -80,6 +155,50 @@ func watchFile(ctx context.Context, filepath string, onWrite func(lastPos *int64
 	}
 }
 
+// watchFile wraps watchFileEvents with lastPos tracking and debounce so
+// callers can do incremental reads (only new bytes since the last event).
+// When debounce > 0, rapid writes are coalesced; the handler fires after
+// the quiet period.
+func watchFile(ctx context.Context, filepath string, debounce time.Duration, onWrite func(lastPos *int64) error) error {
+	// Keep track of last read position
+	lastPos := int64(0)
+	if fi, err := os.Stat(filepath); err == nil {
+		lastPos = fi.Size()
+	}
+
+	var mu sync.Mutex
+	var timer *time.Timer
+	var hasPending bool
+
+	return watchFileEvents(ctx, filepath, func(kind fileEventKind) error {
+		_ = kind
+
+		if debounce <= 0 {
+			return onWrite(&lastPos)
+		}
+
+		mu.Lock()
+		hasPending = true
+		if timer != nil {
+			timer.Stop()
+		}
+		timer = time.AfterFunc(debounce, func() {
+			mu.Lock()
+			if !hasPending {
+				mu.Unlock()
+				return
+			}
+			hasPending = false
+			mu.Unlock()
+			if err := onWrite(&lastPos); err != nil {
+				fmt.Fprintf(os.Stderr, "watchFile onWrite error: %v\n", err)
+			}
+		})
+		mu.Unlock()
+		return nil
+	})
+}
+
 // Watch monitors a file for changes and calls the provided callback function
 // for each new content chunk detected.
 //
@@ -93,8 +212,8 @@ func watchFile(ctx context.Context, filepath string, onWrite func(lastPos *int64
 // or the callback returns an error.
 //
 // If the file doesn't exist initially, it will wait for it to be created.
-func Watch(ctx context.Context, filepath string, callback func(content []byte) error) error {
-	return watchFile(ctx, filepath, func(lastPos *int64) error {
+func Watch(ctx context.Context, filepath string, opts WatchContentOptions, callback func(content []byte) error) error {
+	return watchFile(ctx, filepath, contentDebounce(opts), func(lastPos *int64) error {
 		newPos, err := readNewContent(filepath, *lastPos, callback)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", filepath, err)
@@ -112,9 +231,9 @@ func Watch(ctx context.Context, filepath string, callback func(content []byte) e
 //
 // The callback receives the line content without the trailing newline
 // character. If the line ends with \r\n, the \r is also stripped.
-func WatchLine(ctx context.Context, filepath string, callback func(line string) error) error {
+func WatchLine(ctx context.Context, filepath string, opts WatchLineOptions, callback func(line string) error) error {
 	var leftover []byte
-	return watchFile(ctx, filepath, func(lastPos *int64) error {
+	return watchFile(ctx, filepath, lineDebounce(opts), func(lastPos *int64) error {
 		newPos, err := readNewContent(filepath, *lastPos, func(content []byte) error {
 			data := append(leftover, content...)
 			leftover = nil
@@ -142,6 +261,61 @@ func WatchLine(ctx context.Context, filepath string, callback func(line string) 
 	})
 }
 
+// WatchFileEvents monitors a file for creation and modification events.
+// Unlike Watch / WatchLine it does not read file content; it delivers
+// FileEvent notifications whenever the file is created or written to.
+//
+// On platforms that emit multiple events for a single write (macOS),
+// options.Debounce coalesces them into one callback after the quiet
+// period. The default debounce is 20 ms. Set DisableDebounce to true
+// for immediate delivery.
+func WatchFileEvents(ctx context.Context, filepath string, opts WatchFileEventsOptions, callback func(event FileEvent) error) error {
+	debounce := opts.Debounce
+	if !opts.DisableDebounce && debounce <= 0 {
+		debounce = 20 * time.Millisecond
+	}
+
+	var mu sync.Mutex
+	var timer *time.Timer
+	var pendingOp FileOp
+	var hasPending bool
+
+	return watchFileEvents(ctx, filepath, func(kind fileEventKind) error {
+		op := FileModified
+		if kind == fileKindCreated {
+			op = FileCreated
+		}
+
+		if opts.DisableDebounce || debounce <= 0 {
+			return callback(FileEvent{Path: filepath, Op: op})
+		}
+
+		mu.Lock()
+		if !hasPending || op == FileCreated {
+			pendingOp = op
+		}
+		hasPending = true
+		if timer != nil {
+			timer.Stop()
+		}
+		timer = time.AfterFunc(debounce, func() {
+			mu.Lock()
+			if !hasPending {
+				mu.Unlock()
+				return
+			}
+			op := pendingOp
+			hasPending = false
+			mu.Unlock()
+			if err := callback(FileEvent{Path: filepath, Op: op}); err != nil {
+				fmt.Fprintf(os.Stderr, "WatchFileEvents callback error: %v\n", err)
+			}
+		})
+		mu.Unlock()
+		return nil
+	})
+}
+
 // Pipe monitors a file for changes and outputs new content to the provided
 // writer, prefixing each chunk with the specified prefix.
 //
@@ -154,7 +328,7 @@ func WatchLine(ctx context.Context, filepath string, callback func(line string) 
 // The function continues until the context is cancelled or an error occurs.
 // If the file doesn't exist initially, it will wait for it to be created.
 func Pipe(ctx context.Context, filepath string, prefix string, output io.Writer) error {
-	return Watch(ctx, filepath, func(line []byte) error {
+	return Watch(ctx, filepath, WatchContentOptions{}, func(line []byte) error {
 		if prefix != "" {
 			_, err := fmt.Fprint(output, prefix)
 			if err != nil {
