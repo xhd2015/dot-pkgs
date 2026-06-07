@@ -98,10 +98,6 @@ func cmdBack(src string) error {
 }
 
 func moveDir(src, dst string) error {
-	if isGitWorktree(src) {
-		return moveWorktree(src, dst)
-	}
-
 	var wts []worktreeInfo
 	if isGitRepo(src) {
 		var err error
