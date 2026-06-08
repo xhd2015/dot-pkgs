@@ -1,4 +1,4 @@
-package govet
+package stdflag
 
 import (
 	"go/ast"
@@ -18,8 +18,8 @@ func parseAST(t *testing.T, src string) (*token.FileSet, *ast.File) {
 	return fset, f
 }
 
-func TestStdFlagChecker_NoImports(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_NoImports(t *testing.T) {
+	c := &Checker{}
 	fset, f := parseAST(t, `package main`)
 	v := c.CheckAST(fset, f)
 	if len(v) != 0 {
@@ -27,8 +27,8 @@ func TestStdFlagChecker_NoImports(t *testing.T) {
 	}
 }
 
-func TestStdFlagChecker_NonFlagImport(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_NonFlagImport(t *testing.T) {
+	c := &Checker{}
 	fset, f := parseAST(t, `package main
 import "fmt"`)
 	v := c.CheckAST(fset, f)
@@ -37,8 +37,8 @@ import "fmt"`)
 	}
 }
 
-func TestStdFlagChecker_StdFlagImport(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_StdFlagImport(t *testing.T) {
+	c := &Checker{}
 	fset, f := parseAST(t, `package main
 import "flag"`)
 	v := c.CheckAST(fset, f)
@@ -59,8 +59,8 @@ import "flag"`)
 	}
 }
 
-func TestStdFlagChecker_AliasedFlagImport(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_AliasedFlagImport(t *testing.T) {
+	c := &Checker{}
 	fset, f := parseAST(t, `package main
 import f "flag"`)
 	v := c.CheckAST(fset, f)
@@ -69,8 +69,8 @@ import f "flag"`)
 	}
 }
 
-func TestStdFlagChecker_LessFlagsImport(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_LessFlagsImport(t *testing.T) {
+	c := &Checker{}
 	fset, f := parseAST(t, `package main
 import "github.com/xhd2015/less-flags"`)
 	v := c.CheckAST(fset, f)
@@ -79,8 +79,8 @@ import "github.com/xhd2015/less-flags"`)
 	}
 }
 
-func TestStdFlagChecker_FlagAndLessFlags(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_FlagAndLessFlags(t *testing.T) {
+	c := &Checker{}
 	fset, f := parseAST(t, `package main
 import (
 	"flag"
@@ -92,8 +92,8 @@ import (
 	}
 }
 
-func TestStdFlagChecker_MultipleFlagImports(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_MultipleFlagImports(t *testing.T) {
+	c := &Checker{}
 	fset, f := parseAST(t, `package main
 import (
 	"flag"
@@ -105,8 +105,8 @@ import (
 	}
 }
 
-func TestStdFlagChecker_Name(t *testing.T) {
-	c := &StdFlagChecker{}
+func TestChecker_Name(t *testing.T) {
+	c := &Checker{}
 	if c.Name() != "std-flag" {
 		t.Errorf("expected name 'std-flag', got %q", c.Name())
 	}

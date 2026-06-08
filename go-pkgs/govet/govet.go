@@ -2,47 +2,34 @@ package govet
 
 import (
 	"fmt"
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/filelen"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/pattern"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/stdflag"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/types"
 )
 
-type Violation struct {
-	File    string
-	Line    int
-	Col     int
-	Message string
-	Checker string
-	Hint    string
-}
+type Violation = types.Violation
+type Config = types.Config
+type FileChecker = types.FileChecker
+type ASTChecker = types.ASTChecker
 
-type Config struct {
-	FileMaxLines int
-	Excludes     []string
-}
-
-type FileChecker interface {
-	Name() string
-	CheckFile(filename string, src []byte) []Violation
-}
-
-type ASTChecker interface {
-	Name() string
-	CheckAST(fset *token.FileSet, file *ast.File) []Violation
-}
+var ResolvePatterns = pattern.ResolvePatterns
 
 func Run(cfg Config, dirs []string) ([]Violation, error) {
 	var fileCheckers []FileChecker
 	var astCheckers []ASTChecker
 
 	if cfg.FileMaxLines > 0 {
-		fileCheckers = append(fileCheckers, &FileLenChecker{MaxLines: cfg.FileMaxLines})
+		fileCheckers = append(fileCheckers, &filelen.Checker{MaxLines: cfg.FileMaxLines})
 	}
-	astCheckers = append(astCheckers, &StdFlagChecker{})
+	astCheckers = append(astCheckers, &stdflag.Checker{})
 
 	excludeSet := make(map[string]bool, len(cfg.Excludes))
 	for _, e := range cfg.Excludes {

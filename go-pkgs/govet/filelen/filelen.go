@@ -1,19 +1,21 @@
-package govet
+package filelen
 
 import (
 	"fmt"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/types"
 )
 
-type FileLenChecker struct {
+type Checker struct {
 	MaxLines int
 }
 
-func (c *FileLenChecker) Name() string {
+func (c *Checker) Name() string {
 	return "file-length"
 }
 
-func (c *FileLenChecker) CheckFile(filename string, src []byte) []Violation {
+func (c *Checker) CheckFile(filename string, src []byte) []types.Violation {
 	if c.MaxLines <= 0 {
 		return nil
 	}
@@ -24,7 +26,7 @@ func (c *FileLenChecker) CheckFile(filename string, src []byte) []Violation {
 	}
 
 	if lines > c.MaxLines {
-		return []Violation{{
+		return []types.Violation{{
 			File:    filename,
 			Line:    0,
 			Col:     0,

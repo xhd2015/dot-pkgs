@@ -1,36 +1,36 @@
-package govet
+package filelen
 
 import (
 	"strings"
 	"testing"
 )
 
-func TestFileLenChecker_Empty(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 500}
+func TestChecker_Empty(t *testing.T) {
+	c := &Checker{MaxLines: 500}
 	v := c.CheckFile("foo.go", []byte{})
 	if len(v) != 0 {
 		t.Errorf("expected no violations for empty file, got %d", len(v))
 	}
 }
 
-func TestFileLenChecker_OneLineWithNewline(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 500}
+func TestChecker_OneLineWithNewline(t *testing.T) {
+	c := &Checker{MaxLines: 500}
 	v := c.CheckFile("foo.go", []byte("package main\n"))
 	if len(v) != 0 {
 		t.Errorf("expected no violations for 1-line file, got %d", len(v))
 	}
 }
 
-func TestFileLenChecker_OneLineWithoutNewline(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 500}
+func TestChecker_OneLineWithoutNewline(t *testing.T) {
+	c := &Checker{MaxLines: 500}
 	v := c.CheckFile("foo.go", []byte("package main"))
 	if len(v) != 0 {
 		t.Errorf("expected no violations for 1-line file without newline, got %d", len(v))
 	}
 }
 
-func TestFileLenChecker_AtThreshold(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 500}
+func TestChecker_AtThreshold(t *testing.T) {
+	c := &Checker{MaxLines: 500}
 	lines := strings.Repeat("x\n", 500)
 	v := c.CheckFile("foo.go", []byte(lines))
 	if len(v) != 0 {
@@ -38,8 +38,8 @@ func TestFileLenChecker_AtThreshold(t *testing.T) {
 	}
 }
 
-func TestFileLenChecker_ExceedsThreshold(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 500}
+func TestChecker_ExceedsThreshold(t *testing.T) {
+	c := &Checker{MaxLines: 500}
 	lines := strings.Repeat("x\n", 501)
 	v := c.CheckFile("foo.go", []byte(lines))
 	if len(v) != 1 {
@@ -59,8 +59,8 @@ func TestFileLenChecker_ExceedsThreshold(t *testing.T) {
 	}
 }
 
-func TestFileLenChecker_ExceedsNoTrailingNewline(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 500}
+func TestChecker_ExceedsNoTrailingNewline(t *testing.T) {
+	c := &Checker{MaxLines: 500}
 	lines := strings.Repeat("x\n", 500) + "x"
 	v := c.CheckFile("foo.go", []byte(lines))
 	if len(v) != 1 {
@@ -71,8 +71,8 @@ func TestFileLenChecker_ExceedsNoTrailingNewline(t *testing.T) {
 	}
 }
 
-func TestFileLenChecker_MaxLinesZero(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 0}
+func TestChecker_MaxLinesZero(t *testing.T) {
+	c := &Checker{MaxLines: 0}
 	lines := strings.Repeat("x\n", 1000)
 	v := c.CheckFile("foo.go", []byte(lines))
 	if len(v) != 0 {
@@ -80,8 +80,8 @@ func TestFileLenChecker_MaxLinesZero(t *testing.T) {
 	}
 }
 
-func TestFileLenChecker_Name(t *testing.T) {
-	c := &FileLenChecker{MaxLines: 500}
+func TestChecker_Name(t *testing.T) {
+	c := &Checker{MaxLines: 500}
 	if c.Name() != "file-length" {
 		t.Errorf("expected name 'file-length', got %q", c.Name())
 	}

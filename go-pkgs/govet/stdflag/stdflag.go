@@ -1,19 +1,21 @@
-package govet
+package stdflag
 
 import (
 	"go/ast"
 	"go/token"
 	"strconv"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/types"
 )
 
-type StdFlagChecker struct{}
+type Checker struct{}
 
-func (c *StdFlagChecker) Name() string {
+func (c *Checker) Name() string {
 	return "std-flag"
 }
 
-func (c *StdFlagChecker) CheckAST(fset *token.FileSet, file *ast.File) []Violation {
-	var violations []Violation
+func (c *Checker) CheckAST(fset *token.FileSet, file *ast.File) []types.Violation {
+	var violations []types.Violation
 	for _, imp := range file.Imports {
 		path, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
@@ -21,7 +23,7 @@ func (c *StdFlagChecker) CheckAST(fset *token.FileSet, file *ast.File) []Violati
 		}
 		if path == "flag" {
 			pos := fset.Position(imp.Pos())
-			violations = append(violations, Violation{
+			violations = append(violations, types.Violation{
 				File:    pos.Filename,
 				Line:    pos.Line,
 				Col:     pos.Column,

@@ -1,4 +1,4 @@
-package govet
+package pattern
 
 import (
 	"path/filepath"

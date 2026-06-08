@@ -1,4 +1,4 @@
-package govet
+package pattern
 
 import (
 	"fmt"
@@ -56,7 +56,6 @@ func TestResolvePatterns_Recursive(t *testing.T) {
 	mkGoFile(t, root, "sub/b/b.go", `package b`)
 	mkGoFile(t, root, "sub/b/deep/c.go", `package deep`)
 
-	// create empty dir (no Go files) — should be excluded
 	if err := os.MkdirAll(filepath.Join(root, "sub", "empty"), 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
