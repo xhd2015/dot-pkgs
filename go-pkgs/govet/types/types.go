@@ -17,6 +17,7 @@ type Violation struct {
 type Config struct {
 	FileMaxLines int
 	Excludes     []string
+	Paths        []string
 }
 
 type FileChecker interface {
