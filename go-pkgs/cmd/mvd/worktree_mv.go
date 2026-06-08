@@ -9,7 +9,17 @@ import (
 )
 
 func cmdWorktreeMove(src, dst string) error {
-	srcAbs, err := filepath.Abs(src)
+	hist, err := loadHistory()
+	if err != nil {
+		return err
+	}
+	if _, locs, ok, err := resolveBasename(hist, src); ok {
+		src = locs[len(locs)-1].Path
+	} else if err != nil {
+		return err
+	}
+
+	srcAbs, err := resolveInputPath(src)
 	if err != nil {
 		return fmt.Errorf("resolve src: %w", err)
 	}
@@ -34,11 +44,6 @@ func cmdWorktreeMove(src, dst string) error {
 	}
 
 	fmt.Printf("worktree created: %s → %s [branch: %s]\n", displayPath(srcAbs), displayPath(dstAbs), branch)
-
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
 
 	entry := LocationEntry{
 		Path: dstAbs,

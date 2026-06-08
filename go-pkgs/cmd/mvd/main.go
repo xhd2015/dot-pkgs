@@ -289,7 +289,7 @@ func cmdRemove(dir string, force bool) error {
 		return err
 	}
 	if locations == nil {
-		absDir, err := filepath.Abs(expandConfiguredPath(dir))
+		absDir, err := resolveInputPath(dir)
 		if err != nil {
 			return fmt.Errorf("resolve: %w", err)
 		}

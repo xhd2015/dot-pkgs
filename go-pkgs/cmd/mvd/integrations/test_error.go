@@ -10,5 +10,5 @@ func testNonExistentSrc(t *T) {
 	dst := filepath.Join(work, "dst")
 
 	out := runMvdErr(t, nonexistent, dst)
-	assertContains(t, out, "no such file or directory")
+	assertContains(t, out, "does not exist")
 }

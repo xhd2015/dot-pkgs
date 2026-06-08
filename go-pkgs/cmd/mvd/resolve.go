@@ -26,7 +26,7 @@ func resolveAliasProject(hist History, project string) (string, error) {
 		}
 	}
 
-	absProject, err := filepath.Abs(expandConfiguredPath(project))
+	absProject, err := resolveInputPath(project)
 	if err != nil {
 		return "", fmt.Errorf("resolve project: %w", err)
 	}
@@ -47,10 +47,29 @@ func validateAliasName(alias string) error {
 	return nil
 }
 
+func resolveInputPath(path string) (string, error) {
+	absPath, err := filepath.Abs(expandConfiguredPath(path))
+	if err != nil {
+		return "", err
+	}
+	return absPath, nil
+}
+
+func resolveExistingPath(path string) (string, error) {
+	expanded := expandConfiguredPath(path)
+	if _, err := os.Stat(expanded); err != nil {
+		return "", fmt.Errorf("%s does not exist", displayPath(expanded))
+	}
+	return filepath.Abs(expanded)
+}
+
 func resolveAddPath(dir string) (string, error) {
-	absDir, err := filepath.Abs(dir)
+	absDir, err := resolveExistingPath(dir)
 	if err != nil {
 		return "", fmt.Errorf("resolve: %w", err)
+	}
+	if info, err := os.Stat(absDir); err != nil || !info.IsDir() {
+		return "", fmt.Errorf("%s does not exist", displayPath(absDir))
 	}
 	return absDir, nil
 }
@@ -61,24 +80,25 @@ func isRecordedPath(hist History, path string) bool {
 }
 
 func resolveRemoveEntry(hist History, aliases map[string]string, dir string) (string, []LocationEntry, error) {
-	if useRootBaseNameShortcut(dir) {
-		origKey, locations, err := findEntryByRootBaseName(hist, dir)
-		if err != nil {
-			return "", nil, err
-		}
-		if locations != nil {
-			return origKey, locations, nil
-		}
-		origKey, locations, err = findEntryByAlias(hist, aliases, dir)
-		if err != nil {
-			return "", nil, err
-		}
-		if locations != nil {
-			return origKey, locations, nil
+	if k, locs, ok, err := resolveBasename(hist, dir); ok {
+		return k, locs, nil
+	} else if err != nil {
+		return "", nil, err
+	}
+
+	if isBareBaseName(dir) {
+		if _, err := os.Lstat(dir); os.IsNotExist(err) {
+			origKey, locations, err := findEntryByAlias(hist, aliases, dir)
+			if err != nil {
+				return "", nil, err
+			}
+			if locations != nil {
+				return origKey, locations, nil
+			}
 		}
 	}
 
-	absDir, err := filepath.Abs(expandConfiguredPath(dir))
+	absDir, err := resolveInputPath(dir)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolve: %w", err)
 	}
@@ -89,7 +109,20 @@ func resolveRemoveEntry(hist History, aliases map[string]string, dir string) (st
 }
 
 func resolveRebaseEntries(hist History, dir, newDir string) (string, []LocationEntry, string, error) {
-	absDir, err := filepath.Abs(dir)
+	if k, locs, ok, err := resolveBasename(hist, dir); ok {
+		absNewDir, err := filepath.Abs(newDir)
+		if err != nil {
+			return "", nil, "", fmt.Errorf("resolve new-dir: %w", err)
+		}
+		if otherKey, otherLocations := findEntry(hist, absNewDir); otherLocations != nil && otherKey != k {
+			return "", nil, "", fmt.Errorf("%s is already recorded in another entry", absNewDir)
+		}
+		return k, locs, absNewDir, nil
+	} else if err != nil {
+		return "", nil, "", err
+	}
+
+	absDir, err := resolveInputPath(dir)
 	if err != nil {
 		return "", nil, "", fmt.Errorf("resolve dir: %w", err)
 	}
@@ -111,7 +144,13 @@ func resolveRebaseEntries(hist History, dir, newDir string) (string, []LocationE
 }
 
 func resolveClearEntry(hist History, src string) (string, string, []LocationEntry, error) {
-	absSrc, err := filepath.Abs(src)
+	if k, locs, ok, err := resolveBasename(hist, src); ok {
+		return k, k, locs, nil
+	} else if err != nil {
+		return "", "", nil, err
+	}
+
+	absSrc, err := resolveInputPath(src)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("resolve: %w", err)
 	}
@@ -121,36 +160,40 @@ func resolveClearEntry(hist History, src string) (string, string, []LocationEntr
 }
 
 func resolveMoveSource(hist History, aliases map[string]string, src string) (string, []LocationEntry, string, error) {
-	if useRootBaseNameShortcut(src) {
-		origKey, locations, err := findEntryByRootBaseName(hist, src)
-		if err != nil {
-			return "", nil, "", err
+	if k, locs, ok, err := resolveBasename(hist, src); ok {
+		if len(locs) == 0 {
+			return "", nil, "", fmt.Errorf("empty mv history for %s", src)
 		}
-		if locations != nil {
-			if len(locations) == 0 {
-				return "", nil, "", fmt.Errorf("empty mv history for %s", src)
+		return k, locs, locs[len(locs)-1].Path, nil
+	} else if err != nil {
+		return "", nil, "", err
+	}
+
+	if isBareBaseName(src) {
+		if _, err := os.Lstat(src); os.IsNotExist(err) {
+			origKey, locations, err := findEntryByAlias(hist, aliases, src)
+			if err != nil {
+				return "", nil, "", err
 			}
-			return origKey, locations, locations[len(locations)-1].Path, nil
-		}
-		origKey, locations, err = findEntryByAlias(hist, aliases, src)
-		if err != nil {
-			return "", nil, "", err
-		}
-		if locations != nil {
-			if len(locations) == 0 {
-				return "", nil, "", fmt.Errorf("empty mv history for alias %s", src)
+			if locations != nil {
+				if len(locations) == 0 {
+					return "", nil, "", fmt.Errorf("empty mv history for alias %s", src)
+				}
+				return origKey, locations, locations[len(locations)-1].Path, nil
 			}
-			return origKey, locations, locations[len(locations)-1].Path, nil
 		}
 	}
 
-	absSrc, err := filepath.Abs(src)
+	absSrc, err := resolveInputPath(src)
 	if err != nil {
 		return "", nil, "", fmt.Errorf("resolve src: %w", err)
 	}
 
 	origKey, locations := findEntry(hist, absSrc)
 	if locations == nil {
+		if _, err := os.Stat(absSrc); err != nil {
+			return "", nil, "", fmt.Errorf("%s does not exist", displayPath(absSrc))
+		}
 		return "", nil, absSrc, nil
 	}
 	if len(locations) == 0 {
@@ -167,7 +210,13 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 }
 
 func resolveListEntry(hist History, src string) (string, []LocationEntry, error) {
-	absSrc, err := filepath.Abs(src)
+	if k, locs, ok, err := resolveBasename(hist, src); ok {
+		return k, locs, nil
+	} else if err != nil {
+		return "", nil, err
+	}
+
+	absSrc, err := resolveInputPath(src)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolve: %w", err)
 	}
@@ -175,20 +224,16 @@ func resolveListEntry(hist History, src string) (string, []LocationEntry, error)
 }
 
 func resolvePrintPath(hist History, src string) (string, error) {
-	if useRootBaseNameShortcut(src) {
-		_, locations, err := findEntryByRootBaseName(hist, src)
-		if err != nil {
-			return "", err
+	if _, locs, ok, err := resolveBasename(hist, src); ok {
+		if len(locs) == 0 {
+			return "", fmt.Errorf("empty mv history for %s", src)
 		}
-		if locations != nil {
-			if len(locations) == 0 {
-				return "", fmt.Errorf("empty mv history for %s", src)
-			}
-			return locations[0].Path, nil
-		}
+		return locs[0].Path, nil
+	} else if err != nil {
+		return "", err
 	}
 
-	absSrc, err := filepath.Abs(expandConfiguredPath(src))
+	absSrc, err := resolveInputPath(src)
 	if err != nil {
 		return "", fmt.Errorf("resolve: %w", err)
 	}
@@ -196,17 +241,13 @@ func resolvePrintPath(hist History, src string) (string, error) {
 }
 
 func resolveBackEntry(hist History, src string) (string, []LocationEntry, error) {
-	if useRootBaseNameShortcut(src) {
-		origKey, locations, err := findEntryByRootBaseName(hist, src)
-		if err != nil {
-			return "", nil, err
-		}
-		if locations != nil {
-			return origKey, locations, nil
-		}
+	if k, locs, ok, err := resolveBasename(hist, src); ok {
+		return k, locs, nil
+	} else if err != nil {
+		return "", nil, err
 	}
 
-	absSrc, err := filepath.Abs(src)
+	absSrc, err := resolveInputPath(src)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolve: %w", err)
 	}
@@ -243,7 +284,7 @@ func findEntryByAlias(hist History, aliases map[string]string, alias string) (st
 func findWhichMatches(hist History, aliases map[string]string, src string) ([]whichMatch, error) {
 	var matches []whichMatch
 
-	absSrc, err := filepath.Abs(src)
+	absSrc, err := resolveInputPath(src)
 	if err != nil {
 		return nil, fmt.Errorf("resolve src: %w", err)
 	}
@@ -284,12 +325,21 @@ func findWhichMatches(hist History, aliases map[string]string, src string) ([]wh
 	return matches, nil
 }
 
-func useRootBaseNameShortcut(path string) bool {
-	if !isBareBaseName(path) {
-		return false
+func resolveBasename(hist History, name string) (string, []LocationEntry, bool, error) {
+	if !isBareBaseName(name) {
+		return "", nil, false, nil
 	}
-	_, err := os.Lstat(path)
-	return os.IsNotExist(err)
+	if _, err := os.Lstat(name); !os.IsNotExist(err) {
+		return "", nil, false, nil
+	}
+	k, l, err := findEntryByRootBaseName(hist, name)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if l == nil {
+		return "", nil, false, nil
+	}
+	return k, l, true, nil
 }
 
 func isBareBaseName(path string) bool {

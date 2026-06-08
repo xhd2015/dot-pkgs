@@ -100,6 +100,19 @@ func main() {
 		{"TestMoveWorktreeWithoutWFlagShouldDoSimpleMove", testMoveWorktreeWithoutWFlagShouldDoSimpleMove},
 		{"TestMoveNestedWorktreeWithoutWFlag", testMoveNestedWorktreeWithoutWFlag},
 		{"TestMoveWorktreeWithWFlagShouldRunGitWorktreeAdd", testMoveWorktreeWithWFlagShouldRunGitWorktreeAdd},
+		{"TestWorktreeMoveByBasename", testWorktreeMoveByBasename},
+		{"TestClearByBasename", testClearByBasename},
+		{"TestRebaseByBasename", testRebaseByBasename},
+		{"TestListByBasename", testListByBasename},
+		{"TestClearWithDollarExpansion", testClearWithDollarExpansion},
+		{"TestBackWithDollarExpansion", testBackWithDollarExpansion},
+		{"TestListWithDollarExpansion", testListWithDollarExpansion},
+		{"TestRebaseWithDollarExpansion", testRebaseWithDollarExpansion},
+		{"TestWorktreeMoveWithDollarExpansion", testWorktreeMoveWithDollarExpansion},
+		{"TestWhichWithDollarExpansion", testWhichWithDollarExpansion},
+		{"TestMoveDefaultWithDollarExpansion", testMoveDefaultWithDollarExpansion},
+		{"TestAddWithDollarExpansion", testAddWithDollarExpansion},
+		{"TestAddNonExistentFails", testAddNonExistentFails},
 	}
 
 	for _, tc := range tests {
@@ -228,7 +241,7 @@ func runMvd(t *T, args ...string) (string, error) {
 	cmd := exec.Command(mvdBin, args...)
 	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+configHome(t))
 	out, err := cmd.CombinedOutput()
-	t.Logf(string(out))
+	t.Logf("%s", string(out))
 	if err != nil {
 		return string(out), fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
