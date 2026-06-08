@@ -91,6 +91,7 @@ func main() {
 		{"TestClear", testClear},
 		{"TestMultiStepBack", testMultiStepBack},
 		{"TestNonExistentSrc", testNonExistentSrc},
+		{"TestMoveNonExistentBasename", testMoveNonExistentBasename},
 		{"TestWorktreeMove", testWorktreeMove},
 		{"TestWorktreeNonGitSrc", testWorktreeNonGitSrc},
 		{"TestWorktreeBackDirty", testWorktreeBackDirty},

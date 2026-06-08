@@ -192,6 +192,9 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 	origKey, locations := findEntry(hist, absSrc)
 	if locations == nil {
 		if _, err := os.Stat(absSrc); err != nil {
+			if isBareBaseName(src) {
+				return "", nil, "", fmt.Errorf("%s does not exist, no configured project match basename or alias %s", src, src)
+			}
 			return "", nil, "", fmt.Errorf("%s does not exist", displayPath(absSrc))
 		}
 		return "", nil, absSrc, nil
