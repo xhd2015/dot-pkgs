@@ -8,9 +8,8 @@ require (
 )
 
 require (
-	github.com/fsnotify/fsnotify v1.8.0 // indirect
-	golang.org/x/mod v0.36.0 // indirect
+	github.com/fsnotify/fsnotify v1.8.0
+	golang.org/x/mod v0.36.0
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	github.com/xhd2015/gitops v0.0.12
 )
