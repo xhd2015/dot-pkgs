@@ -5,11 +5,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/files"
 )
 
 func TestRun_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}})
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -28,7 +34,11 @@ func main() {
 	fmt.Println("hello")
 }
 `)
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}})
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -39,9 +49,13 @@ func main() {
 
 func TestRun_FileLengthViolation(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "main.go", lines(600, "// comment\n"))
+	writeFile(t, dir, "main.go", "package main\n"+lines(600, "// comment\n"))
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}})
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -55,9 +69,13 @@ func TestRun_FileLengthViolation(t *testing.T) {
 
 func TestRun_FileLengthUnderThreshold(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "main.go", lines(100, "// comment\n"))
+	writeFile(t, dir, "main.go", "package main\n"+lines(100, "// comment\n"))
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}})
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -72,7 +90,11 @@ func TestRun_StdFlagViolation(t *testing.T) {
 import "flag"
 func main() { flag.Parse() }
 `)
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}})
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -93,7 +115,11 @@ func TestRun_BothViolations(t *testing.T) {
 import "flag"
 `+lines(600, "// comment\n"))
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}})
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -115,16 +141,20 @@ import "flag"
 	}
 }
 
-func TestRun_ExcludesChecker(t *testing.T) {
+func TestRun_ExcludeCheckers(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "main.go", `package main
 import "flag"
 `+lines(600, "// comment\n"))
 
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
 	v, err := Run(Config{
-		FileMaxLines: 500,
-		Excludes:     []string{"file-length"},
-		Paths:        []string{dir},
+		FileMaxLines:    500,
+		ExcludeCheckers: []string{"file-length"},
+		Files:           resolved,
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -136,10 +166,10 @@ import "flag"
 	}
 }
 
-func TestRun_NonExistentDir(t *testing.T) {
-	_, err := Run(Config{FileMaxLines: 500, Paths: []string{"/nonexistent/path/xyz"}})
+func TestRun_NonExistentFile(t *testing.T) {
+	_, err := Run(Config{FileMaxLines: 500, Files: []string{"/nonexistent/path/xyz.go"}})
 	if err == nil {
-		t.Fatal("expected error for non-existent dir")
+		t.Fatal("expected error for non-existent file")
 	}
 }
 
@@ -153,7 +183,11 @@ import "flag"
 import "flag"
 `)
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir1, dir2}})
+	resolved, err := files.ResolveGoFiles("", []string{dir1, dir2})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -176,7 +210,11 @@ import "flag"
 func main() { flag.Parse() }
 `)
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{path}} )
+	resolved, err := files.ResolveGoFiles(dir, []string{path})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -199,7 +237,11 @@ import "fmt"
 func main() { fmt.Println("hello") }
 `)
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{path}} )
+	resolved, err := files.ResolveGoFiles(dir, []string{path})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -221,7 +263,11 @@ import "fmt"
 func main() { fmt.Println("hello") }
 `)
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{path1, path2}} )
+	resolved, err := files.ResolveGoFiles(dir, []string{path1, path2})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -247,7 +293,11 @@ import "flag"
 func main() { flag.Parse() }
 `)
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}} )
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -279,7 +329,11 @@ func main() { flag.Parse() }
 		t.Fatalf("writeFile: %v", err)
 	}
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{dir}} )
+	resolved, err := files.ResolveGoFiles(dir, []string{dir})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -301,7 +355,14 @@ func TestRun_PathsNonGoFile(t *testing.T) {
 		t.Fatalf("writeFile: %v", err)
 	}
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{path}} )
+	resolved, err := files.ResolveGoFiles(dir, []string{path})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	if len(resolved) != 0 {
+		t.Errorf("expected 0 resolved files for non-go file, got %d", len(resolved))
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -323,7 +384,11 @@ import "flag"
 func main() { flag.Parse() }
 `)
 
-	v, err := Run(Config{FileMaxLines: 500, Paths: []string{path1, dir2}} )
+	resolved, err := files.ResolveGoFiles("", []string{path1, dir2})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -335,6 +400,73 @@ func main() { flag.Parse() }
 	}
 	if count != 2 {
 		t.Errorf("expected 2 std-flag violations, got %d", count)
+	}
+}
+
+func TestRun_OnlySpecifiedFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "clean.go", `package main
+import "fmt"
+func main() { fmt.Println("hello") }
+`)
+	writeFile(t, dir, "bad.go", `package main
+import "flag"
+func main() { flag.Parse() }
+`)
+
+	// Only resolve clean.go — bad.go in same package should still be caught by builtin vet
+	// because go vet . runs on the whole package
+	path := filepath.Join(dir, "clean.go")
+	resolved, err := files.ResolveGoFiles(dir, []string{path})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// Only clean.go is passed, so AST/file checkers only check clean.go
+	// builtin vet runs go vet . on the package dir, which checks both clean.go and bad.go
+	hasFileLen := false
+	for _, violation := range v {
+		if violation.Checker == "std-flag" {
+			hasFileLen = true
+		}
+	}
+	if hasFileLen {
+		t.Errorf("std-flag violation should NOT appear for bad.go when only clean.go is specified, got %v", v)
+	}
+}
+
+func TestRun_OnlySpecifiedFilesDoesNotRecurse(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "clean.go", `package main
+import "fmt"
+func main() { fmt.Println("hello") }
+`)
+	subDir := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	writeFile(t, subDir, "bad.go", `package sub
+import "flag"
+var _ = flag.Usage
+`)
+
+	// Only resolve clean.go — builtin vet should NOT recurse into sub/
+	path := filepath.Join(dir, "clean.go")
+	resolved, err := files.ResolveGoFiles(dir, []string{path})
+	if err != nil {
+		t.Fatalf("ResolveGoFiles: %v", err)
+	}
+	v, err := Run(Config{FileMaxLines: 500, Files: resolved})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, violation := range v {
+		if violation.Checker == "std-flag" {
+			t.Errorf("std-flag violation should NOT appear for sub/bad.go when only clean.go is specified, got %v", v)
+		}
 	}
 }
 

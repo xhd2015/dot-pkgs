@@ -10,7 +10,7 @@ import (
 func TestChecker_CleanFile(t *testing.T) {
 	dir := setupGoModDir(t, "package main\nfunc main() {}\n")
 	c := &Checker{}
-	v, err := c.Check(dir)
+	v, err := c.Check([]string{filepath.Join(dir, "main.go")})
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
@@ -27,7 +27,7 @@ func main() {
 }
 `)
 	c := &Checker{}
-	v, err := c.Check(dir)
+	v, err := c.Check([]string{filepath.Join(dir, "main.go")})
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
@@ -57,7 +57,7 @@ func main() {
 }
 `)
 	c := &Checker{}
-	v, err := c.Check(dir)
+	v, err := c.Check([]string{filepath.Join(dir, "main.go")})
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
@@ -76,16 +76,14 @@ func main() {
 	}
 }
 
-func TestChecker_EmptyDir(t *testing.T) {
-	dir := t.TempDir()
-	mustWriteFile(t, dir, "go.mod", "module testmod\ngo 1.24\n")
+func TestChecker_EmptyFileList(t *testing.T) {
 	c := &Checker{}
-	v, err := c.Check(dir)
+	v, err := c.Check(nil)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
 	if len(v) != 0 {
-		t.Errorf("expected no violations for empty dir, got %d", len(v))
+		t.Errorf("expected no violations for empty file list, got %d", len(v))
 	}
 }
 
@@ -93,7 +91,7 @@ func TestChecker_NoGoMod(t *testing.T) {
 	dir := t.TempDir()
 	mustWriteFile(t, dir, "main.go", "package main\nfunc main() {}\n")
 	c := &Checker{}
-	_, err := c.Check(dir)
+	_, err := c.Check([]string{filepath.Join(dir, "main.go")})
 	if err != nil {
 		t.Logf("go vet without go.mod returned error (expected on some Go versions): %v", err)
 	}

@@ -18,9 +18,12 @@ func (c *Checker) Name() string {
 
 var vetLineRe = regexp.MustCompile(`^(.+?):(\d+):(\d+):\s*(.*)`)
 
-func (c *Checker) Check(dir string) ([]types.Violation, error) {
-	cmd := exec.Command("go", "vet", "./...")
-	cmd.Dir = dir
+func (c *Checker) Check(files []string) ([]types.Violation, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	args := append([]string{"vet"}, files...)
+	cmd := exec.Command("go", args...)
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
@@ -29,10 +32,10 @@ func (c *Checker) Check(dir string) ([]types.Violation, error) {
 		}
 	}
 
-	return parseVetOutput(dir, output, c.Name()), nil
+	return parseVetOutput(output, c.Name()), nil
 }
 
-func parseVetOutput(dir string, output []byte, checkerName string) []types.Violation {
+func parseVetOutput(output []byte, checkerName string) []types.Violation {
 	var violations []types.Violation
 	for _, line := range bytes.Split(output, []byte("\n")) {
 		matches := vetLineRe.FindSubmatch(line)

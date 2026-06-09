@@ -4,15 +4,11 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/builtingovet"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/cleanfunc"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/filelen"
-	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/pattern"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/stdflag"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/types"
 )
@@ -21,8 +17,6 @@ type Violation = types.Violation
 type Config = types.Config
 type FileChecker = types.FileChecker
 type ASTChecker = types.ASTChecker
-
-var ResolvePatterns = pattern.ResolvePatterns
 
 func Run(cfg Config) ([]Violation, error) {
 	var fileCheckers []FileChecker
@@ -35,53 +29,27 @@ func Run(cfg Config) ([]Violation, error) {
 
 	builtinVetChecker := &builtingovet.Checker{}
 
-	excludeSet := make(map[string]bool, len(cfg.Excludes))
-	for _, e := range cfg.Excludes {
-		excludeSet[e] = true
-	}
-
-	paths := cfg.Paths
-	if len(paths) == 0 {
-		paths = []string{"."}
+	excludeCheckerSet := make(map[string]bool, len(cfg.ExcludeCheckers))
+	for _, e := range cfg.ExcludeCheckers {
+		excludeCheckerSet[e] = true
 	}
 
 	var allViolations []Violation
 
-	for _, p := range paths {
-		err := filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				base := filepath.Base(path)
-				if base == "vendor" || base == ".git" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") {
-				return nil
-			}
-
-			violations, err := checkFile(path, fileCheckers, astCheckers, excludeSet)
-			if err != nil {
-				return err
-			}
-			allViolations = append(allViolations, violations...)
-
-			return nil
-		})
+	for _, path := range cfg.Files {
+		violations, err := checkFile(path, fileCheckers, astCheckers, excludeCheckerSet)
 		if err != nil {
-			return nil, fmt.Errorf("walk %s: %w", p, err)
+			return nil, fmt.Errorf("check %s: %w", path, err)
 		}
+		allViolations = append(allViolations, violations...)
 	}
 
-	runBuiltinVet(paths, builtinVetChecker, excludeSet, &allViolations)
+	runBuiltinVet(cfg.Files, builtinVetChecker, excludeCheckerSet, &allViolations)
 
 	return allViolations, nil
 }
 
-func checkFile(path string, fileCheckers []FileChecker, astCheckers []ASTChecker, excludeSet map[string]bool) ([]Violation, error) {
+func checkFile(path string, fileCheckers []FileChecker, astCheckers []ASTChecker, excludeCheckerSet map[string]bool) ([]Violation, error) {
 	var allViolations []Violation
 
 	src, err := os.ReadFile(path)
@@ -90,7 +58,7 @@ func checkFile(path string, fileCheckers []FileChecker, astCheckers []ASTChecker
 	}
 
 	for _, fc := range fileCheckers {
-		if excludeSet[fc.Name()] {
+		if excludeCheckerSet[fc.Name()] {
 			continue
 		}
 		violations := fc.CheckFile(path, src)
@@ -104,7 +72,7 @@ func checkFile(path string, fileCheckers []FileChecker, astCheckers []ASTChecker
 			return allViolations, nil
 		}
 		for _, ac := range astCheckers {
-			if excludeSet[ac.Name()] {
+			if excludeCheckerSet[ac.Name()] {
 				continue
 			}
 			violations := ac.CheckAST(fset, f)
@@ -115,56 +83,13 @@ func checkFile(path string, fileCheckers []FileChecker, astCheckers []ASTChecker
 	return allViolations, nil
 }
 
-func runBuiltinVet(paths []string, checker *builtingovet.Checker, excludeSet map[string]bool, allViolations *[]Violation) {
-	if excludeSet[checker.Name()] {
+func runBuiltinVet(files []string, checker *builtingovet.Checker, excludeCheckerSet map[string]bool, allViolations *[]Violation) {
+	if excludeCheckerSet[checker.Name()] {
 		return
 	}
-	dirs := uniqueDirs(paths)
-	for _, dir := range dirs {
-		violations, err := checker.Check(dir)
-		if err != nil {
-			continue
-		}
-		*allViolations = append(*allViolations, violations...)
+	violations, err := checker.Check(files)
+	if err != nil {
+		return
 	}
-}
-
-func uniqueDirs(paths []string) []string {
-	dirSet := make(map[string]bool)
-	for _, p := range paths {
-		info, err := os.Stat(p)
-		if err != nil {
-			continue
-		}
-		if info.IsDir() {
-			dirSet[p] = true
-		} else {
-			dirSet[filepath.Dir(p)] = true
-		}
-	}
-	var dirs []string
-	for dir := range dirSet {
-		dirs = append(dirs, dir)
-	}
-	var result []string
-	for _, dir := range dirs {
-		isChild := false
-		for _, other := range dirs {
-			if dir == other {
-				continue
-			}
-			rel, err := filepath.Rel(other, dir)
-			if err != nil {
-				continue
-			}
-			if rel != "." && !strings.HasPrefix(rel, "..") {
-				isChild = true
-				break
-			}
-		}
-		if !isChild {
-			result = append(result, dir)
-		}
-	}
-	return result
+	*allViolations = append(*allViolations, violations...)
 }
