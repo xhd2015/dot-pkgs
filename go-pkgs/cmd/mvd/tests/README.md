@@ -39,6 +39,7 @@ mvd tests
 | mode-worktree | move-worktree-with-w-flag | Explicit -w flag uses git worktree add |
 | mode-worktree | move-worktree-without-w-flag | Without -w, worktree is moved via os.Rename |
 | mode-worktree | move-nested-worktree-without-w-flag | Nested worktree .git file is updated |
+| mode-worktree | worktree-move-to-existing-dir | Worktree creation when destination is an existing directory |
 | mode-add | basic-add | Add a directory to tracking |
 | mode-add | add-duplicate | Adding same dir twice is idempotent |
 | mode-add | add-non-existent-fails | Error when dir does not exist |

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,10 @@ func cmdWorktreeMove(src, dst string) error {
 	dstAbs, err := filepath.Abs(dst)
 	if err != nil {
 		return fmt.Errorf("resolve dst: %w", err)
+	}
+
+	if info, err := os.Stat(dstAbs); err == nil && info.IsDir() {
+		dstAbs = filepath.Join(dstAbs, filepath.Base(srcAbs))
 	}
 
 	if !isGitRepo(srcAbs) {
