@@ -60,8 +60,12 @@ func cmdBack(src string) error {
 	if err != nil {
 		return err
 	}
+	aliases, err := loadAliases()
+	if err != nil {
+		return err
+	}
 
-	origKey, locations, err := resolveBackEntry(hist, src)
+	origKey, locations, err := resolveBackEntry(hist, aliases, src)
 	if err != nil {
 		return err
 	}

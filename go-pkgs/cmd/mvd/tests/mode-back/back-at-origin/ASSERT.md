@@ -1,0 +1,21 @@
+## Expected
+- The second `--back` call reports "nothing to move back" because the project is already at its original root.
+- The history chain contains only a single entry: `src` (the project is at its origin with no movement history).
+
+## Exit Code
+- 0 (success)
+
+```go
+func Assert(t *testing.T, req *Request, resp *Response, err error) {
+    if resp == nil {
+        t.Fatalf("expected response, got error: %v", err)
+    }
+    if resp.ExitCode != 0 {
+        t.Fatalf("exit code: %d, output:\n%s", resp.ExitCode, resp.Output)
+    }
+    assertContains(t, resp.Output, "nothing to move back")
+    
+    src := filepath.Join(req.WorkRoot, "src")
+    assertHistoryChain(t, req.ConfigHome, src, src)
+}
+```

@@ -1,0 +1,14 @@
+## Steps
+- Attempt to add a directory path that does not exist on the filesystem.
+- This should fail because `mvd --add` requires the target directory to exist.
+
+```go
+import (
+	"path/filepath"
+)
+
+func Setup(t *testing.T, req *Request) error {
+	req.Args = []string{"--add", filepath.Join(req.WorkRoot, "no-such-dir")}
+	return nil
+}
+```

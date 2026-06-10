@@ -1,0 +1,48 @@
+## Steps
+- Create two projects with the same basename (kool) at different paths.
+- Track both projects with --add.
+- Change CWD to avoid local file shadowing.
+- Try to move by basename, which should be ambiguous.
+
+```go
+import (
+	"os"
+	"path/filepath"
+)
+
+func Setup(t *testing.T, req *Request) error {
+	first := filepath.Join(req.WorkRoot, "projects", "kool")
+	second := filepath.Join(req.WorkRoot, "projects", "v2", "kool")
+	dst := filepath.Join(req.WorkRoot, "dst")
+	mkdirAll(t, first)
+	mkdirAll(t, second)
+	mkdirAll(t, dst)
+
+	req.Args = []string{"--add", first}
+	resp, err := runMvd(t, req)
+	if err != nil {
+		return err
+	}
+	if resp.ExitCode != 0 {
+		t.Fatalf("add first: %s", resp.Output)
+	}
+
+	req.Args = []string{"--add", second}
+	resp, err = runMvd(t, req)
+	if err != nil {
+		return err
+	}
+	if resp.ExitCode != 0 {
+		t.Fatalf("add second: %s", resp.Output)
+	}
+
+	cwd := filepath.Join(req.WorkRoot, "cwd")
+	mkdirAll(t, cwd)
+	if err := os.Chdir(cwd); err != nil {
+		return err
+	}
+
+	req.Args = []string{"kool", dst}
+	return nil
+}
+```

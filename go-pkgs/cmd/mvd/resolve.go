@@ -243,11 +243,26 @@ func resolvePrintPath(hist History, src string) (string, error) {
 	return absSrc, nil
 }
 
-func resolveBackEntry(hist History, src string) (string, []LocationEntry, error) {
+func resolveBackEntry(hist History, aliases map[string]string, src string) (string, []LocationEntry, error) {
 	if k, locs, ok, err := resolveBasename(hist, src); ok {
 		return k, locs, nil
 	} else if err != nil {
 		return "", nil, err
+	}
+
+	if isBareBaseName(src) {
+		if _, err := os.Lstat(src); os.IsNotExist(err) {
+			origKey, locations, err := findEntryByAlias(hist, aliases, src)
+			if err != nil {
+				return "", nil, err
+			}
+			if locations != nil {
+				if len(locations) == 0 {
+					return "", nil, fmt.Errorf("empty mv history for alias %s", src)
+				}
+				return origKey, locations, nil
+			}
+		}
 	}
 
 	absSrc, err := resolveInputPath(src)
