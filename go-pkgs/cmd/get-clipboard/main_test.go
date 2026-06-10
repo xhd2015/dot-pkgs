@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/base64"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -140,4 +142,122 @@ func TestExtFromMIME(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExtractSVGFromHTML(t *testing.T) {
+	svgContent := `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="red" width="100" height="100"/></svg>`
+	svgBase64 := base64.StdEncoding.EncodeToString([]byte(svgContent))
+
+	wrapHTML := func(bodyInner string) string {
+		return `<meta charset='utf-8'><html><head></head><body>` + bodyInner + `</body></html>`
+	}
+
+	tests := []struct {
+		name      string
+		html      string
+		expectSVG string
+		expectErr bool
+	}{
+		{
+			name:      "body_with_only_svg_img",
+			html:      wrapHTML(`<img src="data:image/svg+xml;base64,` + svgBase64 + `">`),
+			expectSVG: svgContent,
+		},
+		{
+			name:      "body_with_img_other_attrs",
+			html:      wrapHTML(`<img class="diagram" src="data:image/svg+xml;base64,` + svgBase64 + `" alt="diagram">`),
+			expectSVG: svgContent,
+		},
+		{
+			name:      "body_with_img_and_whitespace",
+			html:      wrapHTML(`
+			<img src="data:image/svg+xml;base64,` + svgBase64 + `">
+		`),
+			expectSVG: svgContent,
+		},
+		{
+			name: "body_with_img_and_other_content",
+			html: wrapHTML(`<img src="data:image/svg+xml;base64,` + svgBase64 + `"><p>text</p>`),
+		},
+		{
+			name: "img_with_png_data_uri",
+			html: wrapHTML(`<img src="data:image/png;base64,` + svgBase64 + `">`),
+		},
+		{
+			name: "body_without_img",
+			html: wrapHTML(`<p>hello</p>`),
+		},
+		{
+			name: "no_body_tag",
+			html: `<img src="data:image/svg+xml;base64,` + svgBase64 + `">`,
+		},
+		{
+			name:      "invalid_base64",
+			html:      wrapHTML(`<img src="data:image/svg+xml;base64,!!!">`),
+			expectErr: true,
+		},
+		{
+			name: "empty_html",
+			html: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := extractSVGFromHTML([]byte(tt.html))
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("expected error but got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			if tt.expectSVG == "" {
+				if got != nil {
+					t.Errorf("expected nil, got %q", string(got))
+				}
+				return
+			}
+			if got == nil {
+				t.Errorf("expected SVG data, got nil")
+				return
+			}
+			if string(got) != tt.expectSVG {
+				t.Errorf("SVG mismatch:\ngot:  %q\nwant: %q", string(got), tt.expectSVG)
+			}
+		})
+	}
+}
+
+func TestMakeOutputPath(t *testing.T) {
+	data := []byte("test")
+	ext := "png"
+
+	t.Run("with_output", func(t *testing.T) {
+		got := makeOutputPath("out", data, ext)
+		if got != "out.png" {
+			t.Errorf("makeOutputPath = %q, want %q", got, "out.png")
+		}
+	})
+
+	t.Run("with_output_path", func(t *testing.T) {
+		got := makeOutputPath("/some/dir/file", data, ext)
+		if got != "/some/dir/file.png" {
+			t.Errorf("makeOutputPath = %q, want %q", got, "/some/dir/file.png")
+		}
+	})
+
+	t.Run("without_output", func(t *testing.T) {
+		got := makeOutputPath("", data, ext)
+		if !strings.HasPrefix(got, "/tmp/") {
+			t.Errorf("makeOutputPath = %q, should start with /tmp/", got)
+		}
+		pattern := `^/tmp/\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-clipboard-[0-9a-f]{8}\.png$`
+		if !regexp.MustCompile(pattern).MatchString(got) {
+			t.Errorf("makeOutputPath = %q, does not match pattern %s", got, pattern)
+		}
+	})
 }

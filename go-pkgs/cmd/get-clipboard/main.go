@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/md5"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -62,12 +64,7 @@ func runWithOutput(args []string, out io.Writer) error {
 		if ext == "" {
 			return fmt.Errorf("cannot determine image format (magic bytes unrecognized)")
 		}
-		filename := output
-		if filename == "" {
-			filename = generateFilename(imgData, ext)
-		} else {
-			filename = output + "." + ext
-		}
+		filename := makeOutputPath(output, imgData, ext)
 		if err := os.WriteFile(filename, imgData, 0644); err != nil {
 			return fmt.Errorf("write image: %w", err)
 		}
@@ -93,14 +90,20 @@ func runWithOutput(args []string, out io.Writer) error {
 		if len(data) == 0 {
 			continue
 		}
+
 		ext := extFromMIME(f.MIME())
-		filename := output
-		if filename == "" {
-			filename = generateFilename(data, ext)
-		} else {
-			filename = output + "." + ext
+		writeData := data
+		if ext == "html" {
+			if svgData, err := extractSVGFromHTML(data); err != nil {
+				return err
+			} else if svgData != nil {
+				writeData = svgData
+				ext = "svg"
+			}
 		}
-		if err := os.WriteFile(filename, data, 0644); err != nil {
+
+		filename := makeOutputPath(output, writeData, ext)
+		if err := os.WriteFile(filename, writeData, 0644); err != nil {
 			return fmt.Errorf("write %s: %w", ext, err)
 		}
 		fmt.Fprintln(out, filename)
@@ -120,6 +123,36 @@ func runWithOutput(args []string, out io.Writer) error {
 	return fmt.Errorf("clipboard contains unsupported content")
 }
 
+var svgDataURIPattern = regexp.MustCompile(`^<img\s+[^>]*\bsrc="data:image/svg\+xml;base64,([^"]*)"[^>]*>$`)
+var bodyOpenPattern = regexp.MustCompile(`<body[^>]*>`)
+
+func extractSVGFromHTML(htmlData []byte) ([]byte, error) {
+	s := string(htmlData)
+
+	startMatch := bodyOpenPattern.FindStringIndex(s)
+	if startMatch == nil {
+		return nil, nil
+	}
+	endIdx := strings.Index(s[startMatch[1]:], "</body>")
+	if endIdx < 0 {
+		return nil, nil
+	}
+	endIdx += startMatch[1]
+
+	bodyContent := strings.TrimSpace(s[startMatch[1]:endIdx])
+
+	matches := svgDataURIPattern.FindStringSubmatch(bodyContent)
+	if matches == nil {
+		return nil, nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(matches[1])
+	if err != nil {
+		return nil, fmt.Errorf("decode base64 SVG: %w", err)
+	}
+	return decoded, nil
+}
+
 func extFromMIME(mime string) string {
 	if i := strings.LastIndexByte(mime, '/'); i >= 0 {
 		t := mime[i+1:]
@@ -137,6 +170,13 @@ func extFromMIME(mime string) string {
 		}
 	}
 	return "bin"
+}
+
+func makeOutputPath(output string, data []byte, ext string) string {
+	if output != "" {
+		return output + "." + ext
+	}
+	return "/tmp/" + generateFilename(data, ext)
 }
 
 func detectImageFormat(data []byte) string {
