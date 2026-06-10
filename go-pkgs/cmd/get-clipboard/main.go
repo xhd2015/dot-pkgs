@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/xhd2015/less-flags"
@@ -16,11 +17,10 @@ Usage: get-clipboard [OPTIONS]
 
 Read system clipboard content:
   - Plain text is printed to stdout
-  - Images are saved to a file (auto-generated name, or via -o/--output)
-  - Other content types produce an error
+  - Image, SVG, HTML, and other binary formats are saved to a file
 
 Options:
-  -o, --output FILE   output file path for image (by default a timestamped name)
+  -o, --output FILE   output file path (by default a timestamped name with auto extension)
   -h, --help          show this help message
 `
 
@@ -49,6 +49,13 @@ func runWithOutput(args []string, out io.Writer) error {
 		return fmt.Errorf("init clipboard: %w", err)
 	}
 
+	knownUTIs := []clipboard.Format{
+		clipboard.Register("public.svg"),
+		clipboard.Register("public.html"),
+		clipboard.Register("public.rtf"),
+		clipboard.Register("com.adobe.pdf"),
+	}
+
 	imgData := clipboard.Read(clipboard.FmtImage)
 	if len(imgData) > 0 {
 		ext := detectImageFormat(imgData)
@@ -58,6 +65,8 @@ func runWithOutput(args []string, out io.Writer) error {
 		filename := output
 		if filename == "" {
 			filename = generateFilename(imgData, ext)
+		} else {
+			filename = output + "." + ext
 		}
 		if err := os.WriteFile(filename, imgData, 0644); err != nil {
 			return fmt.Errorf("write image: %w", err)
@@ -72,7 +81,62 @@ func runWithOutput(args []string, out io.Writer) error {
 		return nil
 	}
 
+	fmts := clipboard.Formats()
+	for _, f := range knownUTIs {
+		fmts = append(fmts, f)
+	}
+	for _, f := range fmts {
+		if f == clipboard.FmtText || f == clipboard.FmtImage {
+			continue
+		}
+		data := clipboard.Read(f)
+		if len(data) == 0 {
+			continue
+		}
+		ext := extFromMIME(f.MIME())
+		filename := output
+		if filename == "" {
+			filename = generateFilename(data, ext)
+		} else {
+			filename = output + "." + ext
+		}
+		if err := os.WriteFile(filename, data, 0644); err != nil {
+			return fmt.Errorf("write %s: %w", ext, err)
+		}
+		fmt.Fprintln(out, filename)
+		return nil
+	}
+
+	names := make([]string, 0, len(fmts))
+	for _, f := range fmts {
+		mime := f.MIME()
+		if mime != "" {
+			names = append(names, mime)
+		}
+	}
+	if len(names) > 0 {
+		return fmt.Errorf("clipboard contains unsupported content (available: %s)", strings.Join(names, ", "))
+	}
 	return fmt.Errorf("clipboard contains unsupported content")
+}
+
+func extFromMIME(mime string) string {
+	if i := strings.LastIndexByte(mime, '/'); i >= 0 {
+		t := mime[i+1:]
+		if j := strings.IndexByte(t, ';'); j >= 0 {
+			t = t[:j]
+		}
+		if t != "" {
+			return t
+		}
+	}
+	if i := strings.LastIndexByte(mime, '.'); i >= 0 {
+		t := mime[i+1:]
+		if t != "" {
+			return t
+		}
+	}
+	return "bin"
 }
 
 func detectImageFormat(data []byte) string {

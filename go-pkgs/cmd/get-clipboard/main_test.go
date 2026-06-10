@@ -108,3 +108,36 @@ func TestGenerateFilenameDifferentData(t *testing.T) {
 		t.Errorf("different data should produce different names")
 	}
 }
+
+func TestExtFromMIME(t *testing.T) {
+	tests := []struct {
+		name   string
+		mime   string
+		expect string
+	}{
+		{name: "html", mime: "text/html", expect: "html"},
+		{name: "html_with_charset", mime: "text/html;charset=utf-8", expect: "html"},
+		{name: "plain", mime: "text/plain", expect: "plain"},
+		{name: "svg", mime: "image/svg+xml", expect: "svg+xml"},
+		{name: "png", mime: "image/png", expect: "png"},
+		{name: "pdf", mime: "application/pdf", expect: "pdf"},
+		{name: "rtf", mime: "text/rtf", expect: "rtf"},
+		{name: "jpeg", mime: "image/jpeg", expect: "jpeg"},
+		{name: "json", mime: "application/json", expect: "json"},
+		{name: "public_uti_svg", mime: "public.svg", expect: "svg"},
+		{name: "public_uti_html", mime: "public.html", expect: "html"},
+		{name: "public_uti_rtf", mime: "public.rtf", expect: "rtf"},
+		{name: "adobe_pdf", mime: "com.adobe.pdf", expect: "pdf"},
+		{name: "empty", mime: "", expect: "bin"},
+		{name: "plain_with_charset", mime: "text/plain;charset=utf-8", expect: "plain"},
+		{name: "javascript", mime: "text/javascript", expect: "javascript"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extFromMIME(tt.mime)
+			if got != tt.expect {
+				t.Errorf("extFromMIME(%q) = %q, want %q", tt.mime, got, tt.expect)
+			}
+		})
+	}
+}
