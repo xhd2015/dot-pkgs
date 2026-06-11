@@ -1,0 +1,27 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.25.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Go test go-pkgs/cloudflare/tests
+        run: go -C go-pkgs/cloudflare/tests test -v ./...
+      - name: Go test go-pkgs/cmd
+        run: go -C go-pkgs/cmd test -v ./...
+      - name: Go test go-pkgs
+        run: go -C go-pkgs test -v ./...
+
+      - name: Install doctest
+        run: |
+          if ! command -v doctest >/dev/null 2>&1; then
+            go install github.com/xhd2015/agent-pro/agents/doctest@latest
+          fi
+      - name: Doctest
+        run: doctest test -v ./...
