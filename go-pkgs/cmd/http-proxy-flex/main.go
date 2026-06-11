@@ -63,19 +63,17 @@ func run(args []string) error {
 
 	handler := NewProxyHandler()
 
-	if tcpDial(proxyAddr, 3*time.Second) {
-		log.Printf("using upstream proxy %s", upstreamProxy)
-		handler.SetTransport(newProxyTransport(upstreamProxy), proxyAddr)
-	} else if fallbackDirect {
-		log.Printf("upstream proxy unreachable, falling back to direct")
-		handler.SetTransport(newDirectTransport(), "")
-	} else {
-		return fmt.Errorf("upstream proxy unreachable: %s", proxyAddr)
-	}
-
-	if fallbackDirect {
-		go healthCheckLoop(handler, proxyAddr, upstreamProxy)
-	}
+	go func() {
+		if tcpDial(proxyAddr, 100*time.Millisecond) {
+			log.Printf("using upstream proxy %s", upstreamProxy)
+			handler.SetTransport(newProxyTransport(upstreamProxy), proxyAddr)
+		} else {
+			log.Printf("upstream proxy unreachable, falling back to direct")
+		}
+		if fallbackDirect {
+			healthCheckLoop(handler, proxyAddr, upstreamProxy)
+		}
+	}()
 
 	addr := fmt.Sprintf(":%d", listenPort)
 	log.Printf("listening on %s", addr)
@@ -89,7 +87,7 @@ func healthCheckLoop(handler *ProxyHandler, proxyAddr string, upstreamURL string
 	lastState := handler.usingProxy
 
 	for range ticker.C {
-		reachable := tcpDial(proxyAddr, 2*time.Second)
+		reachable := tcpDial(proxyAddr, 100*time.Millisecond)
 
 		if reachable && !lastState {
 			log.Printf("upstream proxy available, switching")

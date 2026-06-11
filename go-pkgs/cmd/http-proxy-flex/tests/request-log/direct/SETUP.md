@@ -9,17 +9,12 @@
 
 ```go
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
-	"sync"
 	"time"
 )
 
@@ -36,15 +31,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	proxyPort := proxyListener.Addr().(*net.TCPAddr).Port
 	proxyListener.Close()
 
-	srcDir := filepath.Join(DOCTEST_ROOT, "..")
-	binPath := filepath.Join(os.TempDir(), "http-proxy-test")
-
-	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
-	buildCmd.Dir = srcDir
-	buildOut, err := buildCmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("build failed:\n%s", string(buildOut))
-	}
+	binPath := getBinPath(t)
 
 	cmd := exec.Command(binPath,
 		"--upstream-proxy", "http://127.0.0.1:19999",
@@ -64,25 +51,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	defer cmd.Process.Kill()
 	defer cmd.Wait()
 
-	var mu sync.Mutex
-	var outputBuf strings.Builder
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			mu.Lock()
-			outputBuf.WriteString(scanner.Text() + "\n")
-			mu.Unlock()
-		}
-	}()
+	sc := newStreamCollector(stdout)
 
-	getOutput := func() string {
-		mu.Lock()
-		defer mu.Unlock()
-		return outputBuf.String()
-	}
-
-	if !waitForPattern(getOutput, "listening on", 10*time.Second) {
-		return nil, fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", getOutput())
+	if !waitForPattern(func() string { return scNewOutput(sc) }, "listening on", 10*time.Second) {
+		return nil, fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", scFullOutput(sc))
 	}
 
 	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
@@ -100,24 +72,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	cmd.Wait()
 
 	return &Response{
-		Output:   getOutput(),
+		Output:   scFullOutput(sc),
 		ExitCode: 0,
 	}, nil
-}
-
-func waitForPattern(getOutput func() string, pattern string, timeout time.Duration) bool {
-	deadline := time.After(timeout)
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadline:
-			return false
-		case <-ticker.C:
-			if strings.Contains(getOutput(), pattern) {
-				return true
-			}
-		}
-	}
 }
 ```
