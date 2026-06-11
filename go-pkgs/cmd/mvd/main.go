@@ -101,7 +101,7 @@ func main() {
 }
 
 func run(args []string) error {
-	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree bool
+	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree, pickerDump bool
 	var addAlias string
 	args, err := lessflags.Bool("--add", &add).
 		String("--add-alias", &addAlias).
@@ -116,6 +116,7 @@ func run(args []string) error {
 		Bool("--cd", &cd).
 		Bool("-w,--worktree", &worktree).
 		Bool("-f,--force", &force).
+		Bool("--picker-dump", &pickerDump).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -123,13 +124,13 @@ func run(args []string) error {
 	}
 
 	modeCount := 0
-	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd, worktree} {
+	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd, worktree, pickerDump} {
 		if enabled {
 			modeCount++
 		}
 	}
 	if modeCount > 1 {
-		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print, --vscode, --cd, --worktree can be specified")
+		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print, --vscode, --cd, --worktree, --picker-dump can be specified")
 	}
 
 	if force && !remove {
@@ -217,6 +218,10 @@ func run(args []string) error {
 			return fmt.Errorf("usage: mvd -w SRC DST")
 		}
 		return cmdWorktreeMove(args[0], args[1])
+	}
+
+	if pickerDump {
+		return cmdPickerDump()
 	}
 
 	if len(args) == 0 && stdinIsTerminal() {
@@ -383,6 +388,23 @@ func cmdWhich(src string) error {
 	}
 	for _, match := range matches {
 		fmt.Printf("%s (%s)\n", displayPath(match.path), match.label)
+	}
+	return nil
+}
+
+func cmdPickerDump() error {
+	hist, err := loadHistory()
+	if err != nil {
+		return err
+	}
+	aliases, err := loadAliases()
+	if err != nil {
+		return err
+	}
+
+	entries := buildProjectList(hist, aliases)
+	for _, e := range entries {
+		fmt.Printf("%s -> %s\n", e.display, e.full)
 	}
 	return nil
 }

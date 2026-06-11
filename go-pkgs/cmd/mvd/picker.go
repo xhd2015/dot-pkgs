@@ -27,17 +27,45 @@ func buildProjectList(hist History, aliases map[string]string) []pickerEntry {
 		}
 		root := locations[0].Path
 		latest := locations[len(locations)-1].Path
-		disp := displayPath(latest)
-		if seen[disp] {
-			continue
-		}
-		seen[disp] = true
 
-		if aliasList := aliasesByRoot[root]; len(aliasList) > 0 {
-			disp = fmt.Sprintf("%s (aliases: %s)", disp, joinAliases(aliasList))
+		hasWorktree := false
+		for _, loc := range locations {
+			if loc.Git != nil && loc.Git.Type == "worktree" {
+				hasWorktree = true
+				break
+			}
 		}
 
-		entries = append(entries, pickerEntry{display: disp, full: latest})
+		var paths []string
+		if hasWorktree {
+			paths = append(paths, root)
+			for _, loc := range locations {
+				if loc.Git != nil && loc.Git.Type == "worktree" {
+					paths = append(paths, loc.Path)
+				}
+			}
+			if !containsPathStr(paths, latest) {
+				paths = append(paths, latest)
+			}
+		} else {
+			paths = append(paths, latest)
+		}
+
+		for _, path := range paths {
+			disp := displayPath(path)
+			if seen[disp] {
+				continue
+			}
+			seen[disp] = true
+
+			if aliasList := aliasesByRoot[root]; len(aliasList) > 0 {
+				if (hasWorktree && path == root) || (!hasWorktree && path == latest) {
+					disp = fmt.Sprintf("%s (aliases: %s)", disp, joinAliases(aliasList))
+				}
+			}
+
+			entries = append(entries, pickerEntry{display: disp, full: path})
+		}
 	}
 
 	sort.Slice(entries, func(i, j int) bool {
@@ -45,6 +73,15 @@ func buildProjectList(hist History, aliases map[string]string) []pickerEntry {
 	})
 
 	return entries
+}
+
+func containsPathStr(paths []string, target string) bool {
+	for _, p := range paths {
+		if p == target {
+			return true
+		}
+	}
+	return false
 }
 
 func joinAliases(aliases []string) string {

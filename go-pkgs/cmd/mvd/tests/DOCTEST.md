@@ -56,6 +56,11 @@ mvd tests
 | mode-list | list-all | List all tracked projects |
 | mode-list | list-single | List a single project's history |
 | mode-list | list-by-basename | List by basename |
+| mode-list | list-picker-root-plus-worktree | Picker dump shows root + 1 worktree (2 entries) |
+| mode-list | list-picker-two-worktrees | Picker dump shows root + 2 worktrees (3 entries) |
+| mode-list | list-picker-plain-move | Picker dump for plain move shows only latest (1 entry) |
+| mode-list | list-picker-after-back | Picker dump after --back shows only root (1 entry) |
+| mode-list | list-picker-alias-with-worktree | Alias annotation on root entry, not worktree |
 | mode-clear | basic-clear | Clear history for a project |
 | mode-clear | clear-by-basename | Clear by basename |
 | mode-error | non-existent-src | Error when SRC does not exist |
