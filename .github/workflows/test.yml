@@ -21,7 +21,7 @@ jobs:
       - name: Install doctest
         run: |
           if ! command -v doctest >/dev/null 2>&1; then
-            go install github.com/xhd2015/agent-pro/agents/doctest@latest
+            go install github.com/xhd2015/doctest/cmd/doctest@latest
           fi
       - name: Doctest
         run: doctest test -v ./...

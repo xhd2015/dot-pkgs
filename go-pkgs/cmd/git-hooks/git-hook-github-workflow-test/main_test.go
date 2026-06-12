@@ -48,7 +48,7 @@ func TestWorkflowContent(t *testing.T) {
 		"go test -v ./...",
 		"go -C sub-nested-dir test -v ./...",
 		"command -v doctest",
-		"go install github.com/xhd2015/agent-pro/agents/doctest@latest",
+		"go install github.com/xhd2015/doctest/cmd/doctest@latest",
 		"doctest test -v ./...",
 	} {
 		if !strings.Contains(content, want) {
@@ -56,7 +56,7 @@ func TestWorkflowContent(t *testing.T) {
 		}
 	}
 	goTest := strings.Index(content, "go test -v ./...")
-	install := strings.Index(content, "go install github.com/xhd2015/agent-pro/agents/doctest@latest")
+	install := strings.Index(content, "go install github.com/xhd2015/doctest/cmd/doctest@latest")
 	doctest := strings.Index(content, "doctest test -v ./...")
 	if goTest < 0 || install < 0 || doctest < 0 || goTest > install || install > doctest {
 		t.Fatalf("expected go test before doctest install before doctest run, got:\n%s", content)
