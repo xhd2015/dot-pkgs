@@ -73,8 +73,17 @@ type LocationEntry struct {
 	Git  *GitInfo `json:"git,omitempty"`
 }
 
+type MoveEntry struct {
+	Prev    string `json:"prev"`
+	Current string `json:"current"`
+	Type    string `json:"type"`
+	Branch  string `json:"branch,omitempty"`
+}
+
 type ProjectEntry struct {
-	Locations []LocationEntry `json:"locations"`
+	Root      string          `json:"root,omitempty"`
+	Locations []LocationEntry `json:"locations,omitempty"`
+	Moves     []MoveEntry     `json:"moves,omitempty"`
 }
 
 type HistoryFile struct {
@@ -164,6 +173,22 @@ func writeAliasesFile(t *testing.T, configHome string, aliases map[string]string
 	writeFile(t, filepath.Join(configHome, "aliases.json"), string(data))
 }
 
+func locationsFromMoves(root string, moves []MoveEntry) []LocationEntry {
+	locs := []LocationEntry{{Path: root}}
+	for _, move := range moves {
+		loc := LocationEntry{Path: move.Current}
+		if move.Type == "worktree" {
+			loc.Git = &GitInfo{
+				Type:     "worktree",
+				MainRepo: move.Prev,
+				Branch:   move.Branch,
+			}
+		}
+		locs = append(locs, loc)
+	}
+	return locs
+}
+
 func readHistoryFile(t *testing.T, configHome string) *HistoryFile {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(configHome, "history.json"))
@@ -176,6 +201,17 @@ func readHistoryFile(t *testing.T, configHome string) *HistoryFile {
 	var hf HistoryFile
 	if err := json.Unmarshal(data, &hf); err != nil {
 		t.Fatalf("parse history: %v", err)
+	}
+	if hf.Projects != nil {
+		for key, proj := range hf.Projects {
+			if len(proj.Moves) > 0 && len(proj.Locations) == 0 {
+				proj.Locations = locationsFromMoves(proj.Root, proj.Moves)
+				hf.Projects[key] = proj
+			} else if len(proj.Locations) == 0 && proj.Root != "" {
+				proj.Locations = []LocationEntry{{Path: proj.Root}}
+				hf.Projects[key] = proj
+			}
+		}
 	}
 	return &hf
 }
@@ -347,6 +383,7 @@ func ensureHelpersUsed() {
 	_ = runGit
 	_ = initGitRepo
 	_ = assertErrIsNil
+	_ = locationsFromMoves
 	_ = runMvd
 }
 ```

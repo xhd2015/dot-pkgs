@@ -85,6 +85,14 @@ func cmdBack(src string) error {
 		return cmdWorktreeBack(origKey, locations)
 	}
 
+	for i := len(locations) - 2; i >= 0; i-- {
+		loc := locations[i]
+		if loc.Git == nil || loc.Git.Type != "worktree" {
+			prev = loc
+			break
+		}
+	}
+
 	isWt := isGitWorktree(last.Path)
 	if err := moveDir(last.Path, prev.Path); err != nil {
 		return err

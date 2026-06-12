@@ -9,33 +9,17 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/cmd/mvd/history"
 	"github.com/xhd2015/less-flags"
 	llsconfig "github.com/xhd2015/lls/config"
 )
 
-type GitInfo struct {
-	Type     string `json:"type"`
-	MainRepo string `json:"main_repo,omitempty"`
-	Branch   string `json:"branch,omitempty"`
-}
-
-type LocationEntry struct {
-	Path string   `json:"path"`
-	Git  *GitInfo `json:"git,omitempty"`
-}
-
-type ProjectEntry struct {
-	Locations []LocationEntry `json:"locations"`
-}
-
-type HistoryFile struct {
-	Version  string                  `json:"version"`
-	Projects map[string]ProjectEntry `json:"projects"`
-}
-
-// History tracks movement history for each file.
-// Key: original absolute path, Value: list of locations (oldest first).
-type History map[string][]LocationEntry
+type GitInfo = history.GitInfo
+type LocationEntry = history.LocationEntry
+type MoveEntry = history.MoveEntry
+type ProjectEntry = history.ProjectEntry
+type HistoryFile = history.HistoryFile
+type History = history.History
 
 func locPaths(locs []LocationEntry) []string {
 	paths := make([]string, len(locs))
@@ -586,41 +570,7 @@ func aliasesPath() string {
 }
 
 func loadHistory() (History, error) {
-	p := historyPath()
-	data, err := os.ReadFile(p)
-	if os.IsNotExist(err) {
-		return make(History), nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read history: %w", err)
-	}
-
-	var file HistoryFile
-	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, fmt.Errorf("parse history: %w", err)
-	}
-
-	if file.Projects != nil {
-		hist := make(History, len(file.Projects))
-		for key, proj := range file.Projects {
-			hist[key] = proj.Locations
-		}
-		return mergeChains(hist), nil
-	}
-
-	var legacy map[string][]string
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return nil, fmt.Errorf("parse history: %w", err)
-	}
-	hist := make(History, len(legacy))
-	for key, locs := range legacy {
-		entries := make([]LocationEntry, len(locs))
-		for i, loc := range locs {
-			entries[i] = LocationEntry{Path: loc}
-		}
-		hist[key] = entries
-	}
-	return mergeChains(hist), nil
+	return history.Load(historyPath())
 }
 
 func loadAliases() (map[string]string, error) {
@@ -651,55 +601,8 @@ func loadAliases() (map[string]string, error) {
 // handles arbitrary-length splits (A→B, B→C, C→D, ...). Duplicate
 // adjacent locations introduced by the overlap at the seam are also
 // collapsed.
-func mergeChains(hist History) History {
-	for {
-		merged := false
-		for key, locs := range hist {
-			if len(locs) == 0 {
-				continue
-			}
-			tail := locs[len(locs)-1].Path
-			if tail == key {
-				continue
-			}
-			next, ok := hist[tail]
-			if !ok || len(next) == 0 {
-				continue
-			}
-			combined := append([]LocationEntry{}, locs...)
-			combined = append(combined, next[1:]...)
-			hist[key] = combined
-			delete(hist, tail)
-			merged = true
-			break
-		}
-		if !merged {
-			return hist
-		}
-	}
-}
-
 func saveHistory(hist History) error {
-	p := historyPath()
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		return fmt.Errorf("create dir: %w", err)
-	}
-	projects := make(map[string]ProjectEntry, len(hist))
-	for key, locs := range hist {
-		projects[key] = ProjectEntry{Locations: locs}
-	}
-	file := HistoryFile{
-		Version:  "1.1",
-		Projects: projects,
-	}
-	data, err := json.MarshalIndent(file, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-	if err := os.WriteFile(p, data, 0644); err != nil {
-		return fmt.Errorf("write history: %w", err)
-	}
-	return nil
+	return history.Save(historyPath(), hist)
 }
 
 func saveAliases(aliases map[string]string) error {

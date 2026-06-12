@@ -56,6 +56,7 @@ mvd tests
 | mode-rebase | basic-rebase | Rebase entry to a new root |
 | mode-rebase | rebase-by-basename | Rebase using basename resolution |
 | mode-back | basic-back | Move back one step |
+| mode-back | back-after-plain-move-which-followed-worktree | `--back` on moved repo skips worktree entries to find correct prev location |
 | mode-back | back-at-origin | Back at origin is a no-op |
 | mode-back | back-by-basename | Back using unique basename |
 | mode-back | back-by-alias | Back using a registered alias (bug fix) |

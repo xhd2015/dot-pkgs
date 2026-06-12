@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/cmd/mvd/history"
 )
 
 type whichMatch struct {
@@ -164,7 +166,7 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 		if len(locs) == 0 {
 			return "", nil, "", fmt.Errorf("empty mv history for %s", src)
 		}
-		return k, locs, findLastNonWorktreePath(locs), nil
+		return k, locs, history.FindLastNonWorktreePath(locs), nil
 	} else if err != nil {
 		return "", nil, "", err
 	}
@@ -179,7 +181,7 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 				if len(locations) == 0 {
 					return "", nil, "", fmt.Errorf("empty mv history for alias %s", src)
 				}
-				return origKey, locations, findLastNonWorktreePath(locations), nil
+				return origKey, locations, history.FindLastNonWorktreePath(locations), nil
 			}
 		}
 	}
@@ -211,20 +213,10 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 
 	sourcePath := last
 	if absSrc != last {
-		sourcePath = findLastNonWorktreePath(locations)
+		sourcePath = history.FindLastNonWorktreePath(locations)
 	}
 
 	return origKey, locations, sourcePath, nil
-}
-
-func findLastNonWorktreePath(locations []LocationEntry) string {
-	for i := len(locations) - 1; i >= 0; i-- {
-		loc := locations[i]
-		if loc.Git == nil || loc.Git.Type != "worktree" {
-			return loc.Path
-		}
-	}
-	return locations[0].Path
 }
 
 func resolveListEntry(hist History, src string) (string, []LocationEntry, error) {
