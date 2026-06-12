@@ -29,6 +29,13 @@ mvd tests
 | mode-move | move-by-basename | Move using a unique root basename |
 | mode-move | move-by-alias | Move using a registered alias |
 | mode-move | ambiguous-basename | Error when basename matches multiple roots |
+| mode-move | plain-move-after-worktree | After `-w REPO WT`, plain move `REPO DST` moves the main repo (not WT) |
+| mode-move | plain-move-after-worktree-basename | Same as above but using basename resolution |
+| mode-move | plain-move-worktree-by-explicit-path | Explicit worktree path still moves the worktree itself |
+| mode-move | plain-move-after-move-and-worktree | After `REPO→MID` + `-w MID WT`, plain move `REPO DST` moves MID to DST |
+| mode-move | plain-move-after-two-worktrees | After two `-w` calls, plain move skips both worktrees to find main repo |
+| mode-move | plain-move-after-multiple-moves-and-worktree | Deep chain: multiple moves + worktree; plain move finds main repo |
+| mode-move | plain-move-after-worktree-updates-wt-git | Plain move updates worktree .git file to new main repo location |
 | mode-worktree | worktree-move | Create worktree with -w flag |
 | mode-worktree | worktree-non-git-src | Error when SRC is not a git repo |
 | mode-worktree | worktree-back-dirty | Error when worktree has uncommitted changes |
@@ -53,6 +60,7 @@ mvd tests
 | mode-back | back-by-basename | Back using unique basename |
 | mode-back | back-by-alias | Back using a registered alias (bug fix) |
 | mode-back | multi-step-back | Multi-step back to origin |
+| mode-back | back-remove-worktree-after-plain-move | `--back WT` removes worktree after `REPO→MID` + `-w MID WT` |
 | mode-list | list-all | List all tracked projects |
 | mode-list | list-single | List a single project's history |
 | mode-list | list-by-basename | List by basename |
