@@ -8,11 +8,7 @@ import (
 )
 
 func cmdMove(src, dst string) error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-	aliases, err := loadAliases()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -52,15 +48,11 @@ func cmdMove(src, dst string) error {
 	delete(hist, origKey)
 	hist[locations[0].Path] = locations
 
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func cmdBack(src string) error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-	aliases, err := loadAliases()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -106,7 +98,7 @@ func cmdBack(src string) error {
 	locations = locations[:len(locations)-1]
 	hist[origKey] = locations
 
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func moveDir(src, dst string) error {

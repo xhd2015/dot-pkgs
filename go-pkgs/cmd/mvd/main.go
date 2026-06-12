@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -223,7 +222,7 @@ func cmdAddAlias(alias, project string) error {
 		return err
 	}
 
-	hist, err := loadHistory()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -233,13 +232,9 @@ func cmdAddAlias(alias, project string) error {
 		return err
 	}
 
-	aliases, err := loadAliases()
-	if err != nil {
-		return err
-	}
 	aliases[alias] = root
 	fmt.Printf("alias: %s -> %s\n", alias, displayPath(root))
-	return saveAliases(aliases)
+	return saveHistory(hist, aliases)
 }
 
 func cmdAdd(dir string) error {
@@ -248,7 +243,7 @@ func cmdAdd(dir string) error {
 		return err
 	}
 
-	hist, err := loadHistory()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -260,15 +255,11 @@ func cmdAdd(dir string) error {
 
 	hist[absDir] = []LocationEntry{{Path: absDir}}
 	fmt.Printf("added: %s\n", displayPath(absDir))
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func cmdRemove(dir string, force bool) error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-	aliases, err := loadAliases()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -301,11 +292,11 @@ func cmdRemove(dir string, force bool) error {
 
 	delete(hist, removeKey)
 	fmt.Printf("removed: %s\n", displayPath(removeKey))
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func cmdRebase(dir, newDir string) error {
-	hist, err := loadHistory()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -330,11 +321,11 @@ func cmdRebase(dir, newDir string) error {
 	delete(hist, origKey)
 	hist[absNewDir] = updated
 	fmt.Printf("rebased: %s → %s\n", displayPath(origKey), displayPath(absNewDir))
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func cmdClear(src string) error {
-	hist, err := loadHistory()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -350,15 +341,11 @@ func cmdClear(src string) error {
 
 	delete(hist, origKey)
 	fmt.Printf("cleared history for %s (%d entries)\n", displayPath(absSrc), len(locations))
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func cmdWhich(src string) error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-	aliases, err := loadAliases()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -377,11 +364,7 @@ func cmdWhich(src string) error {
 }
 
 func cmdPickerDump() error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-	aliases, err := loadAliases()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -394,11 +377,7 @@ func cmdPickerDump() error {
 }
 
 func cmdListAll() error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-	aliases, err := loadAliases()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -454,7 +433,7 @@ func formatAliases(aliases []string) string {
 }
 
 func cmdPrint(src string) error {
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -469,7 +448,7 @@ func cmdPrint(src string) error {
 }
 
 func cmdList(src string) error {
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -565,57 +544,10 @@ func historyPath() string {
 	return filepath.Join(configDir(), "history.json")
 }
 
-func aliasesPath() string {
-	return filepath.Join(configDir(), "aliases.json")
-}
-
-func loadHistory() (History, error) {
+func loadHistory() (History, map[string]string, error) {
 	return history.Load(historyPath())
 }
 
-func loadAliases() (map[string]string, error) {
-	p := aliasesPath()
-	data, err := os.ReadFile(p)
-	if os.IsNotExist(err) {
-		return make(map[string]string), nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read aliases: %w", err)
-	}
-	var aliases map[string]string
-	if err := json.Unmarshal(data, &aliases); err != nil {
-		return nil, fmt.Errorf("parse aliases: %w", err)
-	}
-	if aliases == nil {
-		aliases = make(map[string]string)
-	}
-	return aliases, nil
-}
-
-// mergeChains stitches together entries whose tail matches another
-// entry's head. Older versions of mvd stored A→B and B→C as two
-// separate entries whenever the user ran `mvd B C`; this produces the
-// unified chain A→B→C that the user actually moved around.
-//
-// The merge is repeated until no more chains can be joined, which
-// handles arbitrary-length splits (A→B, B→C, C→D, ...). Duplicate
-// adjacent locations introduced by the overlap at the seam are also
-// collapsed.
-func saveHistory(hist History) error {
-	return history.Save(historyPath(), hist)
-}
-
-func saveAliases(aliases map[string]string) error {
-	p := aliasesPath()
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		return fmt.Errorf("create dir: %w", err)
-	}
-	data, err := json.MarshalIndent(aliases, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal aliases: %w", err)
-	}
-	if err := os.WriteFile(p, data, 0644); err != nil {
-		return fmt.Errorf("write aliases: %w", err)
-	}
-	return nil
+func saveHistory(hist History, aliases map[string]string) error {
+	return history.Save(historyPath(), hist, aliases)
 }

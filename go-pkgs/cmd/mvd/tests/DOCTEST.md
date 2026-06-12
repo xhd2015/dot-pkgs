@@ -15,7 +15,8 @@ mvd tests
 ├── mode-list/           # mvd --list [SRC]
 ├── mode-clear/          # mvd --clear SRC
 ├── mode-error/          # Error handling
-└── mode-dollar-expansion/ # $X env var expansion via lls config
+├── mode-dollar-expansion/ # $X env var expansion via lls config
+└── mode-alias-storage/    # aliases stored inside history.json
 ```
 
 ## Test Case Index
@@ -82,3 +83,6 @@ mvd tests
 | mode-dollar-expansion | rebase-with-dollar | --rebase with $X/myproject |
 | mode-dollar-expansion | which-with-dollar | --which with $X/myproject |
 | mode-dollar-expansion | worktree-move-with-dollar | -w with $X/myrepo |
+| mode-alias-storage | add-alias-not-creates-aliases-file | --add-alias does not create aliases.json; alias stored in history.json |
+| mode-alias-storage | add-alias-survives-history-save-load | Alias survives history save/load cycle after another move |
+| mode-alias-storage | multiple-aliases-per-project | Multiple aliases for same project stored in history.json |

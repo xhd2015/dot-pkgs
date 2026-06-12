@@ -46,7 +46,7 @@ func TestWorktreeMoveCreatesWorktree(t *testing.T) {
 		t.Fatalf("worktree .git should reference main repo %s, got %s", resolvePath(mainRepo), resolvePath(mainRepoFromWt))
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestWorktreeBackCleanMergedSucceeds(t *testing.T) {
 		t.Fatal("branch 'feature' should have been deleted")
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}

@@ -459,7 +459,7 @@ func TestCmdMoveNewDir(t *testing.T) {
 		t.Fatalf("expected 'moved:' in output, got: %s", output)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}

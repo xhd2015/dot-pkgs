@@ -22,6 +22,7 @@ type ProjectEntry struct {
 	Root      string          `json:"root,omitempty"`
 	Locations []LocationEntry `json:"locations,omitempty"`
 	Moves     []MoveEntry     `json:"moves,omitempty"`
+	Aliases   []string        `json:"aliases,omitempty"`
 }
 
 type HistoryFile struct {

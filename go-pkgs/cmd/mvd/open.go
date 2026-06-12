@@ -7,11 +7,7 @@ import (
 )
 
 func cmdVscode(src string) error {
-	hist, err := loadHistory()
-	if err != nil {
-		return err
-	}
-	aliases, err := loadAliases()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}

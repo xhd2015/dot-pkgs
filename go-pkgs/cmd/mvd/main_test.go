@@ -24,7 +24,7 @@ func TestRunAddFlagStoresSingleEntry(t *testing.T) {
 		t.Fatalf("run --add: %v", err)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestAddExistingHistoryPathDoesNothing(t *testing.T) {
 		t.Fatalf("expected duplicate hint, got %q", output)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestRunRemoveDeletesExactSingleEntry(t *testing.T) {
 		t.Fatalf("run --rm: %v", err)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestRunRemoveLongAliasDeletesExactSingleEntry(t *testing.T) {
 		t.Fatalf("run --remove: %v", err)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestRemoveDoesNotMatchHistoryOnlyPath(t *testing.T) {
 		t.Fatalf("expected missing-entry hint, got %q", output)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestRemoveBareNameUsesWhichDefault(t *testing.T) {
 		t.Fatalf("expected remove output for basename project, got %q", output)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestRemoveWithHistoryRequiresForce(t *testing.T) {
 		t.Fatalf("expected wrapped force hint in error, got %q", err.Error())
 	}
 
-	hist, loadErr := loadHistory()
+	hist, _, loadErr := loadHistory()
 	if loadErr != nil {
 		t.Fatalf("loadHistory: %v", loadErr)
 	}
@@ -298,7 +298,7 @@ func TestRemoveWithForceClearsHistory(t *testing.T) {
 		t.Fatalf("expected history-clearing hint, got %q", output)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestRebaseChangesEntryBaseFromKeyMatch(t *testing.T) {
 		t.Fatalf("cmdRebase: %v", err)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -386,7 +386,7 @@ func TestRunRebaseFlagChangesEntryBase(t *testing.T) {
 		t.Fatalf("run --rebase: %v", err)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestRebaseFindsEntryByHistoryMatch(t *testing.T) {
 		t.Fatalf("cmdRebase: %v", err)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -491,7 +491,7 @@ func TestMoveAcceptsOriginalRootPath(t *testing.T) {
 		t.Fatalf("expected %s to exist after root-path move", secondPath)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestMoveAcceptsUniqueOriginalBasename(t *testing.T) {
 		t.Fatalf("expected %s to exist after basename move", secondPath)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -582,7 +582,7 @@ func TestMoveDoesNotUseBasenameShortcutWhenLocalPathExists(t *testing.T) {
 		t.Fatalf("expected tracked basename shortcut target %s to remain in place", trackedCurrent)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -643,9 +643,9 @@ func TestRunAddAliasStoresAliasForProjectBasename(t *testing.T) {
 		t.Fatalf("run --add-alias: %v", err)
 	}
 
-	aliases, err := loadAliases()
+	_, aliases, err := loadHistory()
 	if err != nil {
-		t.Fatalf("loadAliases: %v", err)
+		t.Fatalf("loadHistory: %v", err)
 	}
 	if aliases["kk"] != src {
 		t.Fatalf("expected alias kk to point at %s, got %#v", src, aliases)
@@ -688,7 +688,7 @@ func TestMoveAcceptsAliasAfterBasenameMiss(t *testing.T) {
 		t.Fatalf("expected %s to exist after alias move", secondPath)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -1011,7 +1011,7 @@ func TestBackKeepsOriginalHistoryEntry(t *testing.T) {
 		t.Fatalf("expected %s to be removed after moving back", movedPath)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -1048,7 +1048,7 @@ func TestBackAcceptsOriginalRootPath(t *testing.T) {
 		t.Fatalf("expected %s to be removed after moving back", movedPath)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
@@ -1180,7 +1180,7 @@ func TestBackAtOriginalPositionIsNoOp(t *testing.T) {
 		t.Fatalf("expected %s to remain in place", src)
 	}
 
-	hist, err := loadHistory()
+	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}

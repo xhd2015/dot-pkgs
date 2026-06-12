@@ -5,21 +5,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
-func Load(path string) (History, error) {
+func Load(path string) (History, map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return make(History), nil
+		return make(History), make(map[string]string), nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read history: %w", err)
+		return nil, nil, fmt.Errorf("read history: %w", err)
 	}
 
 	var file HistoryFile
 	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, fmt.Errorf("parse history: %w", err)
+		return nil, nil, fmt.Errorf("parse history: %w", err)
 	}
+
+	aliases := extractAliases(file.Projects)
 
 	if file.Projects != nil {
 		if hasV2Format(file.Projects) {
@@ -27,18 +30,18 @@ func Load(path string) (History, error) {
 			for key, proj := range file.Projects {
 				hist[key] = LocationsFromMoves(proj.Root, proj.Moves)
 			}
-			return mergeChains(hist), nil
+			return mergeChains(hist), aliases, nil
 		}
 		hist := make(History, len(file.Projects))
 		for key, proj := range file.Projects {
 			hist[key] = proj.Locations
 		}
-		return mergeChains(hist), nil
+		return mergeChains(hist), aliases, nil
 	}
 
 	var legacy map[string][]string
 	if err := json.Unmarshal(data, &legacy); err != nil {
-		return nil, fmt.Errorf("parse history: %w", err)
+		return nil, nil, fmt.Errorf("parse history: %w", err)
 	}
 	hist := make(History, len(legacy))
 	for key, locs := range legacy {
@@ -48,17 +51,43 @@ func Load(path string) (History, error) {
 		}
 		hist[key] = entries
 	}
-	return mergeChains(hist), nil
+	return mergeChains(hist), aliases, nil
 }
 
-func Save(path string, hist History) error {
+func extractAliases(projects map[string]ProjectEntry) map[string]string {
+	aliases := make(map[string]string)
+	if projects == nil {
+		return aliases
+	}
+	for key, proj := range projects {
+		for _, alias := range proj.Aliases {
+			aliases[alias] = key
+		}
+	}
+	return aliases
+}
+
+func Save(path string, hist History, aliases map[string]string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
+
+	aliasesByRoot := make(map[string][]string)
+	for alias, root := range aliases {
+		aliasesByRoot[root] = append(aliasesByRoot[root], alias)
+	}
+	for root := range aliasesByRoot {
+		sort.Strings(aliasesByRoot[root])
+	}
+
 	projects := make(map[string]ProjectEntry, len(hist))
 	for key, locs := range hist {
 		root, moves := DeriveMoves(locs)
-		projects[key] = ProjectEntry{Root: root, Moves: moves}
+		proj := ProjectEntry{Root: root, Moves: moves}
+		if aliasList, ok := aliasesByRoot[key]; ok {
+			proj.Aliases = aliasList
+		}
+		projects[key] = proj
 	}
 	file := HistoryFile{
 		Version:  "2.0",

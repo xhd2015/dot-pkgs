@@ -19,13 +19,11 @@ func Setup(t *testing.T, req *Request) error {
 					{Path: root},
 					{Path: wt, Git: &GitInfo{Type: "worktree", MainRepo: root, Branch: "feature"}},
 				},
+				Aliases: []string{"myproj"},
 			},
 		},
 	}
 	writeHistoryFile(t, req.ConfigHome, hf)
-	writeAliasesFile(t, req.ConfigHome, map[string]string{
-		"myproj": root,
-	})
 
 	req.Args = []string{"--picker-dump"}
 	return nil

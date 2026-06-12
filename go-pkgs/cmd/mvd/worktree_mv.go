@@ -10,7 +10,7 @@ import (
 )
 
 func cmdWorktreeMove(src, dst string) error {
-	hist, err := loadHistory()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func cmdWorktreeMove(src, dst string) error {
 		hist[srcAbs] = []LocationEntry{{Path: srcAbs}, entry}
 	}
 
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
@@ -95,7 +95,7 @@ func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 
 	fmt.Printf("worktree removed: %s [branch: %s deleted]\n", displayPath(last.Path), branch)
 
-	hist, err := loadHistory()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 		delete(hist, origKey)
 	}
 
-	return saveHistory(hist)
+	return saveHistory(hist, aliases)
 }
 
 func generateBranchName(basename, repoPath string) (string, error) {

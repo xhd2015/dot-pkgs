@@ -98,17 +98,12 @@ func joinAliases(aliases []string) string {
 type pickAction func(fullPath string) error
 
 func runPicker(action pickAction) error {
-	hist, err := loadHistory()
+	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
 	}
 	if len(hist) == 0 {
 		return fmt.Errorf("no tracked projects, use `mvd --add DIR` to add one")
-	}
-
-	aliases, err := loadAliases()
-	if err != nil {
-		return err
 	}
 
 	entries := buildProjectList(hist, aliases)
