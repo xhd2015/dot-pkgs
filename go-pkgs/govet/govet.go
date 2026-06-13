@@ -25,7 +25,7 @@ func Run(cfg Config) ([]Violation, error) {
 	if cfg.FileMaxLines > 0 {
 		fileCheckers = append(fileCheckers, &filelen.Checker{MaxLines: cfg.FileMaxLines})
 	}
-	astCheckers = append(astCheckers, &stdflag.Checker{}, &cleanfunc.Checker{})
+	astCheckers = append(astCheckers, &stdflag.Checker{}, &stdflag.ManualFlagChecker{}, &cleanfunc.Checker{})
 
 	builtinVetChecker := &builtingovet.Checker{}
 
