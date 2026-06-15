@@ -23,6 +23,11 @@ func cmdCd(src string) error {
 		return err
 	}
 
+	if dryRun {
+		fmt.Printf("dry-run: would cd to %s\n", displayPath(lastLoc))
+		return nil
+	}
+
 	return launchShell(lastLoc, src)
 }
 

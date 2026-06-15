@@ -16,7 +16,8 @@ mvd tests
 ├── mode-clear/          # mvd --clear SRC
 ├── mode-error/          # Error handling
 ├── mode-dollar-expansion/ # $X env var expansion via lls config
-└── mode-alias-storage/    # aliases stored inside history.json
+├── mode-alias-storage/    # aliases stored inside history.json
+└── mode-dry-run/          # --dry-run flag (skips modifications, prints intent)
 ```
 
 ## Test Case Index
@@ -98,3 +99,35 @@ mvd tests
 | mode-alias-storage | add-alias-not-creates-aliases-file | --add-alias does not create aliases.json; alias stored in history.json |
 | mode-alias-storage | add-alias-survives-history-save-load | Alias survives history save/load cycle after another move |
 | mode-alias-storage | multiple-aliases-per-project | Multiple aliases for same project stored in history.json |
+| mode-dry-run | dry-run-move | --dry-run with plain move: prints "would move", skips os.Rename + history write |
+| mode-dry-run | dry-run-move-to-dir | --dry-run move into existing dir: basename join, no actual move |
+| mode-dry-run | dry-run-worktree | --dry-run with -w: prints "would create worktree", skips git worktree add |
+| mode-dry-run | dry-run-add | --dry-run with --add: prints "would add", skips history write |
+| mode-dry-run | dry-run-add-alias | --dry-run with --add-alias: prints "would add alias", alias not persisted |
+| mode-dry-run | dry-run-rm | --dry-run with --rm: prints "would remove", history entry retained |
+| mode-dry-run | dry-run-rm-force | --dry-run with --rm -f: force path exercised, history entry retained |
+| mode-dry-run | dry-run-rebase | --dry-run with --rebase: prints "would rebase", history unchanged |
+| mode-dry-run | dry-run-back | --dry-run with --back (plain): prints "would move back", no os.Rename |
+| mode-dry-run | dry-run-back-worktree | --dry-run with --back (worktree): prints "would remove worktree", no git worktree remove |
+| mode-dry-run | dry-run-back-at-origin | --dry-run --back at origin: "nothing to move back", no dry-run message |
+| mode-dry-run | dry-run-clear | --dry-run with --clear: prints "would clear", history intact |
+| mode-dry-run | dry-run-cd | --dry-run with --cd: prints "would cd", no shell launched |
+| mode-dry-run | dry-run-vscode | --dry-run with --vscode: prints "would open VSCode", no code launched |
+| mode-dry-run | dry-run-error-nosrc | --dry-run with non-existent SRC: validation error still fires, no dry-run message |
+| mode-dry-run | dry-run-error-non-git | --dry-run -w with non-git SRC: validation error still fires |
+| mode-dry-run | dry-run-list | --dry-run with --list: read-only command runs normally, no dry-run output |
+| mode-dry-run | dry-run-which | --dry-run with --which: read-only command runs normally, no dry-run output |
+| mode-dry-run | dry-run-picker-list | --dry-run with --picker-list: read-only command runs normally, no dry-run output |
+
+## How to Run
+
+```sh
+# Verify tree structure (no test execution)
+doctest vet ./tests
+
+# Run all tests
+doctest test ./tests
+
+# Run a specific mode
+doctest test ./tests/mode-dry-run
+```

@@ -1,0 +1,19 @@
+## Steps
+- Create a source directory `src` with a file under WorkRoot.
+- Run `mvd --dry-run src dst` to exercise dry-run plain move.
+- The destination `dst` does not exist yet, so it becomes the new name directly.
+
+```go
+import (
+	"path/filepath"
+)
+
+func Setup(t *testing.T, req *Request) error {
+	src := filepath.Join(req.WorkRoot, "src")
+	dst := filepath.Join(req.WorkRoot, "dst")
+	mkdirAll(t, src)
+	writeFile(t, filepath.Join(src, "f.txt"), "hello")
+	req.Args = []string{"--dry-run", src, dst}
+	return nil
+}
+```

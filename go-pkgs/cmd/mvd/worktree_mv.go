@@ -42,6 +42,11 @@ func cmdWorktreeMove(src, dst string) error {
 		return err
 	}
 
+	if dryRun {
+		fmt.Printf("dry-run: would create worktree at %s from %s\n", displayPath(dstAbs), displayPath(srcAbs))
+		return nil
+	}
+
 	cmd := exec.Command("git", "-C", srcAbs, "worktree", "add", "-b", branch, dstAbs)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -79,6 +84,11 @@ func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 
 	if err := checkBranchMerged(branch, mainRepo); err != nil {
 		return err
+	}
+
+	if dryRun {
+		fmt.Printf("dry-run: would remove worktree %s\n", displayPath(last.Path))
+		return nil
 	}
 
 	cmd := exec.Command("git", "-C", mainRepo, "worktree", "remove", last.Path)

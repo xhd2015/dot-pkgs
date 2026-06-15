@@ -17,6 +17,11 @@ func cmdVscode(src string) error {
 		return err
 	}
 
+	if dryRun {
+		fmt.Printf("dry-run: would open VSCode at %s\n", displayPath(lastLoc))
+		return nil
+	}
+
 	cmd := exec.Command("code", lastLoc)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

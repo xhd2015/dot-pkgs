@@ -87,6 +87,8 @@ func main() {
 	}
 }
 
+var dryRun bool
+
 func run(args []string) error {
 	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree, pickerList bool
 	var addAlias string
@@ -106,6 +108,7 @@ func run(args []string) error {
 		Bool("-f,--force", &force).
 		Bool("--picker-list", &pickerList).
 		String("--grep", &grep).
+		Bool("--dry-run", &dryRun).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -249,6 +252,11 @@ func cmdAddAlias(alias, project string) error {
 		return err
 	}
 
+	if dryRun {
+		fmt.Printf("dry-run: would add alias %s -> %s\n", alias, displayPath(root))
+		return nil
+	}
+
 	aliases[alias] = root
 	fmt.Printf("alias: %s -> %s\n", alias, displayPath(root))
 	return saveHistory(hist, aliases)
@@ -267,6 +275,11 @@ func cmdAdd(dir string) error {
 
 	if isRecordedPath(hist, absDir) {
 		fmt.Printf("hint: %s is already recorded, nothing added\n", displayPath(absDir))
+		return nil
+	}
+
+	if dryRun {
+		fmt.Printf("dry-run: would add %s\n", displayPath(absDir))
 		return nil
 	}
 
@@ -307,6 +320,11 @@ func cmdRemove(dir string, force bool) error {
 		fmt.Printf("hint: removing %s will clear %d history entries\n", displayPath(removeKey), len(locations)-1)
 	}
 
+	if dryRun {
+		fmt.Printf("dry-run: would remove %s from history\n", displayPath(removeKey))
+		return nil
+	}
+
 	delete(hist, removeKey)
 	fmt.Printf("removed: %s\n", displayPath(removeKey))
 	return saveHistory(hist, aliases)
@@ -325,6 +343,11 @@ func cmdRebase(dir, newDir string) error {
 
 	if locations[0].Path == absNewDir {
 		fmt.Printf("base unchanged: %s\n", displayPath(absNewDir))
+		return nil
+	}
+
+	if dryRun {
+		fmt.Printf("dry-run: would rebase %s -> %s\n", displayPath(origKey), displayPath(absNewDir))
 		return nil
 	}
 
@@ -353,6 +376,11 @@ func cmdClear(src string) error {
 	}
 	if locations == nil {
 		fmt.Printf("no movement history for %s\n", displayPath(absSrc))
+		return nil
+	}
+
+	if dryRun {
+		fmt.Printf("dry-run: would clear history for %s\n", displayPath(absSrc))
 		return nil
 	}
 

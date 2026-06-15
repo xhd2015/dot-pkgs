@@ -1,0 +1,20 @@
+## Steps
+- Create a source directory `src` and an existing destination directory `dst`.
+- Run `mvd --dry-run src dst` where `dst` is an existing directory.
+- The source should be moved *into* `dst` (basename join), so the target becomes `dst/src`.
+
+```go
+import (
+	"path/filepath"
+)
+
+func Setup(t *testing.T, req *Request) error {
+	src := filepath.Join(req.WorkRoot, "src")
+	dst := filepath.Join(req.WorkRoot, "dst")
+	mkdirAll(t, src)
+	mkdirAll(t, dst)
+	writeFile(t, filepath.Join(src, "f.txt"), "hello")
+	req.Args = []string{"--dry-run", src, dst}
+	return nil
+}
+```

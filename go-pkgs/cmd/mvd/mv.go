@@ -29,6 +29,11 @@ func cmdMove(src, dst string) error {
 	}
 
 	isWt := isGitWorktree(absSrc)
+	if dryRun {
+		fmt.Printf("dry-run: would move %s -> %s\n", displayPath(absSrc), displayPath(absDst))
+		return nil
+	}
+
 	if err := moveDir(absSrc, absDst); err != nil {
 		return err
 	}
@@ -83,6 +88,11 @@ func cmdBack(src string) error {
 			prev = loc
 			break
 		}
+	}
+
+	if dryRun {
+		fmt.Printf("dry-run: would move back %s\n", displayPath(last.Path))
+		return nil
 	}
 
 	isWt := isGitWorktree(last.Path)
