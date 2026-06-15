@@ -8,6 +8,7 @@ import (
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/builtingovet"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/cleanfunc"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/errcheck"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/filelen"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/jsonunmarshalmap"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/stdflag"
@@ -28,7 +29,7 @@ func Run(cfg Config) ([]Violation, error) {
 		fileCheckers = append(fileCheckers, &filelen.Checker{MaxLines: cfg.FileMaxLines})
 	}
 	astCheckers = append(astCheckers, &stdflag.Checker{}, &stdflag.ManualFlagChecker{}, &cleanfunc.Checker{},
-		&jsonunmarshalmap.Checker{}, &typeassertignoreok.Checker{})
+		&jsonunmarshalmap.Checker{}, &typeassertignoreok.Checker{}, &errcheck.Checker{})
 
 	builtinVetChecker := &builtingovet.Checker{}
 
