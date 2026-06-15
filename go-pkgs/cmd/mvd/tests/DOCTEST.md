@@ -12,7 +12,7 @@ mvd tests
 ├── mode-remove/         # mvd --rm DIR
 ├── mode-rebase/         # mvd --rebase DIR NEW-DIR
 ├── mode-back/           # mvd --back SRC
-├── mode-list/           # mvd --list [SRC]
+├── mode-list/           # mvd --list [SRC] + --picker-list (marker tests)
 ├── mode-clear/          # mvd --clear SRC
 ├── mode-error/          # Error handling
 ├── mode-dollar-expansion/ # $X env var expansion via lls config
@@ -71,6 +71,18 @@ mvd tests
 | mode-list | list-picker-plain-move | Picker dump for plain move shows only latest (1 entry) |
 | mode-list | list-picker-after-back | Picker dump after --back shows only root (1 entry) |
 | mode-list | list-picker-alias-with-worktree | Alias annotation on root entry, not worktree |
+| mode-list | marker-worktree-basic | Root `(main)` + worktree `(worktree)` markers, alive, no alias |
+| mode-list | marker-worktree-two | Root `(main)` + 2 worktrees `(worktree)` markers, alive |
+| mode-list | marker-external-main | External main path shown `(external main)` — bug fix for root→WT→plain→WT |
+| mode-list | marker-external-main-is-latest | External main that is also latest — not duplicated |
+| mode-list | marker-alias-with-main | Combined marker `(main, aliases: ...)` when root has alias + is main |
+| mode-list | marker-alias-no-worktree | `(aliases: ...)` on plain entry without worktree |
+| mode-list | marker-dead-worktree | `(dead worktree)` for dead worktree path |
+| mode-list | marker-dead-main | `(dead main)` for dead root that is also main |
+| mode-list | marker-dead-external-main | `(dead external main)` for dead external main path |
+| mode-list | marker-dead-main-with-alias | Combined `(dead main, aliases: ...)` for dead root with alias |
+| mode-list | marker-dead-plain | `(dead)` for dead plain entry (no worktree) |
+| mode-list | marker-no-marker | No marker for plain alive entry without worktree or alias |
 | mode-clear | basic-clear | Clear history for a project |
 | mode-clear | clear-by-basename | Clear by basename |
 | mode-error | non-existent-src | Error when SRC does not exist |

@@ -1,6 +1,7 @@
 ## Steps
-- Write a history file with one entry: a plain move chain (root → moved, no git metadata).
-- Run --picker-list to verify only the latest location appears (regression: plain moves should not show the old root).
+- Write history with a single root location, no worktree, no alias.
+- Create the directory so it is alive.
+- Run --picker-list to verify no marker is shown.
 
 ```go
 import (
@@ -9,14 +10,14 @@ import (
 
 func Setup(t *testing.T, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
-	moved := filepath.Join(req.WorkRoot, "repo-moved")
+	mkdirAll(t, root)
+
 	hf := HistoryFile{
 		Version: "1.1",
 		Projects: map[string]ProjectEntry{
 			root: {
 				Locations: []LocationEntry{
 					{Path: root},
-					{Path: moved},
 				},
 			},
 		},

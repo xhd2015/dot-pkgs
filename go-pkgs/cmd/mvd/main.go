@@ -58,6 +58,8 @@ Commands:
   mvd --print [SRC]     Print shortened and full paths (interactive picker if SRC omitted)
   mvd --vscode [SRC]    Open the target project in VS Code (interactive picker if SRC omitted)
   mvd --cd [SRC]        cd to the target project (interactive picker if SRC omitted)
+  mvd --picker-list     Dump all picker entries to stdout
+  mvd --grep PATTERN    Filter picker list (implies --picker-list)
 
 Options:
   -w, --worktree        Spawn a git worktree at DST from repo SRC (instead of move)
@@ -74,6 +76,8 @@ Options:
   --cd                  cd to the target project (launch bash)
   -f, --force           Force removal for mvd --rm and clear its histories
   -h, --help            Show this help message
+  --picker-list         Dump all picker entries to stdout
+  --grep                Filter picker list (implies --picker-list)
 `
 
 func main() {
@@ -84,8 +88,9 @@ func main() {
 }
 
 func run(args []string) error {
-	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree, pickerDump bool
+	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree, pickerList bool
 	var addAlias string
+	var grep string
 	args, err := lessflags.Bool("--add", &add).
 		String("--add-alias", &addAlias).
 		Bool("--rm,--remove", &remove).
@@ -99,21 +104,33 @@ func run(args []string) error {
 		Bool("--cd", &cd).
 		Bool("-w,--worktree", &worktree).
 		Bool("-f,--force", &force).
-		Bool("--picker-dump", &pickerDump).
+		Bool("--picker-list", &pickerList).
+		String("--grep", &grep).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
 		return err
 	}
 
+	grepProvided := false
+	for _, a := range os.Args[1:] {
+		if a == "--grep" {
+			grepProvided = true
+			break
+		}
+	}
+	if grepProvided && grep == "" {
+		return fmt.Errorf("--grep requires a non-empty filter pattern")
+	}
+
 	modeCount := 0
-	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd, worktree, pickerDump} {
+	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd, worktree, pickerList, grep != ""} {
 		if enabled {
 			modeCount++
 		}
 	}
 	if modeCount > 1 {
-		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print, --vscode, --cd, --worktree, --picker-dump can be specified")
+		return fmt.Errorf("at most one of --rm, --add, --add-alias, --rebase, --list, --which, --back, --clear, --print, --vscode, --cd, --worktree, --picker-list, --grep can be specified")
 	}
 
 	if force && !remove {
@@ -203,8 +220,8 @@ func run(args []string) error {
 		return cmdWorktreeMove(args[0], args[1])
 	}
 
-	if pickerDump {
-		return cmdPickerDump()
+	if pickerList || grep != "" {
+		return cmdPickerList(grep)
 	}
 
 	if len(args) == 0 && stdinIsTerminal() {
@@ -363,7 +380,7 @@ func cmdWhich(src string) error {
 	return nil
 }
 
-func cmdPickerDump() error {
+func cmdPickerList(filter string) error {
 	hist, aliases, err := loadHistory()
 	if err != nil {
 		return err
@@ -371,6 +388,9 @@ func cmdPickerDump() error {
 
 	entries := buildProjectList(hist, aliases)
 	for _, e := range entries {
+		if filter != "" && !strings.Contains(strings.ToLower(e.display), strings.ToLower(filter)) {
+			continue
+		}
 		fmt.Printf("%s -> %s\n", e.display, e.full)
 	}
 	return nil

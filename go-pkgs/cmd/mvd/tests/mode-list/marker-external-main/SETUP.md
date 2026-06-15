@@ -1,6 +1,8 @@
 ## Steps
-- Write a history file with one entry: root path + two worktree locations with git metadata.
-- Run --picker-list to verify all three paths appear.
+- Write history with chain: root → worktree → plain-move → worktree.
+- This tests the bug fix: the plain-move destination (dst) must be shown as (external main).
+- Create dst and wt2 so they are alive; root and wt1 stay dead (not created on FS).
+- Run --picker-list to verify all 4 entries show with correct markers.
 
 ```go
 import (
@@ -10,7 +12,12 @@ import (
 func Setup(t *testing.T, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	wt1 := filepath.Join(req.WorkRoot, "feature-a")
+	dst := filepath.Join(req.WorkRoot, "repo-moved")
 	wt2 := filepath.Join(req.WorkRoot, "feature-b")
+
+	mkdirAll(t, dst)
+	mkdirAll(t, wt2)
+
 	hf := HistoryFile{
 		Version: "1.1",
 		Projects: map[string]ProjectEntry{
@@ -18,7 +25,8 @@ func Setup(t *testing.T, req *Request) error {
 				Locations: []LocationEntry{
 					{Path: root},
 					{Path: wt1, Git: &GitInfo{Type: "worktree", MainRepo: root, Branch: "feature-a"}},
-					{Path: wt2, Git: &GitInfo{Type: "worktree", MainRepo: root, Branch: "feature-b"}},
+					{Path: dst},
+					{Path: wt2, Git: &GitInfo{Type: "worktree", MainRepo: dst, Branch: "feature-b"}},
 				},
 			},
 		},

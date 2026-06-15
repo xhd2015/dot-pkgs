@@ -1,7 +1,7 @@
 ## Steps
-- Write a history file with root + worktree entry.
-- Write an alias pointing to the root.
-- Run --picker-list to verify alias annotation appears on the root entry.
+- Write history with root (with alias "myproj") + 1 worktree, but only create the worktree.
+- Root is dead AND main AND has alias → expects `(dead main, aliases: myproj)`.
+- Worktree is alive → expects `(worktree)`.
 
 ```go
 import (
@@ -11,6 +11,8 @@ import (
 func Setup(t *testing.T, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	wt := filepath.Join(req.WorkRoot, "feature")
+	mkdirAll(t, wt)
+
 	hf := HistoryFile{
 		Version: "1.1",
 		Projects: map[string]ProjectEntry{

@@ -1,6 +1,7 @@
 ## Steps
-- Write a history file with one entry: root path + two worktree locations with git metadata.
-- Run --picker-list to verify all three paths appear.
+- Write history with chain: root → wt1 → dst → wt2.
+- Create root, wt1, wt2 directories but NOT dst (dst is dead).
+- Run --picker-list to verify dst shows as `(dead external main)`.
 
 ```go
 import (
@@ -10,7 +11,13 @@ import (
 func Setup(t *testing.T, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	wt1 := filepath.Join(req.WorkRoot, "feature-a")
+	dst := filepath.Join(req.WorkRoot, "repo-moved")
 	wt2 := filepath.Join(req.WorkRoot, "feature-b")
+
+	mkdirAll(t, root)
+	mkdirAll(t, wt1)
+	mkdirAll(t, wt2)
+
 	hf := HistoryFile{
 		Version: "1.1",
 		Projects: map[string]ProjectEntry{
@@ -18,7 +25,8 @@ func Setup(t *testing.T, req *Request) error {
 				Locations: []LocationEntry{
 					{Path: root},
 					{Path: wt1, Git: &GitInfo{Type: "worktree", MainRepo: root, Branch: "feature-a"}},
-					{Path: wt2, Git: &GitInfo{Type: "worktree", MainRepo: root, Branch: "feature-b"}},
+					{Path: dst},
+					{Path: wt2, Git: &GitInfo{Type: "worktree", MainRepo: dst, Branch: "feature-b"}},
 				},
 			},
 		},

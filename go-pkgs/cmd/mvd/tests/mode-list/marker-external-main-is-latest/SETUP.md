@@ -1,6 +1,8 @@
 ## Steps
-- Write a history file with one entry: root path + two worktree locations with git metadata.
-- Run --picker-list to verify all three paths appear.
+- Write history with chain: root → worktree → plain-move (no second worktree).
+- The plain-move destination (dst) is both external main AND latest.
+- Create dst only; root and wt1 stay dead.
+- Run --picker-list to verify dst shows as (external main) and is not duplicated.
 
 ```go
 import (
@@ -10,7 +12,10 @@ import (
 func Setup(t *testing.T, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	wt1 := filepath.Join(req.WorkRoot, "feature-a")
-	wt2 := filepath.Join(req.WorkRoot, "feature-b")
+	dst := filepath.Join(req.WorkRoot, "repo-moved")
+
+	mkdirAll(t, dst)
+
 	hf := HistoryFile{
 		Version: "1.1",
 		Projects: map[string]ProjectEntry{
@@ -18,7 +23,7 @@ func Setup(t *testing.T, req *Request) error {
 				Locations: []LocationEntry{
 					{Path: root},
 					{Path: wt1, Git: &GitInfo{Type: "worktree", MainRepo: root, Branch: "feature-a"}},
-					{Path: wt2, Git: &GitInfo{Type: "worktree", MainRepo: root, Branch: "feature-b"}},
+					{Path: dst},
 				},
 			},
 		},

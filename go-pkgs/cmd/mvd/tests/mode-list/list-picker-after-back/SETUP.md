@@ -1,6 +1,6 @@
 ## Steps
 - Write a history file with a single root entry and no worktree (simulating the state after --back).
-- Run --picker-dump to verify only the root path appears.
+- Run --picker-list to verify only the root path appears.
 
 ```go
 import (
@@ -21,7 +21,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 	writeHistoryFile(t, req.ConfigHome, hf)
 
-	req.Args = []string{"--picker-dump"}
+	req.Args = []string{"--picker-list"}
 	return nil
 }
 ```

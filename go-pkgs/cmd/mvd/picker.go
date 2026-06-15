@@ -29,10 +29,11 @@ func buildProjectList(hist History, aliases map[string]string) []pickerEntry {
 		latest := locations[len(locations)-1].Path
 
 		hasWorktree := false
+		mainRepos := make(map[string]bool)
 		for _, loc := range locations {
 			if loc.Git != nil && loc.Git.Type == "worktree" {
 				hasWorktree = true
-				break
+				mainRepos[loc.Git.MainRepo] = true
 			}
 		}
 
@@ -44,12 +45,25 @@ func buildProjectList(hist History, aliases map[string]string) []pickerEntry {
 					paths = append(paths, loc.Path)
 				}
 			}
+			for _, loc := range locations {
+				if loc.Path == root {
+					continue
+				}
+				if loc.Git != nil && loc.Git.Type == "worktree" {
+					continue
+				}
+				if mainRepos[loc.Path] {
+					paths = append(paths, loc.Path)
+				}
+			}
 			if !containsPathStr(paths, latest) {
 				paths = append(paths, latest)
 			}
 		} else {
 			paths = append(paths, latest)
 		}
+
+		aliasList := aliasesByRoot[root]
 
 		for _, path := range paths {
 			disp := displayPath(path)
@@ -58,10 +72,10 @@ func buildProjectList(hist History, aliases map[string]string) []pickerEntry {
 			}
 			seen[disp] = true
 
-			if aliasList := aliasesByRoot[root]; len(aliasList) > 0 {
-				if (hasWorktree && path == root) || (!hasWorktree && path == latest) {
-					disp = fmt.Sprintf("%s (aliases: %s)", disp, joinAliases(aliasList))
-				}
+			loc := findLocation(locations, path)
+			marker := computePickerMarker(path, loc, hasWorktree, root, aliasList)
+			if marker != "" {
+				disp = disp + " " + marker
 			}
 
 			entries = append(entries, pickerEntry{display: disp, full: path})
@@ -73,6 +87,81 @@ func buildProjectList(hist History, aliases map[string]string) []pickerEntry {
 	})
 
 	return entries
+}
+
+func pathDead(p string) bool {
+	_, err := os.Stat(p)
+	return err != nil
+}
+
+func findLocation(locations []LocationEntry, path string) *LocationEntry {
+	for i := range locations {
+		if locations[i].Path == path {
+			return &locations[i]
+		}
+	}
+	return nil
+}
+
+func computePickerMarker(path string, loc *LocationEntry, hasWorktree bool, root string, aliasList []string) string {
+	isDead := pathDead(path)
+	isWt := loc != nil && loc.Git != nil && loc.Git.Type == "worktree"
+	isMain := hasWorktree && !isWt
+	isRoot := path == root
+	isExtMain := isMain && !isRoot
+	hasAliases := len(aliasList) > 0 && path == root
+
+	aliasSuffix := ""
+	if hasAliases {
+		aliasSuffix = ", aliases: " + joinAliases(aliasList)
+	}
+
+	if isDead && isWt {
+		if hasAliases {
+			return "(dead worktree" + aliasSuffix + ")"
+		}
+		return "(dead worktree)"
+	}
+	if isDead && isRoot && isMain {
+		if hasAliases {
+			return "(dead main" + aliasSuffix + ")"
+		}
+		return "(dead main)"
+	}
+	if isDead && isExtMain {
+		if hasAliases {
+			return "(dead external main" + aliasSuffix + ")"
+		}
+		return "(dead external main)"
+	}
+	if isDead {
+		if hasAliases {
+			return "(dead" + aliasSuffix + ")"
+		}
+		return "(dead)"
+	}
+	if isWt {
+		if hasAliases {
+			return "(worktree" + aliasSuffix + ")"
+		}
+		return "(worktree)"
+	}
+	if isRoot && isMain {
+		if hasAliases {
+			return "(main" + aliasSuffix + ")"
+		}
+		return "(main)"
+	}
+	if isExtMain {
+		if hasAliases {
+			return "(external main" + aliasSuffix + ")"
+		}
+		return "(external main)"
+	}
+	if hasAliases {
+		return "(aliases: " + joinAliases(aliasList) + ")"
+	}
+	return ""
 }
 
 func containsPathStr(paths []string, target string) bool {

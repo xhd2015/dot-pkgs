@@ -1,6 +1,6 @@
 ## Steps
 - Write a history file with one entry: root path + one worktree location with git metadata.
-- Run --picker-dump to inspect picker output.
+- Run --picker-list to inspect picker output.
 
 ```go
 import (
@@ -23,7 +23,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 	writeHistoryFile(t, req.ConfigHome, hf)
 
-	req.Args = []string{"--picker-dump"}
+	req.Args = []string{"--picker-list"}
 	return nil
 }
 ```
