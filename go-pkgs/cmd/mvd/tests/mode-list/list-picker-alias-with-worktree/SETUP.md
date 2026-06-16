@@ -1,3 +1,11 @@
+# Scenario
+
+Alias annotation on root entry, not worktree.
+
+mvd --add repo; mvd --add-alias repo al → [(repo)]
+mvd -w repo wt → [(repo), (wt w:wt)]
+mvd --picker-list → alias on root, not worktree
+
 ## Steps
 - Write a history file with root + worktree entry.
 - Write an alias pointing to the root.

@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --back (plain): prints intent, no actual move.
+
+mvd src dst → [(src), (dst/src)]
+mvd --dry-run --back dst/src → prints 'would move back'
+
 ## Steps
 - Move a source directory to a destination, then dry-run `--back` from the moved location.
 

@@ -1,3 +1,9 @@
+# Scenario
+
+Dead worktree marker for missing worktree path.
+
+create then delete worktree → (dead worktree)
+
 ## Steps
 - Write history with root + 1 worktree, but only create the root directory (worktree dir is dead).
 - Run --picker-list to verify `(main)` on root and `(dead worktree)` on worktree.

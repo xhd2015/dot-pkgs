@@ -1,3 +1,10 @@
+# Scenario
+
+Root (main) + 2 worktrees markers, alive.
+
+mvd -w repo wt1; mvd -w repo wt2 → [(repo), (wt1 w:wt1), (wt2 w:wt2)]
+markers → (main), (worktree), (worktree)
+
 ## Steps
 - Write history with root + 2 worktree locations with git metadata.
 - Create all three directories so they are alive.

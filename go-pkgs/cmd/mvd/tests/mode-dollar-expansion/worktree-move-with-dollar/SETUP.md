@@ -1,3 +1,9 @@
+# Scenario
+
+-w with $X/myrepo via lls env var expansion.
+
+mvd -w $X/myrepo wt → [(projects/myrepo), (wt w:wt)]
+
 ## Steps
 - Set up lls config with X env var.
 - Create a git repo at projects/main.

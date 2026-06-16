@@ -1,3 +1,11 @@
+# Scenario
+
+Move back using a registered alias.
+
+mvd --add src; mvd --add-alias src al → [(src)]
+mvd al dst → [(src), (dst/src)]
+mvd --back al → [(src)]
+
 ## Steps
 - Create a project whose root basename is `opencode-latest` (NOT `opencode`).
 - Register an alias `opencode` pointing to this project via `--add-alias opencode opencode-latest`.

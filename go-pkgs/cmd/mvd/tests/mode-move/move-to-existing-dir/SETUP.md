@@ -1,3 +1,9 @@
+# Scenario
+
+Move into an existing directory — mvd joins the basename.
+
+mvd mysrc existing-dir → [(mysrc), (existing-dir/mysrc)]
+
 ## Steps
 - Create a source directory (mysrc) with a test file.
 - Create an existing destination directory.

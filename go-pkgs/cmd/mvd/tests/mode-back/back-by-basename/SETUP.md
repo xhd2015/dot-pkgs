@@ -1,3 +1,10 @@
+# Scenario
+
+Move back using a unique root basename.
+
+mvd src dst → [(src), (dst/src)]
+mvd --back src → [(src)]
+
 ## Steps
 - Create a project under `projects/kool` and add it to mvd's tracking via `--add`.
 - Move the project to a `scratch` directory using its unique basename `"kool"` from a different working directory.

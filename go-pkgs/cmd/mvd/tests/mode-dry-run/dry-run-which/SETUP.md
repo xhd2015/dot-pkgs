@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --which: read-only, runs normally.
+
+mvd --add tracked → [(tracked)]
+mvd --dry-run --which tracked → prints path normally
+
 ## Steps
 - Add some history, then run `mvd --dry-run --which proj` (read-only command).
 - `--dry-run` should NOT affect read-only commands.

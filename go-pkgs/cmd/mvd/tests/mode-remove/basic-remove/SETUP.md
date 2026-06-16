@@ -1,3 +1,10 @@
+# Scenario
+
+Remove a tracked entry with no movement history.
+
+mvd --add tracked → [(tracked)]
+mvd --rm tracked → []  (removed)
+
 ## Steps
 - Create a directory `tracked` and add it to mvd's tracking via `--add`.
 - Remove it with `--rm`. Since it has no movement history (only one location), the removal succeeds without requiring `--force`.

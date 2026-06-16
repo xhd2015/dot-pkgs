@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 func cmdMove(src, dst string) error {
@@ -62,7 +63,7 @@ func cmdBack(src string) error {
 		return err
 	}
 
-	origKey, locations, err := resolveBackEntry(hist, aliases, src)
+	origKey, locations, absSrc, err := resolveBackEntry(hist, aliases, src)
 	if err != nil {
 		return err
 	}
@@ -76,11 +77,26 @@ func cmdBack(src string) error {
 		return nil
 	}
 
-	prev := locations[len(locations)-2]
-
-	if last.Git != nil && last.Git.Type == "worktree" {
+	// Check if the user targeted a worktree entry (may be last or non-last).
+	// Worktrees are independent branches that can be removed at any position.
+	var wtIdx int = -1
+	for i, loc := range locations {
+		if loc.Path == absSrc && loc.Git != nil && loc.Git.Type == "worktree" {
+			wtIdx = i
+			break
+		}
+	}
+	if wtIdx >= 0 && wtIdx == len(locations)-1 {
 		return cmdWorktreeBack(origKey, locations)
 	}
+	if wtIdx >= 0 {
+		// Non-last worktree: remove it from the chain while keeping
+		// subsequent moves intact.
+		wtLoc := locations[wtIdx]
+		return cmdWorktreeBackAt(origKey, locations, wtIdx, wtLoc)
+	}
+
+	prev := locations[len(locations)-2]
 
 	for i := len(locations) - 2; i >= 0; i-- {
 		loc := locations[i]
@@ -108,16 +124,81 @@ func cmdBack(src string) error {
 	locations = locations[:len(locations)-1]
 	hist[origKey] = locations
 
+	// If this back restored a parent directory, clean up orphaned sub-project
+	// entries that were created as separate entries during the parent move.
+	// These sub-projects were physically moved/restored with the parent but
+	// never had their own history entries updated — they're now redundant.
+	for key := range hist {
+		if key != origKey && isUnderDir(prev.Path, key) {
+			delete(hist, key)
+		}
+	}
+
 	return saveHistory(hist, aliases)
 }
 
 func moveDir(src, dst string) error {
-	var wts []worktreeInfo
-	if isGitRepo(src) {
-		var err error
-		wts, err = listWorktrees(src)
+	// Resolve symlinks to get canonical paths. On macOS /tmp is a symlink
+	// to /private/tmp, and git may return paths with a different prefix
+	// than Go's filepath.Abs. Normalizing both ensures correct comparisons.
+	if resolved, err := filepath.EvalSymlinks(src); err == nil {
+		src = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(dst); err == nil {
+		dst = resolved
+	}
+
+	// Collect all worktrees from git repos under src (including src itself).
+	// This handles parent-directory moves where the parent itself isn't a git
+	// repo but contains subdirectories that are (with linked worktrees).
+	type wtRec struct {
+		wtPath   string
+		mainRepo string
+	}
+	var wtRecs []wtRec
+
+	addWorktrees := func(repoPath string) {
+		wts, err := listWorktrees(repoPath)
 		if err != nil {
-			wts = nil
+			return
+		}
+		for _, wt := range wts {
+			// Normalize worktree path (git may return /private/tmp while
+			// Go uses /tmp on macOS).
+			wtPath := wt.path
+			if resolved, err := filepath.EvalSymlinks(wtPath); err == nil {
+				wtPath = resolved
+			}
+			// Deduplicate: a worktree can be listed by multiple repos
+			seen := false
+			for _, r := range wtRecs {
+				if r.wtPath == wtPath {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				wtRecs = append(wtRecs, wtRec{wtPath: wtPath, mainRepo: repoPath})
+			}
+		}
+	}
+
+	if isGitRepo(src) {
+		addWorktrees(src)
+	}
+
+	// Also check immediate subdirectories for nested git repos.
+	// This handles the case where src is a parent directory containing
+	// git repos (and their worktrees) but is not itself a git repo.
+	if entries, err := os.ReadDir(src); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			subPath := filepath.Join(src, e.Name())
+			if isGitRepo(subPath) {
+				addWorktrees(subPath)
+			}
 		}
 	}
 
@@ -125,15 +206,31 @@ func moveDir(src, dst string) error {
 		return fmt.Errorf("move: %w", err)
 	}
 
-	for _, wt := range wts {
-		if err := updateWorktreeGitFile(wt.path, dst); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to update worktree %s: %v\n", wt.path, err)
+	// Update worktree .git files. If the worktree or its main repo were
+	// under the moved directory, their paths are now under dst.
+	for _, r := range wtRecs {
+		newWtPath := r.wtPath
+		newMainRepo := r.mainRepo
+		if isUnderDir(src, r.wtPath) {
+			newWtPath = filepath.Join(dst, r.wtPath[len(src):])
+		}
+		if isUnderDir(src, r.mainRepo) {
+			newMainRepo = filepath.Join(dst, r.mainRepo[len(src):])
+		}
+		if err := updateWorktreeGitFile(newWtPath, newMainRepo); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to update worktree %s: %v\n", newWtPath, err)
 			continue
 		}
-		fmt.Printf("  updated worktree: %s\n", displayPath(wt.path))
+		fmt.Printf("  updated worktree: %s\n", displayPath(newWtPath))
 	}
 
 	return nil
+}
+
+// isUnderDir reports whether child equals parent or is a descendant path
+// within parent.
+func isUnderDir(parent, child string) bool {
+	return child == parent || strings.HasPrefix(child, parent+string(filepath.Separator))
 }
 
 func moveWorktree(src, dst string) error {

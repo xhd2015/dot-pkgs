@@ -1,3 +1,10 @@
+# Scenario
+
+List all tracked projects.
+
+mvd --add proj1; mvd --add proj2 → [(proj1)], [(proj2)]
+mvd --list → shows both
+
 ## Steps
 - Create two project directories proj1 and proj2.
 - Add both with --add.

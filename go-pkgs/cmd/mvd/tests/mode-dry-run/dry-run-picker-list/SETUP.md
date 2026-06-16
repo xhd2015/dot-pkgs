@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --picker-list: read-only, runs normally.
+
+mvd --add tracked → [(tracked)]
+mvd --dry-run --picker-list → dumps normally
+
 ## Steps
 - Add some history, then run `mvd --dry-run --picker-list` (read-only command).
 - `--dry-run` should NOT affect read-only commands.

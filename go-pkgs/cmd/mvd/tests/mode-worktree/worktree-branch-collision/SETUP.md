@@ -1,3 +1,10 @@
+# Scenario
+
+Branch name collision generates a date-suffixed name.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+mvd -w repo wt → [(repo), (wt w:wt), (wt w:wt-YYYY-MM-DD)]
+
 ## Steps
 - Create a git repo with an existing branch "myfeature".
 - Use -w with a target dir that would normally produce branch "myfeature".

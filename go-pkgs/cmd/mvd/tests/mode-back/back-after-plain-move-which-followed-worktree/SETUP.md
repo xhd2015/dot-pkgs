@@ -1,3 +1,11 @@
+# Scenario
+
+--back skips worktree entries to find the correct previous location. Was a bug: used to try moving onto the worktree dir.
+
+mvd -w base target → [(base), (target w:target)]
+mvd base another → [(base), (target w:target), (another)]
+mvd --back another → [(base), (target w:target)]
+
 ## Steps
 - Create a git repo at work/base with one commit.
 - Use `mvd -w base target` to create a worktree at work/target.

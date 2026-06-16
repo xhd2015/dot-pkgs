@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --clear: prints intent, history intact.
+
+mvd --add tracked; mvd tracked dst → [(tracked), (dst/tracked)]
+mvd --dry-run --clear tracked → prints 'would clear'
+
 ## Steps
 - Move a directory to create history, then dry-run clear its history.
 

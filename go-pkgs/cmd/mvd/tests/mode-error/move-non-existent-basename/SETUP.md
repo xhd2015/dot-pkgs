@@ -1,3 +1,9 @@
+# Scenario
+
+Error when the basename resolves to nothing.
+
+mvd no-match dst → error → no configured project match
+
 ## Steps
 - Try to move by a basename "git-ops" that does not match any project.
 - cwd is not the original project root.

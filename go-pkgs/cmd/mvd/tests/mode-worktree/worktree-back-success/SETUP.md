@@ -1,3 +1,11 @@
+# Scenario
+
+Successful worktree removal after merge.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+merge wt branch → [merged]
+mvd --back wt → [(repo)]
+
 ## Steps
 - Create a worktree at work/feature.
 - Commit work, merge to main, then --back.

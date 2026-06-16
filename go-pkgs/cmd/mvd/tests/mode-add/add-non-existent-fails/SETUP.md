@@ -1,3 +1,9 @@
+# Scenario
+
+Error when the directory does not exist.
+
+mvd --add no-such-dir → error → does not exist
+
 ## Steps
 - Attempt to add a directory path that does not exist on the filesystem.
 - This should fail because `mvd --add` requires the target directory to exist.

@@ -1,3 +1,9 @@
+# Scenario
+
+--back at the origin is a no-op.
+
+mvd --back src → no-op → nothing to move back
+
 ## Steps
 - Create `src` and `dst` directories.
 - Move `src` into `dst` (creates a history chain of two locations).

@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --rm: prints intent, history entry retained.
+
+mvd --add tracked → [(tracked)]
+mvd --dry-run --rm tracked → prints 'would remove'
+
 ## Steps
 - Add a directory to history, then dry-run remove it.
 

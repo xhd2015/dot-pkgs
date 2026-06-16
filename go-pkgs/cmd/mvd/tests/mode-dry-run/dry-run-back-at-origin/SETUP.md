@@ -1,3 +1,9 @@
+# Scenario
+
+--dry-run --back at origin: no-op, no dry-run message.
+
+mvd --dry-run --back src → no-op → nothing to move back
+
 ## Steps
 - Add a directory to history (single entry, at origin).
 - Dry-run `--back` — should be a no-op (nothing to move back to).

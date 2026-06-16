@@ -1,3 +1,10 @@
+# Scenario
+
+Combined marker (main, aliases: ...) when root has alias + is main.
+
+mvd --add repo; mvd --add-alias repo al → [(repo)]
+markers → (main, aliases: al)
+
 ## Steps
 - Write history with root + worktree + alias ("myproj").
 - Create both directories so they are alive.

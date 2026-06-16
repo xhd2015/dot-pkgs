@@ -1,3 +1,10 @@
+# Scenario
+
+Rebase a project entry to a new root path.
+
+mvd src d1 → [(src), (d1/src)]
+mvd --rebase src rebased → [(rebased), (d1/src)]
+
 ## Steps
 - Move src to d1 so it has a history entry.
 - Then rebase src onto newBase.

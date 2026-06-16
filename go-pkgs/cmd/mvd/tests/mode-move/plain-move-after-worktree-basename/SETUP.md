@@ -1,3 +1,10 @@
+# Scenario
+
+Same as above, but using basename resolution for the source.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+mvd repo dst → [(repo), (wt w:wt), (dst)]
+
 ## Steps
 - Create a git repo at work/repo with one commit.
 - Use `mvd -w repo wt` to create a worktree at work/wt.

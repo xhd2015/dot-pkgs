@@ -17,7 +17,8 @@ mvd tests
 ├── mode-error/          # Error handling
 ├── mode-dollar-expansion/ # $X env var expansion via lls config
 ├── mode-alias-storage/    # aliases stored inside history.json
-└── mode-dry-run/          # --dry-run flag (skips modifications, prints intent)
+├── mode-dry-run/          # --dry-run flag (skips modifications, prints intent)
+└── mode-safety/           # overlapping paths between moves and worktrees
 ```
 
 ## Test Case Index
@@ -118,6 +119,13 @@ mvd tests
 | mode-dry-run | dry-run-list | --dry-run with --list: read-only command runs normally, no dry-run output |
 | mode-dry-run | dry-run-which | --dry-run with --which: read-only command runs normally, no dry-run output |
 | mode-dry-run | dry-run-picker-list | --dry-run with --picker-list: read-only command runs normally, no dry-run output |
+| mode-safety | move-parent-with-worktree | Move parent dir containing tracked repo + WT; WT .git stays stale (BUG) |
+| mode-safety | back-after-parent-move | --back parent after Scenario A; sub-project history is dead (BUG) |
+| mode-safety | back-worktree-stale-mainrepo | --back WT after main repo moved; position mismatch (BUG: stale MainRepo) |
+| mode-safety | move-into-worktree-dir | Plain move of main repo into its own worktree directory |
+| mode-safety | back-from-nested-in-worktree | --back restores from nested position; WT .git updated correctly |
+| mode-safety | move-to-existing-worktree-path | Plain move targeting path that IS an existing worktree (joins basename) |
+| mode-safety | back-long-chain-worktree-middle | Long chain; --back skips WT entry for prev |
 
 ## How to Run
 

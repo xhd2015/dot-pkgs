@@ -1,3 +1,9 @@
+# Scenario
+
+Worktree creation using basename resolution.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+
 ## Steps
 - Create a project repo under work/projects/myrepo.
 - Add it to mvd history.

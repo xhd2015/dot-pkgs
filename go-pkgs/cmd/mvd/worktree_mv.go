@@ -75,7 +75,22 @@ func cmdWorktreeMove(src, dst string) error {
 
 func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 	last := locations[len(locations)-1]
-	mainRepo := last.Git.MainRepo
+
+	// Read the current main repo from the worktree's .git file on disk.
+	// The history's MainRepo may be stale if the main repo was moved
+	// via a plain move after the worktree was created.
+	mainRepo, err := readWorktreeMainRepo(last.Path)
+	if err != nil {
+		// Fall back to history value with a warning
+		mainRepo = last.Git.MainRepo
+		fmt.Fprintf(os.Stderr, "warning: could not read worktree main repo from disk, using history: %s\n", displayPath(mainRepo))
+	}
+
+	// Verify the main repo still exists on disk
+	if _, err := os.Stat(mainRepo); err != nil {
+		return fmt.Errorf("main repo %s no longer exists (worktree references stale path; the main repo may have been moved or deleted)", displayPath(mainRepo))
+	}
+
 	branch := last.Git.Branch
 
 	if err := checkWorktreeClean(last.Path); err != nil {
@@ -112,6 +127,68 @@ func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 
 	hist[origKey] = locations[:len(locations)-1]
 	if len(hist[origKey]) <= 1 {
+		delete(hist, origKey)
+	}
+
+	return saveHistory(hist, aliases)
+}
+
+// cmdWorktreeBackAt removes a worktree entry at the given index from the chain.
+// Unlike cmdWorktreeBack (which always removes the last entry), this handles
+// worktrees at any position — e.g. when the chain is [repo, wt(wt), mid] and
+// the user does --back on wt in the middle.
+func cmdWorktreeBackAt(origKey string, locations []LocationEntry, idx int, wtLoc LocationEntry) error {
+	// Read the current main repo from the worktree's .git file on disk.
+	mainRepo, err := readWorktreeMainRepo(wtLoc.Path)
+	if err != nil {
+		mainRepo = wtLoc.Git.MainRepo
+		fmt.Fprintf(os.Stderr, "warning: could not read worktree main repo from disk, using history: %s\n", displayPath(mainRepo))
+	}
+
+	if _, err := os.Stat(mainRepo); err != nil {
+		return fmt.Errorf("main repo %s no longer exists (worktree references stale path; the main repo may have been moved or deleted)", displayPath(mainRepo))
+	}
+
+	branch := wtLoc.Git.Branch
+
+	if err := checkWorktreeClean(wtLoc.Path); err != nil {
+		return err
+	}
+
+	if err := checkBranchMerged(branch, mainRepo); err != nil {
+		return err
+	}
+
+	if dryRun {
+		fmt.Printf("dry-run: would remove worktree %s\n", displayPath(wtLoc.Path))
+		return nil
+	}
+
+	cmd := exec.Command("git", "-C", mainRepo, "worktree", "remove", wtLoc.Path)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git worktree remove: %w\n%s", err, out)
+	}
+
+	cmd = exec.Command("git", "-C", mainRepo, "branch", "-D", branch)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git branch -D %s: %w\n%s", branch, err, out)
+	}
+
+	fmt.Printf("worktree removed: %s [branch: %s deleted]\n", displayPath(wtLoc.Path), branch)
+
+	hist, aliases, err := loadHistory()
+	if err != nil {
+		return err
+	}
+
+	// Splice out the worktree entry at idx, preserving subsequent entries.
+	newLocs := make([]LocationEntry, 0, len(locations)-1)
+	newLocs = append(newLocs, locations[:idx]...)
+	newLocs = append(newLocs, locations[idx+1:]...)
+	hist[origKey] = newLocs
+	if len(newLocs) <= 1 {
 		delete(hist, origKey)
 	}
 

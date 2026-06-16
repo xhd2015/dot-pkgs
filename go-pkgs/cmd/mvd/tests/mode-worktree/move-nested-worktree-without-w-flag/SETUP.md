@@ -1,3 +1,10 @@
+# Scenario
+
+Nested worktree .git file is updated after os.Rename move.
+
+mvd --add wt → [(wt) w:wt, nested .git]
+mvd wt dst → [(wt), (dst) .git updated]
+
 ## Steps
 - Create a git repo at work/main.
 - Manually add a worktree at work/readonly-master.

@@ -1,3 +1,11 @@
+# Scenario
+
+Clear history using basename resolution.
+
+mvd --add tracked → [(tracked)]
+mvd tracked dst → [(tracked), (dst/tracked)]
+mvd --clear tracked → []
+
 ## Steps
 - Add a project directory to mvd.
 - Change to a separate working directory to test basename lookup.

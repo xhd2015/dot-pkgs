@@ -1,3 +1,10 @@
+# Scenario
+
+Picker dump shows root + 1 worktree (2 entries).
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+mvd --picker-list → shows 2 entries
+
 ## Steps
 - Write a history file with one entry: root path + one worktree location with git metadata.
 - Run --picker-list to inspect picker output.

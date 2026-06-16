@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --vscode: prints intent, no code launched.
+
+mvd --add tracked → [(tracked)]
+mvd --dry-run --vscode tracked → prints 'would open VSCode'
+
 ## Steps
 - Add a directory to history, then dry-run `--vscode`.
 

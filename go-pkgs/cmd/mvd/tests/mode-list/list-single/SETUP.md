@@ -1,3 +1,10 @@
+# Scenario
+
+List a single project's full history chain.
+
+mvd src dst → [(src), (dst/src)]
+mvd --list src → shows chain
+
 ## Steps
 - Move src to dst to create a history chain.
 - List the src path to see its full chain.

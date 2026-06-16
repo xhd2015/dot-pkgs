@@ -1,3 +1,10 @@
+# Scenario
+
+Adding the same directory twice is idempotent.
+
+mvd --add tracked → [(tracked)]
+mvd --add tracked → [(tracked)]  (no change)
+
 ## Steps
 - Create a directory and add it with --add.
 - Add the same directory again with --add.

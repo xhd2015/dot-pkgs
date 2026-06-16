@@ -1,3 +1,9 @@
+# Scenario
+
+--dry-run with --add: prints intent, skips history write.
+
+mvd --dry-run --add tracked → prints 'would add'
+
 ## Steps
 - Create a directory under WorkRoot.
 - Run `mvd --dry-run --add dir` to dry-run adding it to history.

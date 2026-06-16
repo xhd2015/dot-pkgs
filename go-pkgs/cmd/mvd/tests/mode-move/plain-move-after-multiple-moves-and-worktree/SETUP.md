@@ -1,3 +1,12 @@
+# Scenario
+
+Deep chain: multiple moves + worktree; plain move finds main repo.
+
+mvd repo A → [(repo), (A)]
+mvd A B → [(repo), (A), (B)]
+mvd -w B wt → [(repo), (A), (B), (wt w:wt)]
+mvd B dst → [(repo), (A), (B), (wt w:wt), (dst)]
+
 ## Steps
 - Create a git repo at work/repo with one commit.
 - Use `mvd repo A` to move the main repo to work/A.

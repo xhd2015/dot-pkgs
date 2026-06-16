@@ -1,3 +1,9 @@
+# Scenario
+
+--dry-run with -w: prints intent, skips git worktree add.
+
+mvd --dry-run -w main feature → prints 'would create worktree'
+
 ## Preconditions
 - Git must be available.
 

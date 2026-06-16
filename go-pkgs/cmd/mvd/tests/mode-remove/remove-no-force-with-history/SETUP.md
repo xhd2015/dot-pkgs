@@ -1,3 +1,11 @@
+# Scenario
+
+Error when removing an entry with history without --force.
+
+mvd --add tracked → [(tracked)]
+mvd tracked dst → [(tracked), (dst/tracked)]
+mvd --rm tracked → error → has move history
+
 ## Steps
 - Create `src` and `d1` directories, then move `src` → `d1` to create a movement history (more than one location).
 - Run `mvd --rm src` without the `--force` flag — this should fail because the entry has movement history that would be lost.

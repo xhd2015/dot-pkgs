@@ -1,3 +1,10 @@
+# Scenario
+
+List by basename resolution.
+
+mvd --add /x/proj → [(/x/proj)]
+mvd --list proj → shows by basename
+
 ## Steps
 - Add a project myproject under projects/.
 - Change to a different cwd and list by basename "myproject".

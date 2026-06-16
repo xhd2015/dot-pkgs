@@ -1,3 +1,9 @@
+# Scenario
+
+Dead external main marker.
+
+dead external main path → (dead external main)
+
 ## Steps
 - Write history with chain: root → wt1 → dst → wt2.
 - Create root, wt1, wt2 directories but NOT dst (dst is dead).

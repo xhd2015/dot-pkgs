@@ -1,3 +1,11 @@
+# Scenario
+
+Picker dump after --back shows only the root (1 entry).
+
+mvd src dst → [(src), (dst/src)]
+mvd --back dst/src → [(src)]
+mvd --picker-list → shows 1 entry
+
 ## Steps
 - Write a history file with a single root entry and no worktree (simulating the state after --back).
 - Run --picker-list to verify only the root path appears.

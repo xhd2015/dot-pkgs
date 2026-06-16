@@ -1,3 +1,12 @@
+# Scenario
+
+Multiple --back calls unwind the full chain to the origin.
+
+mvd src d1 → [(src), (d1/src)]
+mvd d1/src d2 → [(src), (d1/src), (d2/src)]
+mvd --back d2/src → [(src), (d1/src)]
+mvd --back d1/src → [(src)]
+
 ## Steps
 - Create three directories: `src`, `d1`, and `d2`.
 - Move `src` → `d1` (first hop), then `d1/src` → `d2` (second hop). This leaves the project at `d2/src` with history chain `src → d1/src → d2/src`.

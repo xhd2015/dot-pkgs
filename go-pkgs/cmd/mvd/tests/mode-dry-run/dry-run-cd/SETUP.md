@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --cd: prints intent, no shell launched.
+
+mvd --add tracked → [(tracked)]
+mvd --dry-run --cd tracked → prints 'would cd'
+
 ## Steps
 - Add a directory to history, then dry-run `--cd`.
 

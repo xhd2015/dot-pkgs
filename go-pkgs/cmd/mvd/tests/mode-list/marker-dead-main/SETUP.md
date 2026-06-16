@@ -1,3 +1,9 @@
+# Scenario
+
+Dead main marker for dead root that is also main.
+
+create then delete repo → (dead main)
+
 ## Steps
 - Write history with root + 1 worktree, but only create the worktree directory (root is dead).
 - Run --picker-list to verify `(dead main)` on root and `(worktree)` on worktree.

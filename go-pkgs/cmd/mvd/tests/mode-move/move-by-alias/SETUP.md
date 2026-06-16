@@ -1,3 +1,11 @@
+# Scenario
+
+Move using a registered alias for the source.
+
+mvd --add src → [(src)]
+mvd --add-alias src al → [(src)]
+mvd al dst → [(src), (dst/src)]
+
 ## Steps
 - Create a project at projects/kool.
 - Move it to a scratch directory (first move).

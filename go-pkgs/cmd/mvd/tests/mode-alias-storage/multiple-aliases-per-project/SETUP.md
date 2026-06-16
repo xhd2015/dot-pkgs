@@ -1,3 +1,9 @@
+# Scenario
+
+Multiple aliases for the same project stored in history.json.
+
+mvd --add repo; --add-alias repo a1; --add-alias repo a2 → [(repo)]  (2 aliases)
+
 ## Steps
 - Create a project directory and add it to mvd tracking.
 - Register two aliases ("mp" and "myproj-alias") for the same project.

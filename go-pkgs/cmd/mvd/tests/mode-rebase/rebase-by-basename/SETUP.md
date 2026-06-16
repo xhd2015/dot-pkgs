@@ -1,3 +1,10 @@
+# Scenario
+
+Rebase using basename resolution.
+
+mvd src d1 → [(src), (d1/src)]
+mvd --rebase src rebased → [(rebased), (d1/src)]
+
 ## Steps
 - Add a project directory to mvd under a dedicated root.
 - Change to a separate working directory to test basename lookup.

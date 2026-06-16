@@ -1,3 +1,11 @@
+# Scenario
+
+After repo→mid, worktree from mid, plain move of repo moves mid (not worktree).
+
+mvd repo mid → [(repo), (mid)]
+mvd -w mid wt → [(repo), (mid), (wt w:wt)]
+mvd repo dst → [(repo), (mid), (wt w:wt), (dst)]
+
 ## Steps
 - Create a git repo at work/repo with one commit.
 - First, `mvd repo mid` to move the main repo to work/mid.

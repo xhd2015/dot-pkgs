@@ -1,3 +1,10 @@
+# Scenario
+
+Explicit worktree path still moves the worktree itself.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+mvd wt dst → [(repo), (dst w:wt)]
+
 ## Steps
 - Create a git repo at work/repo with one commit.
 - Use `mvd -w repo wt` to create a worktree at work/wt.

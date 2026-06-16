@@ -1,3 +1,11 @@
+# Scenario
+
+Error when worktree branch is not merged.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+commit on wt → [unmerged branch]
+mvd --back wt → error → not merged
+
 ## Steps
 - Create a worktree at work/feature.
 - Commit work on the feature branch.

@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --rebase: prints intent, history unchanged.
+
+mvd --add tracked; mvd tracked dst → [(tracked), (dst/tracked)]
+mvd --dry-run --rebase tracked new → prints 'would rebase'
+
 ## Steps
 - Add a directory to history, then dry-run rebase it to a new directory.
 

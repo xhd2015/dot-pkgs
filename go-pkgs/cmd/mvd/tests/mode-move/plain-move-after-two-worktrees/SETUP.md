@@ -1,3 +1,11 @@
+# Scenario
+
+After two worktrees, plain move skips both to find the main repo.
+
+mvd -w repo wt1 → [(repo), (wt1 w:wt1)]
+mvd -w repo wt2 → [(repo), (wt1 w:wt1), (wt2 w:wt2)]
+mvd repo dst → [(repo), (wt1 w:wt1), (wt2 w:wt2), (dst)]
+
 ## Steps
 - Create a git repo at work/repo with one commit.
 - Use `mvd -w repo wt1` to create first worktree.

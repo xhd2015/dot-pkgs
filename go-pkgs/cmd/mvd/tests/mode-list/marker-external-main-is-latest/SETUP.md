@@ -1,3 +1,9 @@
+# Scenario
+
+External main that is also latest — not duplicated.
+
+external main = latest → not duplicated
+
 ## Steps
 - Write history with chain: root → worktree → plain-move (no second worktree).
 - The plain-move destination (dst) is both external main AND latest.

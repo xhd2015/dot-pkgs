@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --rm -f: prints intent, history entry retained.
+
+mvd --add tracked; mvd tracked dst → [(tracked), (dst/tracked)]
+mvd --dry-run --rm -f tracked → prints 'would remove'
+
 ## Steps
 - Add a directory to history, then move it to create movement history (2+ locations).
 - Dry-run force-remove it with `--rm -f`.

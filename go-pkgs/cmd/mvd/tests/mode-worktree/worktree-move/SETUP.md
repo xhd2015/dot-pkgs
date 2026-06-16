@@ -1,3 +1,9 @@
+# Scenario
+
+Create a worktree with -w flag.
+
+mvd -w main feature → [(main), (feature w:feature)]
+
 ## Steps
 - Create a git repo at work/main.
 - Run mvd -w to create a worktree at work/feature.

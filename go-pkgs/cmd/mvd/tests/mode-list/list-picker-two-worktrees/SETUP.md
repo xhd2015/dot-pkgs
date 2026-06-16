@@ -1,3 +1,10 @@
+# Scenario
+
+Picker dump shows root + 2 worktrees (3 entries).
+
+mvd -w repo wt1; mvd -w repo wt2 → [(repo), (wt1 w:wt1), (wt2 w:wt2)]
+mvd --picker-list → shows 3 entries
+
 ## Steps
 - Write a history file with one entry: root path + two worktree locations with git metadata.
 - Run --picker-list to verify all three paths appear.

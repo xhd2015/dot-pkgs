@@ -1,3 +1,10 @@
+# Scenario
+
+--which with $X/myproject via lls env var expansion.
+
+mvd --add $X/myproject → [(projects/myproject)]
+mvd --which $X/myproject → prints path
+
 ## Steps
 - Set up lls config with X env var.
 - Create projects/myproject directory and add it.

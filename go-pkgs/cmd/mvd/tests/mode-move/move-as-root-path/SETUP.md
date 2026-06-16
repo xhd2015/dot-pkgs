@@ -1,3 +1,10 @@
+# Scenario
+
+Move using the original root path as the source identifier.
+
+mvd src d1 → [(src), (d1/src)]
+mvd src d2 → [(src), (d1/src), (d2/src)]
+
 ## Steps
 - Create src, d1, and d2 directories.
 - First move src to d1 to register it in history.

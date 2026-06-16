@@ -1,3 +1,11 @@
+# Scenario
+
+Alias marker on entry that was moved (alias follows moves).
+
+mvd --add repo; mvd --add-alias repo al → [(repo)]
+mvd repo dst → [(repo), (dst/repo)]
+markers → (aliases: al)
+
 ## Steps
 - Write a history file with one entry: a plain move chain (root → moved, no git metadata) with an alias "dp".
 - The directory for the latest path must exist so it appears as alive.

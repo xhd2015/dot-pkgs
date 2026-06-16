@@ -1,3 +1,9 @@
+# Scenario
+
+Plain move of a non-git directory.
+
+mvd src dst → [(src), (dst)]
+
 ## Steps
 - Create src and dst directories under WorkRoot.
 - Write a test file in src.

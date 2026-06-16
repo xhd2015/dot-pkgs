@@ -1,3 +1,9 @@
+# Scenario
+
+No marker for plain alive entry without worktree or alias.
+
+plain alive entry → (no marker)
+
 ## Steps
 - Write history with a single root location, no worktree, no alias.
 - Create the directory so it is alive.

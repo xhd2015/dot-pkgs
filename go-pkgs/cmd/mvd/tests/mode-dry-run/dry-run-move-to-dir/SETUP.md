@@ -1,3 +1,9 @@
+# Scenario
+
+--dry-run move into existing dir: basename join, no actual move.
+
+mvd --dry-run src existing-dir → prints 'would move'  (no change)
+
 ## Steps
 - Create a source directory `src` and an existing destination directory `dst`.
 - Run `mvd --dry-run src dst` where `dst` is an existing directory.

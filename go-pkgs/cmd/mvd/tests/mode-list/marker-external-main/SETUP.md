@@ -1,3 +1,9 @@
+# Scenario
+
+External main path shown (external main). Bug fix for root→WT→plain→WT.
+
+complex chain with external main → shows (external main)
+
 ## Steps
 - Write history with chain: root → worktree → plain-move → worktree.
 - This tests the bug fix: the plain-move destination (dst) must be shown as (external main).

@@ -1,3 +1,9 @@
+# Scenario
+
+Error when the source path does not exist.
+
+mvd no-such-dir dst → error → does not exist
+
 ## Steps
 - Try to move a non-existent source directory.
 - The destination exists.

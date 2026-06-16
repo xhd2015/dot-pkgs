@@ -1,3 +1,10 @@
+# Scenario
+
+Two sequential plain moves forming a chain.
+
+mvd src d1 → [(src), (d1/src)]
+mvd d1/src d2 → [(src), (d1/src), (d2/src)]
+
 ## Steps
 - Create src, d1, and d2 directories.
 - Perform the first move (src -> d1) by calling Run directly.

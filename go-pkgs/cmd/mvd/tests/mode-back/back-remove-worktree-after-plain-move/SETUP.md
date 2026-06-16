@@ -1,3 +1,11 @@
+# Scenario
+
+--back on a worktree after the main repo was plain-moved. The worktree entry is removed while preserving subsequent moves.
+
+mvd repo mid → [(repo), (mid)]
+mvd -w mid wt → [(repo), (mid), (wt w:wt)]
+mvd --back wt → [(repo), (mid)]  (wt removed)
+
 ## Steps
 - Create a git repo at work/repo with one commit.
 - Use `mvd repo mid` to move the main repo to work/mid.

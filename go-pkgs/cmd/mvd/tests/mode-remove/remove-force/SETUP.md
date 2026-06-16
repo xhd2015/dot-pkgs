@@ -1,3 +1,11 @@
+# Scenario
+
+Force-remove an entry with movement history.
+
+mvd --add tracked → [(tracked)]
+mvd tracked dst → [(tracked), (dst/tracked)]
+mvd --rm -f tracked → []  (force removed)
+
 ## Steps
 - Create `src` and `d1` directories, then move `src` → `d1` to create a movement history.
 - Run `mvd --rm -f src` — the `--force` flag clears the history even though the entry has multiple locations.

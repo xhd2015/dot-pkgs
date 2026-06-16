@@ -1,3 +1,11 @@
+# Scenario
+
+Clear history for a tracked project.
+
+mvd --add tracked → [(tracked)]
+mvd tracked dst → [(tracked), (dst/tracked)]
+mvd --clear tracked → []  (history cleared)
+
 ## Steps
 - Move src to dst so it has a history entry.
 - Then clear the history for src.

@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --add-alias: prints intent, alias not persisted.
+
+mvd --add tracked → [(tracked)]
+mvd --dry-run --add-alias tracked al → prints 'would add alias'
+
 ## Steps
 - Add a project to the history first (using normal `mvd --add`).
 - Then run `mvd --dry-run --add-alias myalias PROJECT` to dry-run adding an alias.

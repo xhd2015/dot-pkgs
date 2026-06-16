@@ -1,3 +1,10 @@
+# Scenario
+
+Move using the unique root basename.
+
+mvd src d1 → [(src), (d1/src)]
+mvd src d2 → [(src), (d1/src), (d2/src)]
+
 ## Steps
 - Create a project under WorkRoot/projects/kool.
 - Use --add to track it.

@@ -1,3 +1,10 @@
+# Scenario
+
+Alias survives history save/load cycle after another move.
+
+mvd --add repo; mvd --add-alias repo al → [(repo)]
+mvd al dst → [(repo), (dst/repo)]  (alias preserved)
+
 ## Steps
 - Create two project directories and add both to mvd tracking.
 - Register an alias for the first project.

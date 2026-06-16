@@ -1,3 +1,9 @@
+# Scenario
+
+--dry-run -w with non-git src: validation error still fires.
+
+mvd --dry-run -w plain-dir wt → error → not a git repository
+
 ## Steps
 - Create a non-git directory, then try `mvd --dry-run -w nosrc dst`.
 - Validation should still fail because SRC is not a git repo.

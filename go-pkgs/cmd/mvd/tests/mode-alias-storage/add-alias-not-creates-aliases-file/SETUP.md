@@ -1,3 +1,9 @@
+# Scenario
+
+--add-alias does not create aliases.json; alias stored in history.json.
+
+mvd --add repo; mvd --add-alias repo al → [(repo)]  (alias in history.json)
+
 ## Steps
 - Create a project directory.
 - Add the project to mvd tracking via `--add`.

@@ -1,3 +1,11 @@
+# Scenario
+
+Error when worktree has uncommitted changes.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+touch wt/dirty → [dirty worktree]
+mvd --back wt → error → uncommitted changes
+
 ## Steps
 - Create a worktree at work/feature.
 - Write an uncommitted file in the worktree.

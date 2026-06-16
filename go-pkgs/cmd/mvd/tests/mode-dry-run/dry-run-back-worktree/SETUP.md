@@ -1,3 +1,11 @@
+# Scenario
+
+--dry-run with --back (worktree): prints intent, no git worktree remove.
+
+mvd -w repo wt → [(repo), (wt w:wt)]
+merge branch → [merged]
+mvd --dry-run --back wt → prints 'would remove worktree'
+
 ## Preconditions
 - Git must be available.
 

@@ -1,3 +1,10 @@
+# Scenario
+
+Worktree creation when destination is an existing directory.
+
+mkdir existing-dir → [existing-dir]
+mvd -w repo existing-dir → [(repo), (existing-dir/repo w:existing-dir/repo)]
+
 ## Steps
 - Create a git repo at work/main.
 - Create an existing destination directory.

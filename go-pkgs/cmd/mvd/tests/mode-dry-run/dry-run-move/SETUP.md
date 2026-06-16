@@ -1,3 +1,9 @@
+# Scenario
+
+--dry-run plain move: prints intent, skips actual move.
+
+mvd --dry-run src dst → prints 'would move'  (no actual change)
+
 ## Steps
 - Create a source directory `src` with a file under WorkRoot.
 - Run `mvd --dry-run src dst` to exercise dry-run plain move.

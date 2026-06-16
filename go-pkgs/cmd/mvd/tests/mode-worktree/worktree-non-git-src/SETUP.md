@@ -1,3 +1,9 @@
+# Scenario
+
+Error when source is not a git repo.
+
+mvd -w plain-dir wt → error → not a git repository
+
 ## Steps
 - Create a non-git directory.
 - Try to use -w on it.

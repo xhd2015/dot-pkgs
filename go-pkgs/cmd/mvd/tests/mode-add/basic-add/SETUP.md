@@ -1,3 +1,9 @@
+# Scenario
+
+Add a directory to tracking.
+
+mvd --add tracked → [(tracked)]
+
 ## Steps
 - Create a directory to track.
 - Use --add to register it with mvd.

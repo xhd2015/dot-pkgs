@@ -1,3 +1,10 @@
+# Scenario
+
+Picker dump for plain move shows only the latest (1 entry).
+
+mvd src dst → [(src), (dst/src)]
+mvd --picker-list → shows 1 entry
+
 ## Steps
 - Write a history file with one entry: a plain move chain (root → moved, no git metadata).
 - Run --picker-list to verify only the latest location appears (regression: plain moves should not show the old root).

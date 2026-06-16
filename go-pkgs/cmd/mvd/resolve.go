@@ -207,13 +207,17 @@ func resolveMoveSource(hist History, aliases map[string]string, src string) (str
 
 	last := locations[len(locations)-1].Path
 	root := locations[0].Path
-	if absSrc != root && absSrc != last {
+	lastNonWorktree := history.FindLastNonWorktreePath(locations)
+
+	// Allow moves from: root, the last entry, or the last non-worktree
+	// entry (when the tail entry is a worktree).
+	if absSrc != root && absSrc != last && absSrc != lastNonWorktree {
 		return "", nil, "", fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
 	}
 
 	sourcePath := last
 	if absSrc != last {
-		sourcePath = history.FindLastNonWorktreePath(locations)
+		sourcePath = lastNonWorktree
 	}
 
 	return origKey, locations, sourcePath, nil
@@ -250,48 +254,57 @@ func resolvePrintPath(hist History, src string) (string, error) {
 	return absSrc, nil
 }
 
-func resolveBackEntry(hist History, aliases map[string]string, src string) (string, []LocationEntry, error) {
+func resolveBackEntry(hist History, aliases map[string]string, src string) (string, []LocationEntry, string, error) {
 	if k, locs, ok, err := resolveBasename(hist, src); ok {
-		return k, locs, nil
+		return k, locs, src, nil
 	} else if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 
 	if isBareBaseName(src) {
 		if _, err := os.Lstat(src); os.IsNotExist(err) {
 			origKey, locations, err := findEntryByAlias(hist, aliases, src)
 			if err != nil {
-				return "", nil, err
+				return "", nil, "", err
 			}
 			if locations != nil {
 				if len(locations) == 0 {
-					return "", nil, fmt.Errorf("empty mv history for alias %s", src)
+					return "", nil, "", fmt.Errorf("empty mv history for alias %s", src)
 				}
-				return origKey, locations, nil
+				return origKey, locations, src, nil
 			}
 		}
 	}
 
 	absSrc, err := resolveInputPath(src)
 	if err != nil {
-		return "", nil, fmt.Errorf("resolve: %w", err)
+		return "", nil, "", fmt.Errorf("resolve: %w", err)
 	}
 
 	origKey, locations := findEntry(hist, absSrc)
 	if locations == nil {
-		return "", nil, fmt.Errorf("no mv history for %s", absSrc)
+		return "", nil, "", fmt.Errorf("no mv history for %s", absSrc)
 	}
 	if len(locations) == 0 {
-		return "", nil, fmt.Errorf("empty mv history for %s", absSrc)
+		return "", nil, "", fmt.Errorf("empty mv history for %s", absSrc)
 	}
 
 	last := locations[len(locations)-1].Path
 	root := locations[0].Path
-	if absSrc != root && absSrc != last {
-		return "", nil, fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
+	// Allow --back on any worktree entry in the chain, not just root/last.
+	// Worktree entries represent parallel branches that can be removed independently.
+	isWorktree := false
+	for _, loc := range locations {
+		if loc.Path == absSrc && loc.Git != nil && loc.Git.Type == "worktree" {
+			isWorktree = true
+			break
+		}
+	}
+	if absSrc != root && absSrc != last && !isWorktree {
+		return "", nil, "", fmt.Errorf("current position mismatch: expected %s at end of history, got %s", absSrc, last)
 	}
 
-	return origKey, locations, nil
+	return origKey, locations, absSrc, nil
 }
 
 func findEntryByAlias(hist History, aliases map[string]string, alias string) (string, []LocationEntry, error) {

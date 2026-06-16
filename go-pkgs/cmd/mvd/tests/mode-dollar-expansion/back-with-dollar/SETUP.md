@@ -1,3 +1,10 @@
+# Scenario
+
+--back with $X/myproject via lls env var expansion.
+
+mvd --add $X/myproject; mvd $X/myproject dst → [(projects/myproject), (dst/myproject)]
+mvd --back $X/myproject → [(projects/myproject)]
+
 ## Steps
 - Set up lls config with X env var.
 - Create projects/myproject directory.

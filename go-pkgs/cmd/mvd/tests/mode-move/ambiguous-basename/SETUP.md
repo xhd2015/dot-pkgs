@@ -1,3 +1,11 @@
+# Scenario
+
+Error when a basename matches multiple roots.
+
+mvd --add a1/src → [(a1/src)]
+mvd --add a2/src → [… (a2/src)]
+mvd src dst → error → ambiguous
+
 ## Steps
 - Create two projects with the same basename (kool) at different paths.
 - Track both projects with --add.

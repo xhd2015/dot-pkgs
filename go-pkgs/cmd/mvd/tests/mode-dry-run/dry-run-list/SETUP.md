@@ -1,3 +1,10 @@
+# Scenario
+
+--dry-run with --list: read-only, runs normally.
+
+mvd --add tracked → [(tracked)]
+mvd --dry-run --list → lists normally
+
 ## Steps
 - Add some history, then run `mvd --dry-run --list` (read-only command).
 - `--dry-run` should NOT affect read-only commands — they run normally.

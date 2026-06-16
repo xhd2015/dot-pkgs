@@ -1,3 +1,10 @@
+# Scenario
+
+Alias marker on plain entry without worktree.
+
+mvd --add repo; mvd --add-alias repo al → [(repo)]
+markers → (aliases: al)
+
 ## Steps
 - Write history with a single root location (no worktree) and an alias "myproj".
 - Create the directory so it is alive.

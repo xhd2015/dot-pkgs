@@ -1,3 +1,9 @@
+# Scenario
+
+Dead marker for dead plain entry (no worktree).
+
+dead plain entry → (dead)
+
 ## Steps
 - Write history with a plain move chain (root → moved, no git metadata).
 - Create only the root directory; moved does not exist.

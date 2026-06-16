@@ -1,3 +1,10 @@
+# Scenario
+
+Worktree directory is already a worktree; -w triggers git worktree add.
+
+mvd --add wt → [(wt) w:wt exists]
+mvd -w wt new-wt → [(wt), (new-wt w:new-wt)]
+
 ## Steps
 - Create a git repo at work/main.
 - Use -w to create a worktree at work/feature-wt.

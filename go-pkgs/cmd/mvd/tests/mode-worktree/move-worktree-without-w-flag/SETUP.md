@@ -1,3 +1,10 @@
+# Scenario
+
+Without -w flag, worktree dir is moved via os.Rename.
+
+mvd --add wt → [(wt) w:wt exists]
+mvd wt dst → [(wt), (dst) w:wt]
+
 ## Steps
 - Create a git repo at work/main.
 - Manually add a worktree at work/feature-wt.

@@ -1,3 +1,9 @@
+# Scenario
+
+Combined dead marker for dead root with alias.
+
+dead main with alias → (dead main, aliases: ...)
+
 ## Steps
 - Write history with root (with alias "myproj") + 1 worktree, but only create the worktree.
 - Root is dead AND main AND has alias → expects `(dead main, aliases: myproj)`.
