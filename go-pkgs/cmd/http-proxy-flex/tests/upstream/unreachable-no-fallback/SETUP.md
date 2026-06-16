@@ -7,7 +7,8 @@
 ```go
 func Setup(t *testing.T, req *Request) error {
 	req.Args = []string{
-		"--upstream-proxy", "http://127.0.0.1:19999",
+		"--upstream-proxy", "http://127.0.0.1:19987",
+		"--listen-port", "19988",
 	}
 	return nil
 }

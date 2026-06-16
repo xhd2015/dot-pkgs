@@ -13,10 +13,4 @@ func Setup(t *testing.T, req *Request) error {
 	t.Log("entering listen-port test mode")
 	return nil
 }
-
-func Run(t *testing.T, req *Request) (*Response, error) {
-	binPath := getBinPath(t)
-	output := startAndCapture(t, binPath, req.Args...)
-	return &Response{Output: output, ExitCode: 0}, nil
-}
 ```

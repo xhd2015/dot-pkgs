@@ -6,9 +6,9 @@
 - Capture initial log output, then kill
 
 ```go
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Setup(t *testing.T, req *Request) error {
 	binPath := getBinPath(t)
-	output := startWithLiveUpstreamAndCapture(t, binPath, "--fallback-direct")
-	return &Response{Output: output, ExitCode: 0}, nil
+	req.CapturedOutput = startWithLiveUpstreamAndCapture(t, binPath, "--fallback-direct", "--listen-port", "19984")
+	return nil
 }
 ```

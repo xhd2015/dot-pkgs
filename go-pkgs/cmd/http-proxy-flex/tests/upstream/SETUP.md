@@ -14,12 +14,6 @@ func Setup(t *testing.T, req *Request) error {
 	return nil
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
-	binPath := getBinPath(t)
-	output := startAndCapture(t, binPath, req.Args...)
-	return &Response{Output: output, ExitCode: 0}, nil
-}
-
 func startWithLiveUpstreamAndCapture(t *testing.T, binPath string, extraArgs ...string) string {
 	t.Helper()
 	upstream, err := net.Listen("tcp", "127.0.0.1:0")

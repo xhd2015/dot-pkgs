@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Setup(t *testing.T, req *Request) error {
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	}))
@@ -26,7 +26,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	proxyListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, fmt.Errorf("find proxy port: %w", err)
+		return fmt.Errorf("find proxy port: %w", err)
 	}
 	proxyPort := proxyListener.Addr().(*net.TCPAddr).Port
 	proxyListener.Close()
@@ -34,19 +34,19 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	binPath := getBinPath(t)
 
 	cmd := exec.Command(binPath,
-		"--upstream-proxy", "http://127.0.0.1:19999",
+		"--upstream-proxy", "http://127.0.0.1:19989",
 		"--fallback-direct",
 		"--listen-port", fmt.Sprintf("%d", proxyPort),
 	)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cmd.Stderr = cmd.Stdout
 
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return err
 	}
 	defer cmd.Process.Kill()
 	defer cmd.Wait()
@@ -54,7 +54,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	sc := newStreamCollector(stdout)
 
 	if !waitForPattern(func() string { return scNewOutput(sc) }, "listening on", 10*time.Second) {
-		return nil, fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", scFullOutput(sc))
+		return fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", scFullOutput(sc))
 	}
 
 	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
@@ -71,9 +71,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	cmd.Process.Kill()
 	cmd.Wait()
 
-	return &Response{
-		Output:   scFullOutput(sc),
-		ExitCode: 0,
-	}, nil
+	req.CapturedOutput = scFullOutput(sc)
+	return nil
 }
 ```

@@ -17,13 +17,13 @@ import (
 	"time"
 )
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Setup(t *testing.T, req *Request) error {
 	binPath := getBinPath(t)
 
 	// Step 1: start upstream listener before the proxy
 	upstream, err := net.Listen("tcp", "127.0.0.1:19996")
 	if err != nil {
-		return nil, fmt.Errorf("start upstream listener: %v", err)
+		return fmt.Errorf("start upstream listener: %v", err)
 	}
 	defer upstream.Close()
 
@@ -36,25 +36,23 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cmd.Stderr = cmd.Stdout
 
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return err
 	}
 
 	sc := newStreamCollector(stdout)
 
-	fail := func(msg string) (*Response, error) {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return nil, fmt.Errorf("%s\noutput so far:\n%s", msg, scFullOutput(sc))
-	}
+	getOutput := func() string { return scNewOutput(sc) }
 
 	// Step 3: wait for initial "using upstream proxy"
-	if !waitForPattern(func() string { return scNewOutput(sc) }, "using upstream proxy", 10*time.Second) {
-		return fail("timed out waiting for 'using upstream proxy'")
+	if !waitForPattern(getOutput, "using upstream proxy", 10*time.Second) {
+		cmd.Process.Kill()
+		cmd.Wait()
+		return fmt.Errorf("timed out waiting for 'using upstream proxy'\noutput:\n%s", scFullOutput(sc))
 	}
 	scConsume(sc)
 
@@ -62,24 +60,28 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	upstream.Close()
 
 	// Step 5: wait for "falling back to direct"
-	if !waitForPattern(func() string { return scNewOutput(sc) }, "falling back to direct", 10*time.Second) {
+	if !waitForPattern(getOutput, "falling back to direct", 10*time.Second) {
 		cmd.Process.Kill()
 		cmd.Wait()
-		return fail("timed out waiting for 'falling back to direct'")
+		return fmt.Errorf("timed out waiting for 'falling back to direct'\noutput:\n%s", scFullOutput(sc))
 	}
 	scConsume(sc)
 
 	// Step 6: start new upstream listener on same port
 	upstream2, err := net.Listen("tcp", "127.0.0.1:19996")
 	if err != nil {
-		return fail(fmt.Sprintf("start upstream listener again: %v", err))
+		cmd.Process.Kill()
+		cmd.Wait()
+		return fmt.Errorf("start upstream listener again: %v", err)
 	}
 	defer upstream2.Close()
 
 	// Step 7: wait for "upstream proxy available, switching"
-	if !waitForPattern(func() string { return scNewOutput(sc) }, "upstream proxy available, switching", 10*time.Second) {
+	if !waitForPattern(getOutput, "upstream proxy available, switching", 10*time.Second) {
 		upstream2.Close()
-		return fail("timed out waiting for 'upstream proxy available, switching'")
+		cmd.Process.Kill()
+		cmd.Wait()
+		return fmt.Errorf("timed out waiting for 'upstream proxy available, switching'\noutput:\n%s", scFullOutput(sc))
 	}
 	scConsume(sc)
 
@@ -88,9 +90,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	cmd.Process.Kill()
 	cmd.Wait()
 
-	return &Response{
-		Output:   scFullOutput(sc),
-		ExitCode: 0,
-	}, nil
+	req.CapturedOutput = scFullOutput(sc)
+	return nil
 }
 ```

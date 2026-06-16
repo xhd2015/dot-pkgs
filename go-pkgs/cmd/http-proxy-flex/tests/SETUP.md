@@ -17,6 +17,7 @@
 ```go
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -28,7 +29,8 @@ import (
 )
 
 type Request struct {
-	Args []string
+	Args           []string
+	CapturedOutput string
 }
 
 type Response struct {
@@ -144,18 +146,43 @@ func waitForPattern(getOutput func() string, pattern string, timeout time.Durati
 	}
 }
 
-// default Run (used by help/show)
+// default Run — handles both short-lived commands (e.g. --help) and long-running server processes
 func Run(t *testing.T, req *Request) (*Response, error) {
+	if req.CapturedOutput != "" {
+		return &Response{
+			Output:   req.CapturedOutput,
+			ExitCode: 0,
+		}, nil
+	}
+
 	binPath := getBinPath(t)
 	cmd := exec.Command(binPath, req.Args...)
-	output, _ := cmd.CombinedOutput()
-	exitCode := 0
-	if cmd.ProcessState != nil {
-		exitCode = cmd.ProcessState.ExitCode()
+
+	var stdoutBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stdoutBuf
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start: %w", err)
 	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case <-done:
+		// command exited naturally (e.g. --help)
+	case <-time.After(4 * time.Second):
+		// long-running server — kill and capture output
+		cmd.Process.Kill()
+		<-done
+	}
+
 	return &Response{
-		Output:   string(output),
-		ExitCode: exitCode,
+		Output:   stdoutBuf.String(),
+		ExitCode: 0,
 	}, nil
 }
 ```
