@@ -18,6 +18,14 @@ func cmdWorktreeMove(src, dst string) error {
 		src = locs[len(locs)-1].Path
 	} else if err != nil {
 		return err
+	} else if isBareBaseName(src) {
+		if _, err := os.Lstat(src); os.IsNotExist(err) {
+			if _, locs, err := findEntryByAlias(hist, aliases, src); err != nil {
+				return err
+			} else if locs != nil {
+				src = locs[len(locs)-1].Path
+			}
+		}
 	}
 
 	srcAbs, err := resolveInputPath(src)

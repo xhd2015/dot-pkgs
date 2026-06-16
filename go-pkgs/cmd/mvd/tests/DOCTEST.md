@@ -50,6 +50,8 @@ mvd tests
 | mode-worktree | move-worktree-without-w-flag | Without -w, worktree is moved via os.Rename |
 | mode-worktree | move-nested-worktree-without-w-flag | Nested worktree .git file is updated |
 | mode-worktree | worktree-move-to-existing-dir | Worktree creation when destination is an existing directory |
+| mode-worktree | worktree-by-alias | Worktree creation using a registered alias |
+| mode-worktree | worktree-alias-not-found | Error when alias is not registered for -w |
 | mode-add | basic-add | Add a directory to tracking |
 | mode-add | add-duplicate | Adding same dir twice is idempotent |
 | mode-add | add-non-existent-fails | Error when dir does not exist |
