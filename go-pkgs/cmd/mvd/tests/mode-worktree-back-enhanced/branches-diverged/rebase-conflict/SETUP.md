@@ -45,9 +45,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, mainRepo, "commit", "-m", "main change to README")
 
 	// Run --back with TTY and Enter (confirm rebase). Rebase will conflict on README.md.
-	req.Args = []string{"--back", wtDir}
+	req.Args = []string{"--back", "--confirm-from-stdin", wtDir}
 	req.StdinInput = "\n"
-	req.UseScript = true
 	return nil
 }
 ```

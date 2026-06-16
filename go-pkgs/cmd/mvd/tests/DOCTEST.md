@@ -10,6 +10,7 @@ mvd tests
 ├── mode-worktree/       # mvd -w SRC DST (git worktree)
 ├── mode-add/            # mvd --add DIR
 ├── mode-remove/         # mvd --rm DIR
+├── mode-history-v3/     # history.json v3.0 moves schema
 ├── mode-rebase/         # mvd --rebase DIR NEW-DIR
 ├── mode-back/           # mvd --back SRC
 ├── mode-list/           # mvd --list [SRC] + --picker-list (marker tests)
@@ -61,6 +62,10 @@ mvd tests
 | mode-remove | remove-no-force-with-history | Error when removing entry with history without --force |
 | mode-remove | remove-by-chain-path | Remove a non-root path from a chain, preserving root |
 | mode-remove | remove-worktree-entry | Remove one worktree entry from a multi-worktree chain |
+| mode-remove | remove-dead-external-main | `--rm` on dead external main chain path (findEntry, not hist[absDir]) |
+| mode-remove | remove-dead-worktree-chain-path | `--rm` on dead worktree in long chain; root and siblings preserved |
+| mode-history-v3 | save-format-after-move | After add + worktree + plain move, history.json is v3.0 moves format |
+| mode-history-v3 | external-main-worktree-move | v3.0 moves round-trip + picker `(external main)` for agent-pro topology |
 | mode-rebase | basic-rebase | Rebase entry to a new root |
 | mode-rebase | rebase-by-basename | Rebase using basename resolution |
 | mode-back | basic-back | Move back one step |
@@ -134,6 +139,7 @@ mvd tests
 | mode-safety | back-long-chain-worktree-middle | Long chain; --back skips WT entry for prev |
 | mode-worktree-back-enhanced | dirty-worktree | Dirty worktree → error (existing behavior unchanged) |
 | mode-worktree-back-enhanced | branch-merged | Branch already merged → success (existing behavior unchanged) |
+| mode-worktree-back-enhanced | branch-ahead/pipe-without-confirm-flag | Piped stdin without --confirm-from-stdin → error (no accidental merge) |
 | mode-worktree-back-enhanced | branch-ahead/confirm-default | HEAD ancestor of branch, user presses Enter → ff merge + remove |
 | mode-worktree-back-enhanced | branch-ahead/decline | HEAD ancestor of branch, user types 'n' → abort, no changes |
 | mode-worktree-back-enhanced | branch-ahead/non-tty | HEAD ancestor of branch, stdin not a TTY → error |

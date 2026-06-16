@@ -45,9 +45,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, mainRepo, "commit", "-m", "main work")
 
 	// Run --back with PTY (TTY) and 'n' input (decline).
-	req.Args = []string{"--back", wtDir}
+	req.Args = []string{"--back", "--confirm-from-stdin", wtDir}
 	req.StdinInput = "n\n"
-	req.UseScript = true
 	return nil
 }
 ```

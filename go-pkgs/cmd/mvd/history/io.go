@@ -90,7 +90,7 @@ func Save(path string, hist History, aliases map[string]string) error {
 		projects[key] = proj
 	}
 	file := HistoryFile{
-		Version:  "2.0",
+		Version:  "3.0",
 		Projects: projects,
 	}
 	data, err := json.MarshalIndent(file, "", "  ")

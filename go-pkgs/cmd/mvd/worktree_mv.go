@@ -349,11 +349,28 @@ func revParseCommit(dir, ref string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func promptConfirm(msg string) (bool, error) {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return false, fmt.Errorf("stdin is not a terminal; cannot prompt for confirmation")
+func stdinIsPipe() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
 	}
-	fmt.Fprintf(os.Stderr, "%s [Y/n]: ", msg)
+	return fi.Mode()&os.ModeCharDevice == 0
+}
+
+func promptConfirm(msg string) (bool, error) {
+	isTTY := term.IsTerminal(int(os.Stdin.Fd()))
+	if !isTTY {
+		if stdinIsPipe() {
+			if !confirmFromStdin {
+				return false, fmt.Errorf("stdin is not a terminal; pass --confirm-from-stdin to read confirmation from piped stdin")
+			}
+		} else {
+			return false, fmt.Errorf("stdin is not a terminal; cannot prompt for confirmation")
+		}
+	}
+	if isTTY {
+		fmt.Fprintf(os.Stderr, "%s [Y/n]: ", msg)
+	}
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
 	if err != nil {

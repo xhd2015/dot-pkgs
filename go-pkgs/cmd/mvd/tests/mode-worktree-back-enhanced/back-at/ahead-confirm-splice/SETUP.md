@@ -63,9 +63,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, wt, "commit", "-m", "feature work ahead")
 
 	// Step 5: --back on the worktree with TTY input (Enter = default Y).
-	req.Args = []string{"--back", wt}
+	req.Args = []string{"--back", "--confirm-from-stdin", wt}
 	req.StdinInput = "\n"
-	req.UseScript = true
 	return nil
 }
 ```

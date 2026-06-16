@@ -69,9 +69,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, later, "commit", "-m", "main work")
 
 	// Step 6: --back on the worktree with TTY and Enter (confirm rebase).
-	req.Args = []string{"--back", wt}
+	req.Args = []string{"--back", "--confirm-from-stdin", wt}
 	req.StdinInput = "\n"
-	req.UseScript = true
 	return nil
 }
 ```

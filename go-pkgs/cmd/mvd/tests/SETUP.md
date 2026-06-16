@@ -77,10 +77,11 @@ type LocationEntry struct {
 }
 
 type MoveEntry struct {
-	Prev    string `json:"prev"`
-	Current string `json:"current"`
-	Type    string `json:"type"`
-	Branch  string `json:"branch,omitempty"`
+	From     string `json:"from"`
+	FromType string `json:"from_type"`
+	To       string `json:"to"`
+	ToType   string `json:"to_type"`
+	Branch   string `json:"branch,omitempty"`
 }
 
 type ProjectEntry struct {
@@ -136,7 +137,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	var cmdArgs []string
 	var cmdName string
-	if req.UseScript {
+	// Piped stdin goes directly to mvd: macOS script(1) does not forward pipe input.
+	if req.UseScript && req.StdinInput == "" {
 		cmdName = "script"
 		cmdArgs = append([]string{"-q", "/dev/null", bin}, req.Args...)
 	} else {
@@ -222,11 +224,11 @@ func writeAliasesFile(t *testing.T, configHome string, aliases map[string]string
 func locationsFromMoves(root string, moves []MoveEntry) []LocationEntry {
 	locs := []LocationEntry{{Path: root}}
 	for _, move := range moves {
-		loc := LocationEntry{Path: move.Current}
-		if move.Type == "worktree" {
+		loc := LocationEntry{Path: move.To}
+		if move.ToType == "worktree" {
 			loc.Git = &GitInfo{
 				Type:     "worktree",
-				MainRepo: move.Prev,
+				MainRepo: move.From,
 				Branch:   move.Branch,
 			}
 		}

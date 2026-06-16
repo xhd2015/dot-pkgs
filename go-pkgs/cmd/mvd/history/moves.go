@@ -10,6 +10,22 @@ func FindLastNonWorktreePath(locations []LocationEntry) string {
 	return locations[0].Path
 }
 
+func locationType(loc LocationEntry) string {
+	if loc.Git != nil && loc.Git.Type == "worktree" {
+		return "worktree"
+	}
+	return "main"
+}
+
+func locationTypeAt(locs []LocationEntry, path string) string {
+	for _, loc := range locs {
+		if loc.Path == path {
+			return locationType(loc)
+		}
+	}
+	return "main"
+}
+
 func DeriveMoves(locs []LocationEntry) (string, []MoveEntry) {
 	if len(locs) == 0 {
 		return "", nil
@@ -19,17 +35,16 @@ func DeriveMoves(locs []LocationEntry) (string, []MoveEntry) {
 	for i := 1; i < len(locs); i++ {
 		loc := locs[i]
 		move := MoveEntry{
-			Current: loc.Path,
-			Type:    "plain",
+			To:     loc.Path,
+			ToType: locationType(loc),
 		}
 		if loc.Git != nil && loc.Git.Type == "worktree" {
-			move.Type = "worktree"
+			move.From = loc.Git.MainRepo
 			move.Branch = loc.Git.Branch
-			move.Prev = FindLastNonWorktreePath(locs[:i])
-			moves = append(moves, move)
-			continue
+		} else {
+			move.From = FindLastNonWorktreePath(locs[:i])
 		}
-		move.Prev = FindLastNonWorktreePath(locs[:i])
+		move.FromType = locationTypeAt(locs[:i], move.From)
 		moves = append(moves, move)
 	}
 	return root, moves
@@ -38,11 +53,11 @@ func DeriveMoves(locs []LocationEntry) (string, []MoveEntry) {
 func LocationsFromMoves(root string, moves []MoveEntry) []LocationEntry {
 	locs := []LocationEntry{{Path: root}}
 	for _, move := range moves {
-		loc := LocationEntry{Path: move.Current}
-		if move.Type == "worktree" {
+		loc := LocationEntry{Path: move.To}
+		if move.ToType == "worktree" {
 			loc.Git = &GitInfo{
 				Type:     "worktree",
-				MainRepo: move.Prev,
+				MainRepo: move.From,
 				Branch:   move.Branch,
 			}
 		}

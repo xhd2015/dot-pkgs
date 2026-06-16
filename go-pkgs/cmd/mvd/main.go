@@ -75,6 +75,7 @@ Options:
   --vscode              Open the target project in VS Code
   --cd                  cd to the target project (launch bash)
   -f, --force           Force removal for mvd --rm and clear its histories
+  --confirm-from-stdin  Read merge/rebase confirmation from piped stdin (not a TTY)
   -h, --help            Show this help message
   --picker-list         Dump all picker entries to stdout
   --grep                Filter picker list (implies --picker-list)
@@ -88,6 +89,7 @@ func main() {
 }
 
 var dryRun bool
+var confirmFromStdin bool
 
 func run(args []string) error {
 	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree, pickerList bool
@@ -109,6 +111,7 @@ func run(args []string) error {
 		Bool("--picker-list", &pickerList).
 		String("--grep", &grep).
 		Bool("--dry-run", &dryRun).
+		Bool("--confirm-from-stdin", &confirmFromStdin).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {

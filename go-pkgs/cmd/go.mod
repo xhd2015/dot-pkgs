@@ -2,11 +2,9 @@ module github.com/xhd2015/dot-pkgs/go-pkgs/cmd
 
 go 1.24.0
 
-replace github.com/xhd2015/gitops => ../../external/gitops
-
 require (
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.8
-	github.com/xhd2015/gitops v0.0.16
+	github.com/xhd2015/gitops v0.0.18
 	github.com/xhd2015/less-flags v1.0.0
 	github.com/xhd2015/lls v0.0.9
 	golang.design/x/clipboard v0.8.0
