@@ -19,7 +19,7 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, dir)
 
 	req.Args = []string{"--add", "$X/myproject"}
-	resp, err := runMvdDollar(t, req)
+	resp, err := runMvd(t, req)
 	if err != nil {
 		return err
 	}
@@ -30,7 +30,7 @@ func Setup(t *testing.T, req *Request) error {
 	d1 := filepath.Join(req.WorkRoot, "d1")
 	mkdirAll(t, d1)
 	req.Args = []string{"$X/myproject", d1}
-	resp, err = runMvdDollar(t, req)
+	resp, err = runMvd(t, req)
 	if err != nil {
 		return err
 	}

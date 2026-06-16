@@ -109,7 +109,7 @@ func computePickerMarker(path string, loc *LocationEntry, hasWorktree bool, root
 	isMain := hasWorktree && !isWt
 	isRoot := path == root
 	isExtMain := isMain && !isRoot
-	hasAliases := len(aliasList) > 0 && path == root
+	hasAliases := len(aliasList) > 0 && (path == root || !hasWorktree)
 
 	aliasSuffix := ""
 	if hasAliases {

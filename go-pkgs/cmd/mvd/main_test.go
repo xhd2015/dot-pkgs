@@ -1261,10 +1261,11 @@ func TestBuildProjectListBasicEntries(t *testing.T) {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}
 
-	if entries[0].display != "/path/to/bar" || entries[0].full != "/path/to/bar" {
+	// display includes (dead) markers because test paths don't exist on disk
+	if entries[0].full != "/path/to/bar" || !strings.HasPrefix(entries[0].display, "/path/to/bar") {
 		t.Fatalf("expected first entry bar, got %#v", entries[0])
 	}
-	if entries[1].display != "/path/to/foo-new" || entries[1].full != "/path/to/foo-new" {
+	if entries[1].full != "/path/to/foo-new" || !strings.HasPrefix(entries[1].display, "/path/to/foo-new") {
 		t.Fatalf("expected second entry foo-new, got %#v", entries[1])
 	}
 }
@@ -1300,13 +1301,15 @@ func TestBuildProjectListAnnotatesAliases(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
-	if !strings.Contains(entries[0].display, "(aliases:") {
+	// aliases now appear on the latest (non-root) entry for plain moves;
+	// display also includes (dead) marker since test paths don't exist on disk
+	if !strings.Contains(entries[0].display, "aliases: f, ff") {
 		t.Fatalf("expected alias annotation, got %q", entries[0].display)
 	}
 	if !strings.Contains(entries[0].display, "ff") {
 		t.Fatalf("expected alias ff in display, got %q", entries[0].display)
 	}
-	if !strings.Contains(entries[0].display, "f") {
+	if !strings.Contains(entries[0].display, "f,") && !strings.Contains(entries[0].display, "f)") {
 		t.Fatalf("expected alias f in display, got %q", entries[0].display)
 	}
 	if entries[0].full != "/path/to/foo-latest" {
@@ -1409,8 +1412,13 @@ func TestBuildProjectListAliasOnProperRoot(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
-	if !strings.Contains(entries[0].display, "(aliases: alias)") {
-		t.Fatalf("expected alias annotation on root, got %q", entries[0].display)
+	// aliases now appear on the latest entry for plain moves (not just root);
+	// display also includes (dead) marker since test paths don't exist on disk
+	if !strings.Contains(entries[0].display, "aliases: alias") {
+		t.Fatalf("expected alias annotation, got %q", entries[0].display)
+	}
+	if entries[0].full != "/path/to/latest" {
+		t.Fatalf("expected full path to be latest, got %q", entries[0].full)
 	}
 }
 

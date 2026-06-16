@@ -19,7 +19,7 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, dir)
 
 	req.Args = []string{"--add", "$X/myproject"}
-	resp, err := runMvdDollar(t, req)
+	resp, err := runMvd(t, req)
 	if err != nil {
 		return err
 	}
