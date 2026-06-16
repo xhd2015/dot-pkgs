@@ -1,14 +1,13 @@
 ## Expected
-- Non-zero exit code.
-- Output indicates that interactive confirmation is required but stdin is not a TTY.
-- Output does NOT say "not merged" (the new TTY check replaces the old merge check).
+- Exit code 0 (no error — operation aborted cleanly).
+- Output indicates the operation was cancelled/aborted.
 - Worktree directory still exists.
 - Feature branch still exists.
 - Main repo does NOT have the feature commit.
-- History unchanged.
+- History unchanged (worktree entry still present).
 
 ## Exit Code
-- Non-zero
+- 0
 
 ```go
 import (
@@ -20,18 +19,16 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		assertErrIsNil(t, err)
 		return
 	}
-	if resp.ExitCode == 0 {
-		t.Fatalf("expected non-zero exit, got 0\noutput: %s", resp.Output)
+	if resp.ExitCode != 0 {
+		t.Fatalf("exit code %d: %s", resp.ExitCode, resp.Output)
 	}
-
-	// Should not be the old "not merged" error — the new TTY check replaces it.
-	assertNotContains(t, resp.Output, "not merged")
 
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 
 	// Worktree still exists
 	assertFileExists(t, wtDir)
+	assertFileExists(t, filepath.Join(wtDir, ".git"))
 
 	// Main does NOT have the feature commit
 	assertFileNotExists(t, filepath.Join(mainRepo, "feature-work"))

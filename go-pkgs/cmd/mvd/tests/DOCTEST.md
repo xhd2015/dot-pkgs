@@ -18,7 +18,8 @@ mvd tests
 ├── mode-dollar-expansion/ # $X env var expansion via lls config
 ├── mode-alias-storage/    # aliases stored inside history.json
 ├── mode-dry-run/          # --dry-run flag (skips modifications, prints intent)
-└── mode-safety/           # overlapping paths between moves and worktrees
+├── mode-safety/           # overlapping paths between moves and worktrees
+└── mode-worktree-back-enhanced/  # enhanced --back for worktrees (CASE B: ff-merge prompt, CASE C: rebase)
 ```
 
 ## Test Case Index
@@ -128,6 +129,17 @@ mvd tests
 | mode-safety | back-from-nested-in-worktree | --back restores from nested position; WT .git updated correctly |
 | mode-safety | move-to-existing-worktree-path | Plain move targeting path that IS an existing worktree (joins basename) |
 | mode-safety | back-long-chain-worktree-middle | Long chain; --back skips WT entry for prev |
+| mode-worktree-back-enhanced | dirty-worktree | Dirty worktree → error (existing behavior unchanged) |
+| mode-worktree-back-enhanced | branch-merged | Branch already merged → success (existing behavior unchanged) |
+| mode-worktree-back-enhanced | branch-ahead/confirm-default | HEAD ancestor of branch, user presses Enter → ff merge + remove |
+| mode-worktree-back-enhanced | branch-ahead/decline | HEAD ancestor of branch, user types 'n' → abort, no changes |
+| mode-worktree-back-enhanced | branch-ahead/non-tty | HEAD ancestor of branch, stdin not a TTY → error |
+| mode-worktree-back-enhanced | branches-diverged/rebase-success | Neither ancestor, confirm (Enter) → rebase+ff merge+remove |
+| mode-worktree-back-enhanced | branches-diverged/rebase-conflict | Neither ancestor, confirm (Enter) → rebase conflicts → abort rebase, error |
+| mode-worktree-back-enhanced | branches-diverged/decline | Neither ancestor, decline ('n') → abort, no changes |
+| mode-worktree-back-enhanced | branches-diverged/non-tty | Neither ancestor, no TTY → error |
+| mode-worktree-back-enhanced | back-at/diverged-rebase-splice | cmdWorktreeBackAt: diverged, confirm (Enter) → rebase succeeds → splice chain |
+| mode-worktree-back-enhanced | back-at/ahead-confirm-splice | cmdWorktreeBackAt: branch ahead, confirm → splice chain |
 
 ## How to Run
 

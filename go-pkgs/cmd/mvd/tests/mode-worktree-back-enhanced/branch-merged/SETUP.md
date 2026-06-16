@@ -1,16 +1,16 @@
 # Scenario
 
-HEAD is ancestor of the worktree branch, but stdin is not a TTY.
-The prompt cannot be shown → error.
+Branch already merged into main. Back succeeds without prompt or rebase.
 
-mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
-commit on wt → [feature branch ahead of main]
-mvd --back wt (non-TTY) → error
+mvd -w repo wt → [(repo), (wt w:wt)]
+commit on wt, merge to main → [branch merged]
+mvd --back wt → success → remove wt+branch
 
 ## Steps
-- Create a git repo, create a worktree from it.
-- Commit work on the feature branch (branch is now ahead of HEAD).
-- Run --back normally (no PTY, stdin is /dev/null → not a TTY).
+- Create a worktree at work/feature from main repo.
+- Commit work on the feature branch.
+- Merge feature into main.
+- Run --back.
 
 ```go
 import (
@@ -35,6 +35,8 @@ func Setup(t *testing.T, req *Request) error {
 	writeFile(t, filepath.Join(wtDir, "feature-work"), "work")
 	runGit(t, wtDir, "add", "feature-work")
 	runGit(t, wtDir, "commit", "-m", "feature work")
+
+	runGit(t, mainRepo, "merge", "feature")
 
 	req.Args = []string{"--back", wtDir}
 	return nil

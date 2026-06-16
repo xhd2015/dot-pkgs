@@ -1,16 +1,16 @@
 # Scenario
 
-HEAD is ancestor of the worktree branch, but stdin is not a TTY.
-The prompt cannot be shown → error.
+HEAD is ancestor of the worktree branch. User declines by typing 'n'.
+Operation is aborted, no changes.
 
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit on wt → [feature branch ahead of main]
-mvd --back wt (non-TTY) → error
+mvd --back wt → prompt [Y/n] → 'n' → abort
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch (branch is now ahead of HEAD).
-- Run --back normally (no PTY, stdin is /dev/null → not a TTY).
+- Run --back with TTY stdin and 'n' as input.
 
 ```go
 import (
@@ -32,11 +32,15 @@ func Setup(t *testing.T, req *Request) error {
 		t.Fatalf("worktree add: %s", resp.Output)
 	}
 
-	writeFile(t, filepath.Join(wtDir, "feature-work"), "work")
+	// Commit work on the feature branch so it is ahead of main HEAD.
+	writeFile(t, filepath.Join(wtDir, "feature-work"), "ahead of main")
 	runGit(t, wtDir, "add", "feature-work")
-	runGit(t, wtDir, "commit", "-m", "feature work")
+	runGit(t, wtDir, "commit", "-m", "feature work ahead")
 
+	// Run --back with PTY (TTY) and 'n' input (decline).
 	req.Args = []string{"--back", wtDir}
+	req.StdinInput = "n\n"
+	req.UseScript = true
 	return nil
 }
 ```

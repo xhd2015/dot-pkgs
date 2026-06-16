@@ -4,7 +4,8 @@
 - Output does NOT say "not merged" (the new TTY check replaces the old merge check).
 - Worktree directory still exists.
 - Feature branch still exists.
-- Main repo does NOT have the feature commit.
+- Main repo does NOT have the feature change.
+- Main repo still has its own change (main-work).
 - History unchanged.
 
 ## Exit Code
@@ -33,8 +34,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	// Worktree still exists
 	assertFileExists(t, wtDir)
 
-	// Main does NOT have the feature commit
+	// Main does NOT have the feature change
 	assertFileNotExists(t, filepath.Join(mainRepo, "feature-work"))
+
+	// Main still has its own change
+	assertFileExists(t, filepath.Join(mainRepo, "main-work"))
 
 	// History still has the worktree entry
 	assertHistoryWorktreeEntry(t, req.ConfigHome, mainRepo, 1, mainRepo, "feature")

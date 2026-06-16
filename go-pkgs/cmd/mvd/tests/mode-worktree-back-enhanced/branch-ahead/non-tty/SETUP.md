@@ -10,7 +10,7 @@ mvd --back wt (non-TTY) → error
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch (branch is now ahead of HEAD).
-- Run --back normally (no PTY, stdin is /dev/null → not a TTY).
+- Run --back WITHOUT PTY (stdin is not a TTY). No input is piped.
 
 ```go
 import (
@@ -32,11 +32,14 @@ func Setup(t *testing.T, req *Request) error {
 		t.Fatalf("worktree add: %s", resp.Output)
 	}
 
-	writeFile(t, filepath.Join(wtDir, "feature-work"), "work")
+	// Commit work on the feature branch so it is ahead of main HEAD.
+	writeFile(t, filepath.Join(wtDir, "feature-work"), "ahead of main")
 	runGit(t, wtDir, "add", "feature-work")
-	runGit(t, wtDir, "commit", "-m", "feature work")
+	runGit(t, wtDir, "commit", "-m", "feature work ahead")
 
+	// Run --back normally (no PTY, stdin is /dev/null → not a TTY).
 	req.Args = []string{"--back", wtDir}
+	// UseScript is false, StdinInput is empty → default non-TTY behavior
 	return nil
 }
 ```

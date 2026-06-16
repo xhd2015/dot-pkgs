@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/xhd2015/gitops/git"
+	"golang.org/x/term"
 )
 
 func cmdWorktreeMove(src, dst string) error {
@@ -105,8 +109,54 @@ func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 		return err
 	}
 
-	if err := checkBranchMerged(branch, mainRepo); err != nil {
+	// Determine branch relationship with main HEAD
+	result, err := git.CompareBranches(mainRepo, branch, "HEAD")
+	if err != nil {
 		return err
+	}
+
+	switch result.Relation {
+	case git.BranchRelationAIsAncestorOfB, git.BranchRelationSame:
+		// CASE A: branch is ancestor of HEAD → already merged (existing behavior)
+	case git.BranchRelationBIsAncestorOfA:
+		// CASE B: HEAD is ancestor of branch → fast-forward possible
+		confirmed, err := promptConfirm(fmt.Sprintf("branch %s is ahead, merge and remove?", branch))
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return nil
+		}
+		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git merge --ff-only %s: %w\n%s", branch, err, out)
+		}
+	case git.BranchRelationDiverged:
+		// CASE C: diverged - prompt and try rebase on worktree
+		confirmed, err := promptConfirm(fmt.Sprintf("branch %s has diverged, rebase and merge?", branch))
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return nil
+		}
+		mainCommit, err := revParseCommit(mainRepo, "HEAD")
+		if err != nil {
+			return err
+		}
+		rebaseCmd := exec.Command("git", "-C", last.Path, "rebase", mainCommit)
+		rebaseOut, rebaseErr := rebaseCmd.CombinedOutput()
+		if rebaseErr != nil {
+			abortCmd := exec.Command("git", "-C", last.Path, "rebase", "--abort")
+			abortCmd.Run()
+			return fmt.Errorf("rebase conflict: %w\n%s", rebaseErr, rebaseOut)
+		}
+		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git merge --ff-only %s after rebase: %w\n%s", branch, err, out)
+		}
 	}
 
 	if dryRun {
@@ -163,8 +213,54 @@ func cmdWorktreeBackAt(origKey string, locations []LocationEntry, idx int, wtLoc
 		return err
 	}
 
-	if err := checkBranchMerged(branch, mainRepo); err != nil {
+	// Determine branch relationship with main HEAD
+	result, err := git.CompareBranches(mainRepo, branch, "HEAD")
+	if err != nil {
 		return err
+	}
+
+	switch result.Relation {
+	case git.BranchRelationAIsAncestorOfB, git.BranchRelationSame:
+		// CASE A: branch is ancestor of HEAD → already merged (existing behavior)
+	case git.BranchRelationBIsAncestorOfA:
+		// CASE B: HEAD is ancestor of branch → fast-forward possible
+		confirmed, err := promptConfirm(fmt.Sprintf("branch %s is ahead, merge and remove?", branch))
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return nil
+		}
+		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git merge --ff-only %s: %w\n%s", branch, err, out)
+		}
+	case git.BranchRelationDiverged:
+		// CASE C: diverged - prompt and try rebase on worktree
+		confirmed, err := promptConfirm(fmt.Sprintf("branch %s has diverged, rebase and merge?", branch))
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			return nil
+		}
+		mainCommit, err := revParseCommit(mainRepo, "HEAD")
+		if err != nil {
+			return err
+		}
+		rebaseCmd := exec.Command("git", "-C", wtLoc.Path, "rebase", mainCommit)
+		rebaseOut, rebaseErr := rebaseCmd.CombinedOutput()
+		if rebaseErr != nil {
+			abortCmd := exec.Command("git", "-C", wtLoc.Path, "rebase", "--abort")
+			abortCmd.Run()
+			return fmt.Errorf("rebase conflict: %w\n%s", rebaseErr, rebaseOut)
+		}
+		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git merge --ff-only %s after rebase: %w\n%s", branch, err, out)
+		}
 	}
 
 	if dryRun {
@@ -244,18 +340,32 @@ func checkWorktreeClean(worktreePath string) error {
 	return nil
 }
 
-func checkBranchMerged(branch, repoPath string) error {
-	cmd := exec.Command("git", "-C", repoPath, "merge-base", "--is-ancestor", branch, "HEAD")
-	err := cmd.Run()
+func revParseCommit(dir, ref string) (string, error) {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--verify", ref)
+	out, err := cmd.Output()
 	if err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
-			return fmt.Errorf(
-				"branch %s is not merged into %s HEAD:\n"+
-					"  merge the branch first to avoid data loss, then run --back again",
-				branch, displayPath(repoPath),
-			)
-		}
-		return fmt.Errorf("git merge-base: %w", err)
+		return "", fmt.Errorf("git rev-parse --verify %s: %w", ref, err)
 	}
-	return nil
+	return strings.TrimSpace(string(out)), nil
+}
+
+func promptConfirm(msg string) (bool, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return false, fmt.Errorf("stdin is not a terminal; cannot prompt for confirmation")
+	}
+	fmt.Fprintf(os.Stderr, "%s [Y/n]: ", msg)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("read input: %w", err)
+	}
+	line = strings.TrimSpace(strings.ToLower(line))
+	switch line {
+	case "", "y", "yes":
+		return true, nil
+	case "n", "no":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid input: %q (expected y/n)", strings.TrimSpace(line))
+	}
 }

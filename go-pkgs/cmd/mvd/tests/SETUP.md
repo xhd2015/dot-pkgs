@@ -8,13 +8,16 @@ Each test runs the mvd CLI tool in an isolated environment. The binary is built 
 
 ```go
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 var buildOnce sync.Once
@@ -96,6 +99,8 @@ type Request struct {
 	ConfigHome string
 	WorkRoot   string
 	Args       []string
+	StdinInput string // if set, feeds this string to stdin
+	UseScript  bool   // if true, wraps command with 'script' for PTY (TTY simulation)
 }
 
 type Response struct {
@@ -128,8 +133,48 @@ func Setup(t *testing.T, req *Request) error {
 
 func Run(t *testing.T, req *Request) (*Response, error) {
 	bin := getMvdBin(t)
-	cmd := exec.Command(bin, req.Args...)
+
+	var cmdArgs []string
+	var cmdName string
+	if req.UseScript {
+		cmdName = "script"
+		cmdArgs = append([]string{"-q", "/dev/null", bin}, req.Args...)
+	} else {
+		cmdName = bin
+		cmdArgs = req.Args
+	}
+
+	cmd := exec.Command(cmdName, cmdArgs...)
 	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
+
+	if req.StdinInput != "" {
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+		var outBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &outBuf
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		if req.UseScript {
+			time.Sleep(200 * time.Millisecond)
+		}
+		io.WriteString(stdin, req.StdinInput)
+		stdin.Close()
+		err = cmd.Wait()
+		exitCode := 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				exitCode = ee.ExitCode()
+			} else {
+				return nil, err
+			}
+		}
+		return &Response{Output: outBuf.String(), ExitCode: exitCode}, nil
+	}
+
 	out, err := cmd.CombinedOutput()
 	exitCode := 0
 	if err != nil {
