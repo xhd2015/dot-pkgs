@@ -59,6 +59,31 @@ func parseWorktreeList(output string) []worktreeInfo {
 	return worktrees
 }
 
+func readWorktreeGitInfo(worktreePath string) (*GitInfo, error) {
+	mainRepo, err := readWorktreeMainRepo(worktreePath)
+	if err != nil {
+		return nil, err
+	}
+	branch, err := readWorktreeBranch(worktreePath)
+	if err != nil {
+		return nil, err
+	}
+	return &GitInfo{
+		Type:     "worktree",
+		MainRepo: mainRepo,
+		Branch:   branch,
+	}, nil
+}
+
+func readWorktreeBranch(worktreePath string) (string, error) {
+	cmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --abbrev-ref HEAD: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func readWorktreeMainRepo(worktreePath string) (string, error) {
 	gitFile := filepath.Join(worktreePath, ".git")
 	content, err := os.ReadFile(gitFile)

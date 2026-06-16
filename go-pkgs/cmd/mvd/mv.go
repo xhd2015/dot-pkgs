@@ -30,6 +30,17 @@ func cmdMove(src, dst string) error {
 	}
 
 	isWt := isGitWorktree(absSrc)
+
+	// Read worktree Git metadata before moving (for locations == nil case).
+	var srcGitInfo *GitInfo
+	if isWt && locations == nil {
+		gitInfo, err := readWorktreeGitInfo(absSrc)
+		if err != nil {
+			return fmt.Errorf("read worktree git info for %s: %w", displayPath(absSrc), err)
+		}
+		srcGitInfo = gitInfo
+	}
+
 	if dryRun {
 		fmt.Printf("dry-run: would move %s -> %s\n", displayPath(absSrc), displayPath(absDst))
 		return nil
@@ -46,9 +57,22 @@ func cmdMove(src, dst string) error {
 
 	if locations == nil {
 		origKey = absSrc
-		locations = []LocationEntry{{Path: absSrc}, {Path: absDst}}
+		if isWt {
+			locations = []LocationEntry{{Path: absSrc, Git: srcGitInfo}, {Path: absDst, Git: srcGitInfo}}
+		} else {
+			locations = []LocationEntry{{Path: absSrc}, {Path: absDst}}
+		}
 	} else {
-		locations = append(locations, LocationEntry{Path: absDst})
+		var dstGitInfo *GitInfo
+		if isWt {
+			for i := len(locations) - 1; i >= 0; i-- {
+				if locations[i].Path == absSrc && locations[i].Git != nil && locations[i].Git.Type == "worktree" {
+					dstGitInfo = locations[i].Git
+					break
+				}
+			}
+		}
+		locations = append(locations, LocationEntry{Path: absDst, Git: dstGitInfo})
 	}
 
 	delete(hist, origKey)

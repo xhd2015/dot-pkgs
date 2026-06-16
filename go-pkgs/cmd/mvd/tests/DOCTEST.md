@@ -82,6 +82,7 @@ mvd tests
 | mode-list | marker-worktree-two | Root `(main)` + 2 worktrees `(worktree)` markers, alive |
 | mode-list | marker-external-main | External main path shown `(external main)` — bug fix for root→WT→plain→WT |
 | mode-list | marker-external-main-is-latest | External main that is also latest — not duplicated |
+| mode-list | marker-moved-worktree | BUG: plain-move of worktree loses worktree marker (shows external main) |
 | mode-list | marker-alias-with-main | Combined marker `(main, aliases: ...)` when root has alias + is main |
 | mode-list | marker-alias-no-worktree | `(aliases: ...)` on plain entry without worktree |
 | mode-list | marker-dead-worktree | `(dead worktree)` for dead worktree path |
