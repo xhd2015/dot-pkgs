@@ -59,6 +59,8 @@ mvd tests
 | mode-remove | basic-remove | Remove a tracked entry |
 | mode-remove | remove-force | Force-remove entry with movement history |
 | mode-remove | remove-no-force-with-history | Error when removing entry with history without --force |
+| mode-remove | remove-by-chain-path | Remove a non-root path from a chain, preserving root |
+| mode-remove | remove-worktree-entry | Remove one worktree entry from a multi-worktree chain |
 | mode-rebase | basic-rebase | Rebase entry to a new root |
 | mode-rebase | rebase-by-basename | Rebase using basename resolution |
 | mode-back | basic-back | Move back one step |

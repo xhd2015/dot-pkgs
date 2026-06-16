@@ -81,33 +81,31 @@ func isRecordedPath(hist History, path string) bool {
 	return locations != nil
 }
 
-func resolveRemoveEntry(hist History, aliases map[string]string, dir string) (string, []LocationEntry, error) {
+func resolveRemoveEntry(hist History, aliases map[string]string, dir string) (removeKey string, locations []LocationEntry, matchedPath string, err error) {
 	if k, locs, ok, err := resolveBasename(hist, dir); ok {
-		return k, locs, nil
+		return k, locs, k, nil
 	} else if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 
 	if isBareBaseName(dir) {
 		if _, err := os.Lstat(dir); os.IsNotExist(err) {
 			origKey, locations, err := findEntryByAlias(hist, aliases, dir)
 			if err != nil {
-				return "", nil, err
+				return "", nil, "", err
 			}
 			if locations != nil {
-				return origKey, locations, nil
+				return origKey, locations, origKey, nil
 			}
 		}
 	}
 
 	absDir, err := resolveInputPath(dir)
 	if err != nil {
-		return "", nil, fmt.Errorf("resolve: %w", err)
+		return "", nil, "", fmt.Errorf("resolve: %w", err)
 	}
-	if locations, ok := hist[absDir]; ok {
-		return absDir, locations, nil
-	}
-	return "", nil, nil
+	origKey, locations := findEntry(hist, absDir)
+	return origKey, locations, absDir, nil
 }
 
 func resolveRebaseEntries(hist History, dir, newDir string) (string, []LocationEntry, string, error) {

@@ -294,7 +294,7 @@ func cmdRemove(dir string, force bool) error {
 		return err
 	}
 
-	removeKey, locations, err := resolveRemoveEntry(hist, aliases, dir)
+	removeKey, locations, matchedPath, err := resolveRemoveEntry(hist, aliases, dir)
 	if err != nil {
 		return err
 	}
@@ -307,6 +307,12 @@ func cmdRemove(dir string, force bool) error {
 		return nil
 	}
 
+	// Chain-path removal: remove a specific path from the chain, not the entire entry.
+	if matchedPath != removeKey {
+		return removeChainPath(hist, aliases, removeKey, locations, matchedPath)
+	}
+
+	// Root-key removal: remove the entire tracked entry.
 	locations, ok := hist[removeKey]
 	if !ok {
 		fmt.Printf("hint: no recorded entry for %s\n", displayPath(removeKey))
@@ -327,6 +333,40 @@ func cmdRemove(dir string, force bool) error {
 
 	delete(hist, removeKey)
 	fmt.Printf("removed: %s\n", displayPath(removeKey))
+	return saveHistory(hist, aliases)
+}
+
+func removeChainPath(hist History, aliases map[string]string, rootKey string, locations []LocationEntry, targetPath string) error {
+	idx := -1
+	for i, loc := range locations {
+		if loc.Path == targetPath {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("path %s not found in chain", displayPath(targetPath))
+	}
+
+	newLocs := make([]LocationEntry, 0, len(locations)-1)
+	for i, loc := range locations {
+		if i == idx {
+			continue
+		}
+		newLocs = append(newLocs, loc)
+	}
+
+	if dryRun {
+		fmt.Printf("dry-run: would remove %s from history\n", displayPath(targetPath))
+		return nil
+	}
+
+	if len(newLocs) == 0 {
+		delete(hist, rootKey)
+	} else {
+		hist[rootKey] = newLocs
+	}
+	fmt.Printf("removed: %s\n", displayPath(targetPath))
 	return saveHistory(hist, aliases)
 }
 

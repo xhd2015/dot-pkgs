@@ -149,7 +149,7 @@ func TestRunRemoveLongAliasDeletesExactSingleEntry(t *testing.T) {
 	}
 }
 
-func TestRemoveDoesNotMatchHistoryOnlyPath(t *testing.T) {
+func TestRemoveFindsEntryByAnyChainPath(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()
 	t.Setenv("HOME", home)
@@ -164,23 +164,29 @@ func TestRemoveDoesNotMatchHistoryOnlyPath(t *testing.T) {
 		t.Fatalf("cmdMove: %v", err)
 	}
 
+	// Removing by a non-root chain path removes just that path,
+	// preserving the root entry. No -f needed.
 	movedPath := filepath.Join(dst, "dir")
 	output := captureStdout(t, func() {
 		if err := cmdRemove(movedPath, false); err != nil {
 			t.Fatalf("cmdRemove: %v", err)
 		}
 	})
-	if !strings.Contains(output, "no recorded entry") {
-		t.Fatalf("expected missing-entry hint, got %q", output)
+	if !strings.Contains(output, "removed:") {
+		t.Fatalf("expected removed message, got %q", output)
 	}
 
 	hist, _, err := loadHistory()
 	if err != nil {
 		t.Fatalf("loadHistory: %v", err)
 	}
-	locs := hist[src]
-	if len(locs) != 2 || locs[0].Path != src || locs[1].Path != movedPath {
-		t.Fatalf("expected move history to remain unchanged, got %#v", locs)
+	// Root entry should remain with only the original location
+	locs, ok := hist[src]
+	if !ok {
+		t.Fatalf("expected root entry %s to remain", src)
+	}
+	if len(locs) != 1 || locs[0].Path != src {
+		t.Fatalf("expected single root entry, got %#v", locs)
 	}
 }
 
