@@ -56,6 +56,10 @@ func Setup(t *testing.T, req *Request) error {
 	if !waitForPattern(func() string { return scNewOutput(sc) }, "listening on", 10*time.Second) {
 		return fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", scFullOutput(sc))
 	}
+	if !waitForPattern(func() string { return scNewOutput(sc) }, "falling back to direct", 10*time.Second) {
+		return fmt.Errorf("timed out waiting for 'falling back to direct'\noutput:\n%s", scFullOutput(sc))
+	}
+	scConsume(sc)
 
 	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
 	client := &http.Client{

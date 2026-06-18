@@ -45,7 +45,7 @@ func cmdWorktreeMove(src, dst string) error {
 		dstAbs = filepath.Join(dstAbs, filepath.Base(srcAbs))
 	}
 
-	if !isGitRepo(srcAbs) {
+	if !isGitRepo(srcAbs) && !isGitWorktree(srcAbs) {
 		return fmt.Errorf("%s is not a git repository", displayPath(srcAbs))
 	}
 

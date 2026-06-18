@@ -1,14 +1,19 @@
+# Scenario
+
+Dynamic upstream health: dead at startup → comes up → goes down again.
+
 ## Steps
 
 1. Build the `http-proxy` binary
-2. Start `http-proxy` pointing at `http://127.0.0.1:19998` with `--fallback-direct` and `--listen-port 19999`
-3. Wait for initial "falling back to direct" log (upstream is dead at startup)
-4. Start a TCP listener on port 19998 (simulate upstream becoming available)
-5. Wait for "upstream proxy available, switching" log
-6. Keep upstream available for 3 seconds (simulates "available for 5s"; test uses shorter duration)
-7. Close the TCP listener (simulate upstream going down)
-8. Wait for second "falling back to direct" log
-9. Kill http-proxy and collect all output
+2. Reserve random upstream and listen ports (no listener on upstream port yet)
+3. Start `http-proxy` pointing at the reserved upstream port with `--fallback-direct`
+4. Wait for initial "falling back to direct" and "listening on" logs (upstream dead at startup)
+5. Start a TCP listener on the upstream port (simulate upstream becoming available)
+6. Wait for "upstream proxy available, switching" log
+7. Keep upstream available for 3 seconds
+8. Close the TCP listener (simulate upstream going down)
+9. Wait for second "falling back to direct" log
+10. Kill http-proxy and collect all output
 
 ```go
 import (
@@ -21,10 +26,25 @@ import (
 func Setup(t *testing.T, req *Request) error {
 	binPath := getBinPath(t)
 
+	// Reserve upstream port but keep it closed at startup.
+	reserved, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("reserve upstream port: %w", err)
+	}
+	upstreamPort := reserved.Addr().(*net.TCPAddr).Port
+	reserved.Close()
+
+	proxyLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("reserve proxy port: %w", err)
+	}
+	proxyPort := proxyLn.Addr().(*net.TCPAddr).Port
+	proxyLn.Close()
+
 	cmd := exec.Command(binPath,
-		"--upstream-proxy", "http://127.0.0.1:19998",
+		"--upstream-proxy", fmt.Sprintf("http://127.0.0.1:%d", upstreamPort),
 		"--fallback-direct",
-		"--listen-port", "19999",
+		"--listen-port", fmt.Sprintf("%d", proxyPort),
 	)
 
 	stdout, err := cmd.StdoutPipe()
@@ -38,19 +58,21 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	sc := newStreamCollector(stdout)
-
 	getOutput := func() string { return scNewOutput(sc) }
 
-	// Step 3: wait for initial "falling back to direct"
 	if !waitForPattern(getOutput, "falling back to direct", 10*time.Second) {
 		cmd.Process.Kill()
 		cmd.Wait()
 		return fmt.Errorf("timed out waiting for initial 'falling back to direct'\noutput:\n%s", scFullOutput(sc))
 	}
+	if !waitForPattern(getOutput, "listening on", 10*time.Second) {
+		cmd.Process.Kill()
+		cmd.Wait()
+		return fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", scFullOutput(sc))
+	}
 	scConsume(sc)
 
-	// Step 4: start upstream listener
-	upstream, err := net.Listen("tcp", "127.0.0.1:19998")
+	upstream, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", upstreamPort))
 	if err != nil {
 		cmd.Process.Kill()
 		cmd.Wait()
@@ -58,7 +80,6 @@ func Setup(t *testing.T, req *Request) error {
 	}
 	defer upstream.Close()
 
-	// Step 5: wait for "upstream proxy available, switching"
 	if !waitForPattern(getOutput, "upstream proxy available, switching", 10*time.Second) {
 		upstream.Close()
 		cmd.Process.Kill()
@@ -67,13 +88,10 @@ func Setup(t *testing.T, req *Request) error {
 	}
 	scConsume(sc)
 
-	// Step 6: keep upstream available for 3 seconds
 	time.Sleep(3 * time.Second)
 
-	// Step 7: close upstream listener
 	upstream.Close()
 
-	// Step 8: wait for second "falling back to direct"
 	if !waitForPattern(getOutput, "falling back to direct", 10*time.Second) {
 		cmd.Process.Kill()
 		cmd.Wait()
@@ -81,7 +99,6 @@ func Setup(t *testing.T, req *Request) error {
 	}
 	scConsume(sc)
 
-	// Step 9: finalize
 	time.Sleep(500 * time.Millisecond)
 	cmd.Process.Kill()
 	cmd.Wait()
@@ -89,4 +106,3 @@ func Setup(t *testing.T, req *Request) error {
 	req.CapturedOutput = scFullOutput(sc)
 	return nil
 }
-```

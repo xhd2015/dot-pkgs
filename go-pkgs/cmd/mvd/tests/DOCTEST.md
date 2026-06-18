@@ -42,6 +42,8 @@ mvd tests
 | mode-move | plain-move-after-multiple-moves-and-worktree | Deep chain: multiple moves + worktree; plain move finds main repo |
 | mode-move | plain-move-after-worktree-updates-wt-git | Plain move updates worktree .git file to new main repo location |
 | mode-worktree | worktree-move | Create worktree with -w flag |
+| mode-worktree | worktree-spawn-from-worktree | Spawn worktree with -w when SRC is a linked worktree |
+| mode-worktree | worktree-spawn-from-worktree-dry-run | --dry-run -w with linked worktree SRC prints intent, skips creation |
 | mode-worktree | worktree-non-git-src | Error when SRC is not a git repo |
 | mode-worktree | worktree-back-dirty | Error when worktree has uncommitted changes |
 | mode-worktree | worktree-back-unmerged | Error when worktree branch is unmerged |

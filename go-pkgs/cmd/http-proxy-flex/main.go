@@ -63,17 +63,18 @@ func run(args []string) error {
 
 	handler := NewProxyHandler()
 
-	go func() {
-		if tcpDial(proxyAddr, 100*time.Millisecond) {
-			log.Printf("using upstream proxy %s", upstreamProxy)
-			handler.SetTransport(newProxyTransport(upstreamProxy), proxyAddr)
-		} else {
-			log.Printf("upstream proxy unreachable, falling back to direct")
-		}
-		if fallbackDirect {
-			healthCheckLoop(handler, proxyAddr, upstreamProxy)
-		}
-	}()
+	// Probe upstream synchronously before accepting requests so the first
+	// proxied request uses the correct transport (avoids race with async setup).
+	if tcpDial(proxyAddr, 100*time.Millisecond) {
+		log.Printf("using upstream proxy %s", upstreamProxy)
+		handler.SetTransport(newProxyTransport(upstreamProxy), proxyAddr)
+	} else {
+		log.Printf("upstream proxy unreachable, falling back to direct")
+	}
+
+	if fallbackDirect {
+		go healthCheckLoop(handler, proxyAddr, upstreamProxy)
+	}
 
 	addr := fmt.Sprintf(":%d", listenPort)
 	log.Printf("listening on %s", addr)
