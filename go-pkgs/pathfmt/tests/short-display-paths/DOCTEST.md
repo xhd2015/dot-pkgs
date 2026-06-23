@@ -18,6 +18,10 @@ absolute paths for filesystem operations.
   returns an absolute path for filesystem use.
 - **`cwd`** — process working directory from `os.Getwd()`, absolutized and
   symlink-evaluated before comparison.
+- **`evalPath`** — canonicalizes paths via `filepath.EvalSymlinks`; when the leaf
+  is missing, walks up to the longest existing prefix and reattaches the suffix
+  so cwd-relative shortening still works (e.g. pre-install integration targets,
+  macOS `/var` vs `/private/var` cwd mismatch).
 - **`home`** — user home directory from `os.UserHomeDir()`, used as a `~` prefix
   when the path is outside the cwd subtree but still under home.
 
@@ -27,7 +31,8 @@ absolute paths for filesystem operations.
 
 - **Normalize** — `filepath.Abs(path)`; empty or Abs error → return input unchanged.
 - **Under cwd** — path equals cwd → `"."`; strict child → `rel` without `./` prefix
-  (rel must not start with `".."`).
+  (rel must not start with `".."`). Applies to existing files **and** missing leaf
+  paths whose existing-prefix canonicalization still lies under cwd.
 - **Home shorten** — when not under cwd, if path has prefix `home + sep`, replace
   with `"~" + suffix`.
 - **Fallback** — return the absolute path unchanged.
@@ -55,6 +60,10 @@ short-display-paths
 ├── edge-inputs                  [Short: normalization edge cases]
 │   ├── empty-path               "" → "" (unchanged)
 │   └── outside-home             temp dir outside home → absolute unchanged
+├── missing-targets              [Short: missing leaf paths under cwd]
+│   ├── missing-file-parent-exists  parent dirs exist, file missing → rel
+│   ├── missing-nested-path         fully missing nested path → rel
+│   └── cwd-var-prefix-mismatch     /var vs /private/var cwd mismatch → rel
 └── expand-path                  [Expand: ~ display paths → absolute]
     ├── tilde-home               "~" → absolute home
     ├── tilde-subpath            "~/foo/bar" → join(home, "foo", "bar")
@@ -75,6 +84,9 @@ short-display-paths
 | `home-shorten/under-home` | Short | Path under home (not cwd) displays with `~` prefix |
 | `edge-inputs/empty-path` | Short | Empty input returned unchanged |
 | `edge-inputs/outside-home` | Short | Path outside home stays absolute |
+| `missing-targets/missing-file-parent-exists` | Short | Missing leaf with parent dirs → cwd-relative |
+| `missing-targets/missing-nested-path` | Short | Fully missing nested path under cwd → cwd-relative |
+| `missing-targets/cwd-var-prefix-mismatch` | Short | `/var` vs `/private/var` cwd mismatch still shortens |
 | `expand-path/tilde-home` | Expand | `"~"` expands to absolute home directory |
 | `expand-path/tilde-subpath` | Expand | `"~/foo/bar"` expands to `filepath.Join(home, "foo", "bar")` |
 | `expand-path/non-tilde` | Expand | Non-tilde absolute path returned unchanged |

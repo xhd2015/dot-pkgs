@@ -10,6 +10,24 @@ func evalPath(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		return resolved
 	}
+	// Missing leaf paths (e.g. not-yet-installed integration targets) may not
+	// resolve via EvalSymlinks; canonicalize through the longest existing prefix.
+	parts := strings.Split(path, string(filepath.Separator))
+	for i := len(parts); i > 0; i-- {
+		prefix := strings.Join(parts[:i], string(filepath.Separator))
+		if prefix == "" {
+			prefix = string(filepath.Separator)
+		}
+		resolved, err := filepath.EvalSymlinks(prefix)
+		if err != nil {
+			continue
+		}
+		suffix := strings.Join(parts[i:], string(filepath.Separator))
+		if suffix == "" {
+			return resolved
+		}
+		return filepath.Join(resolved, suffix)
+	}
 	return path
 }
 

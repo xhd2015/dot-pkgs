@@ -1,3 +1,18 @@
+# git-hook-github-workflow-test — Doc-Style Test Tree
+
+## Version
+0.0.2
+
+Tests for the GitHub workflow git hook: check mode warns when `.github/workflows/test.yml`
+is missing; fix mode creates it for GitHub origins.
+
+# DSN (Domain Specific Notion)
+
+- **Hook binary** — built from the command module, run inside a temp git repository.
+- **Repository** — temp git repo with `origin` remote and minimal `go.mod`.
+- **Check mode** — warns on missing workflow for `github.com` origins.
+- **Fix mode** — creates workflow for GitHub origins; errors on non-GitHub origins.
+
 ## How to Run
 
 ```sh
@@ -16,3 +31,57 @@ doctest test -v ./
 - `fix/origin-domain-mismatch`: GitHub origin but `--origin-domain` mismatch, `--fix` skips silently.
 - `args/help`: `--help` prints usage.
 - `args/unknown-flag`: unknown flags return an error.
+
+```go
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+type Request struct {
+	CommandDir string
+	ToolPath   string
+	RepoDir    string
+	Args       []string
+	CaseName   string
+}
+
+type Response struct {
+	Output          string
+	ExitCode        int
+	WorkflowPath    string
+	WorkflowExists  bool
+	WorkflowContent string
+}
+
+func Run(t *testing.T, req *Request) (*Response, error) {
+	cmd := exec.Command(req.ToolPath, req.Args...)
+	cmd.Dir = req.RepoDir
+	output, err := cmd.CombinedOutput()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return nil, err
+		}
+	}
+	workflowPath := filepath.Join(req.RepoDir, ".github", "workflows", "test.yml")
+	content, readErr := os.ReadFile(workflowPath)
+	exists := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, readErr
+	}
+	return &Response{
+		Output:          string(output),
+		ExitCode:        exitCode,
+		WorkflowPath:    workflowPath,
+		WorkflowExists:  exists,
+		WorkflowContent: string(content),
+	}, nil
+}
+```

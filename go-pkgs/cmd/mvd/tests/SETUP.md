@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: mvd CLI move/worktree/history commands
+
+```
+# isolated config home + work root per test
+mvd ARGS -> stdout/stderr + exit code + history.json side effects
+```
+
 ## Preconditions
 - The mvd Go module is located two levels above the test tree root (at `go-pkgs/cmd/`)
 - Go toolchain is available on PATH
@@ -96,19 +105,6 @@ type HistoryFile struct {
 	Projects map[string]ProjectEntry `json:"projects"`
 }
 
-type Request struct {
-	ConfigHome string
-	WorkRoot   string
-	Args       []string
-	StdinInput string // if set, feeds this string to stdin
-	UseScript  bool   // if true, wraps command with 'script' for PTY (TTY simulation)
-}
-
-type Response struct {
-	Output   string
-	ExitCode int
-}
-
 func runMvd(t *testing.T, req *Request) (*Response, error) {
 	bin := getMvdBin(t)
 	cmd := exec.Command(bin, req.Args...)
@@ -130,63 +126,6 @@ func Setup(t *testing.T, req *Request) error {
 	req.ConfigHome = filepath.Join(req.WorkRoot, ".mvd-config")
 	ensureHelpersUsed()
 	return os.MkdirAll(req.ConfigHome, 0755)
-}
-
-func Run(t *testing.T, req *Request) (*Response, error) {
-	bin := getMvdBin(t)
-
-	var cmdArgs []string
-	var cmdName string
-	// Piped stdin goes directly to mvd: macOS script(1) does not forward pipe input.
-	if req.UseScript && req.StdinInput == "" {
-		cmdName = "script"
-		cmdArgs = append([]string{"-q", "/dev/null", bin}, req.Args...)
-	} else {
-		cmdName = bin
-		cmdArgs = req.Args
-	}
-
-	cmd := exec.Command(cmdName, cmdArgs...)
-	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
-
-	if req.StdinInput != "" {
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			return nil, err
-		}
-		var outBuf bytes.Buffer
-		cmd.Stdout = &outBuf
-		cmd.Stderr = &outBuf
-		if err := cmd.Start(); err != nil {
-			return nil, err
-		}
-		if req.UseScript {
-			time.Sleep(200 * time.Millisecond)
-		}
-		io.WriteString(stdin, req.StdinInput)
-		stdin.Close()
-		err = cmd.Wait()
-		exitCode := 0
-		if err != nil {
-			if ee, ok := err.(*exec.ExitError); ok {
-				exitCode = ee.ExitCode()
-			} else {
-				return nil, err
-			}
-		}
-		return &Response{Output: outBuf.String(), ExitCode: exitCode}, nil
-	}
-
-	out, err := cmd.CombinedOutput()
-	exitCode := 0
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			exitCode = ee.ExitCode()
-		} else {
-			return nil, err
-		}
-	}
-	return &Response{Output: string(out), ExitCode: exitCode}, nil
 }
 
 func mkdirAll(t *testing.T, path string) {

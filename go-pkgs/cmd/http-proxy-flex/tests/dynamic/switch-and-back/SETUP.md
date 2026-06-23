@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"testing"
 	"time"
 )
 
@@ -106,3 +107,4 @@ func Setup(t *testing.T, req *Request) error {
 	req.CapturedOutput = scFullOutput(sc)
 	return nil
 }
+```

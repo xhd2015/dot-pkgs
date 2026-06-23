@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: git-hook-github-workflow-test checks and fixes GitHub CI workflow files
+
+```
+# temp git repo with origin + go.mod
+hook binary -> check/fix mode -> workflow file state
+```
+
 ## Preconditions
 
 - A temporary git repository exists for each test case.
@@ -31,23 +40,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
 )
-
-type Request struct {
-	CommandDir string
-	ToolPath   string
-	RepoDir    string
-	Args       []string
-	CaseName   string
-}
-
-type Response struct {
-	Output          string
-	ExitCode        int
-	WorkflowPath    string
-	WorkflowExists  bool
-	WorkflowContent string
-}
 
 func Setup(t *testing.T, req *Request) error {
 	req.CommandDir = filepath.Clean(filepath.Join(DOCTEST_ROOT, ".."))
@@ -69,33 +63,6 @@ func Setup(t *testing.T, req *Request) error {
 		return err
 	}
 	return nil
-}
-
-func Run(t *testing.T, req *Request) (*Response, error) {
-	cmd := exec.Command(req.ToolPath, req.Args...)
-	cmd.Dir = req.RepoDir
-	output, err := cmd.CombinedOutput()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			return nil, err
-		}
-	}
-	workflowPath := filepath.Join(req.RepoDir, ".github", "workflows", "test.yml")
-	content, readErr := os.ReadFile(workflowPath)
-	exists := readErr == nil
-	if readErr != nil && !os.IsNotExist(readErr) {
-		return nil, readErr
-	}
-	return &Response{
-		Output:          string(output),
-		ExitCode:        exitCode,
-		WorkflowPath:    workflowPath,
-		WorkflowExists:  exists,
-		WorkflowContent: string(content),
-	}, nil
 }
 
 func runGit(dir string, args ...string) error {

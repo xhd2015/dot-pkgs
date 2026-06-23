@@ -1,6 +1,15 @@
 # mvd Test Cases
 
+## Version
+0.0.2
+
 Decision tree covering all `mvd` commands and their behaviors.
+
+# DSN (Domain Specific Notion)
+
+- **mvd CLI** — move/rename tool for projects, git worktrees, and history tracking.
+- **Config home** — isolated `MVD_DEBUG_CONFIG_HOME` per test for `history.json`.
+- **Work root** — temp directory holding repos and move targets.
 
 ## Tree Overview
 
@@ -163,4 +172,84 @@ doctest test ./tests
 
 # Run a specific mode
 doctest test ./tests/mode-dry-run
+```
+
+```go
+import (
+	"bytes"
+	"io"
+	"os"
+	"os/exec"
+	"testing"
+	"time"
+)
+
+type Request struct {
+	ConfigHome string
+	WorkRoot   string
+	Args       []string
+	StdinInput string
+	UseScript  bool
+}
+
+type Response struct {
+	Output   string
+	ExitCode int
+}
+
+func Run(t *testing.T, req *Request) (*Response, error) {
+	bin := getMvdBin(t)
+
+	var cmdArgs []string
+	var cmdName string
+	if req.UseScript && req.StdinInput == "" {
+		cmdName = "script"
+		cmdArgs = append([]string{"-q", "/dev/null", bin}, req.Args...)
+	} else {
+		cmdName = bin
+		cmdArgs = req.Args
+	}
+
+	cmd := exec.Command(cmdName, cmdArgs...)
+	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
+
+	if req.StdinInput != "" {
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+		var outBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &outBuf
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		if req.UseScript {
+			time.Sleep(200 * time.Millisecond)
+		}
+		io.WriteString(stdin, req.StdinInput)
+		stdin.Close()
+		err = cmd.Wait()
+		exitCode := 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				exitCode = ee.ExitCode()
+			} else {
+				return nil, err
+			}
+		}
+		return &Response{Output: outBuf.String(), ExitCode: exitCode}, nil
+	}
+
+	out, err := cmd.CombinedOutput()
+	exitCode := 0
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			exitCode = ee.ExitCode()
+		} else {
+			return nil, err
+		}
+	}
+	return &Response{Output: string(out), ExitCode: exitCode}, nil
+}
 ```

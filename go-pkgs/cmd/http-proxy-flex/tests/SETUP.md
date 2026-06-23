@@ -1,3 +1,12 @@
+# Scenario
+
+**Feature**: http-proxy CLI forward proxy with upstream health monitoring
+
+```
+# build binary once, run with flags, capture stdout/stderr
+http-proxy --listen-port PORT --upstream-proxy URL [--fallback-direct]
+```
+
 ## Preconditions
 
 - The `http-proxy` Go module exists at `../` relative to the test root
@@ -17,7 +26,6 @@
 ```go
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -25,26 +33,19 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 )
-
-type Request struct {
-	Args           []string
-	CapturedOutput string
-}
-
-type Response struct {
-	Output   string
-	ExitCode int
-}
-
-// --- binary build (sync.Once, cached across all tests) ---
 
 var (
 	buildOnce sync.Once
 	cachedBin string
 	buildErr  error
 )
+
+func Setup(t *testing.T, req *Request) error {
+	return nil
+}
 
 func getBinPath(t *testing.T) string {
 	t.Helper()
@@ -64,8 +65,6 @@ func getBinPath(t *testing.T) string {
 	return cachedBin
 }
 
-// --- start/stop helper for short-lived process tests ---
-
 func startAndCapture(t *testing.T, binPath string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(binPath, args...)
@@ -84,8 +83,6 @@ func startAndCapture(t *testing.T, binPath string, args ...string) string {
 	cmd.Wait()
 	return string(buf[:n])
 }
-
-// --- streaming collector for long-running process tests ---
 
 type streamCollector struct {
 	mu       sync.Mutex
@@ -128,8 +125,6 @@ func scFullOutput(sc *streamCollector) string {
 	return sc.buf.String()
 }
 
-// --- waitForPattern helper ---
-
 func waitForPattern(getOutput func() string, pattern string, timeout time.Duration) bool {
 	deadline := time.After(timeout)
 	ticker := time.NewTicker(200 * time.Millisecond)
@@ -144,45 +139,5 @@ func waitForPattern(getOutput func() string, pattern string, timeout time.Durati
 			}
 		}
 	}
-}
-
-// default Run — handles both short-lived commands (e.g. --help) and long-running server processes
-func Run(t *testing.T, req *Request) (*Response, error) {
-	if req.CapturedOutput != "" {
-		return &Response{
-			Output:   req.CapturedOutput,
-			ExitCode: 0,
-		}, nil
-	}
-
-	binPath := getBinPath(t)
-	cmd := exec.Command(binPath, req.Args...)
-
-	var stdoutBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stdoutBuf
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start: %w", err)
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
-
-	select {
-	case <-done:
-		// command exited naturally (e.g. --help)
-	case <-time.After(4 * time.Second):
-		// long-running server — kill and capture output
-		cmd.Process.Kill()
-		<-done
-	}
-
-	return &Response{
-		Output:   stdoutBuf.String(),
-		ExitCode: 0,
-	}, nil
 }
 ```

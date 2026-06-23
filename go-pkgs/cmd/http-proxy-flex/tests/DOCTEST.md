@@ -1,11 +1,16 @@
 # http-proxy Test Cases
 
-Run the tests:
-```sh
-doctest test -v ./
-```
+## Version
+0.0.2
 
 A CLI forward proxy with dynamic upstream health monitoring.
+
+# DSN (Domain Specific Notion)
+
+- **http-proxy binary** — forward HTTP proxy built from the command module.
+- **Upstream proxy** — optional `--upstream-proxy` URL with health monitoring.
+- **Fallback direct** — `--fallback-direct` allows direct routing when upstream is dead.
+- **Listen port** — `--listen-port` controls the local listener (default 7821).
 
 ```
 http-proxy --help
@@ -15,7 +20,7 @@ http-proxy --listen-port PORT --upstream-proxy URL [--fallback-direct]
 ## Test Tree
 
 ```
-SETUP.md                              # Root: Request/Response, build & run binary
+SETUP.md                              # Root: build & run binary
 ├── help/
 │   └── show/                         # Leaf: --help prints usage
 ├── listen-port/
@@ -50,10 +55,65 @@ SETUP.md                              # Root: Request/Response, build & run bina
 | 10 | request-log/direct | HTTP request in fallback mode logs "via direct" |
 | 11 | request-log/upstream | HTTP request through upstream proxy logs "via upstream proxy" |
 
-## Running Tests
+## How to Run
 
-```bash
-cd go-pkgs/cmd/http-proxy
-doctest build tests/
-doctest test tests/
+```sh
+doctest test -v ./
+```
+
+```go
+import (
+	"bytes"
+	"fmt"
+	"os/exec"
+	"testing"
+	"time"
+)
+
+type Request struct {
+	Args           []string
+	CapturedOutput string
+}
+
+type Response struct {
+	Output   string
+	ExitCode int
+}
+
+func Run(t *testing.T, req *Request) (*Response, error) {
+	if req.CapturedOutput != "" {
+		return &Response{
+			Output:   req.CapturedOutput,
+			ExitCode: 0,
+		}, nil
+	}
+
+	binPath := getBinPath(t)
+	cmd := exec.Command(binPath, req.Args...)
+
+	var stdoutBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stdoutBuf
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(4 * time.Second):
+		cmd.Process.Kill()
+		<-done
+	}
+
+	return &Response{
+		Output:   stdoutBuf.String(),
+		ExitCode: 0,
+	}, nil
+}
 ```
