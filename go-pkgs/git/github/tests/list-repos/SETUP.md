@@ -36,7 +36,7 @@ import (
 	"strings"
 	"testing"
 
-	ghrepos "github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github"
+	ghrepos "github.com/xhd2015/dot-pkgs/go-pkgs/git/github"
 )
 
 func Setup(t *testing.T, req *Request) error {

@@ -9,7 +9,7 @@ test runner -> Setup chain -> Run(ListOwned | NormalizeRepoURL) -> Assert
 
 ## Preconditions
 
-- Target package path is `github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github`.
+- Target package path is `github.com/xhd2015/dot-pkgs/go-pkgs/git/github`.
 - Tests must not require a real `gh` binary or network access.
 
 ## Steps

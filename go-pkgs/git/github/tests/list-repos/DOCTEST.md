@@ -4,7 +4,7 @@
 0.0.2
 
 Nested doc-style test root for `ListRepos` and `EnsureAuthenticated` in
-`github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github`. Exercises auth
+`github.com/xhd2015/dot-pkgs/go-pkgs/git/github`. Exercises auth
 gate, owner inference, plain owned mode, description/code search, and union
 merge. Mock `gh` handles `api user`, `repo list`, `search repos`, and
 `search code`.
@@ -74,7 +74,7 @@ import (
 	"strings"
 	"testing"
 
-	ghrepos "github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github"
+	ghrepos "github.com/xhd2015/dot-pkgs/go-pkgs/git/github"
 )
 
 type Request struct {

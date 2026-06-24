@@ -4,7 +4,7 @@
 0.0.2
 
 Nested doc-style test root for `RunCLI` in
-`github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github`. Exercises top-level
+`github.com/xhd2015/dot-pkgs/go-pkgs/git/github`. Exercises top-level
 and `repo list` subcommand routing, flag parsing, stdout/stderr output modes,
 and auth error surfacing. Mock `gh` backs integration leaves.
 
@@ -86,7 +86,7 @@ import (
 	"os"
 	"testing"
 
-	ghrepos "github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github"
+	ghrepos "github.com/xhd2015/dot-pkgs/go-pkgs/git/github"
 )
 
 type Request struct {

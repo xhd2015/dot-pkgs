@@ -4,7 +4,7 @@
 0.0.2
 
 Doc-style tests for the library package at
-`github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github`. The package lists
+`github.com/xhd2015/dot-pkgs/go-pkgs/git/github`. The package lists
 repositories via `gh` (owned repos, description search, code search), merges
 multi-owner results with `matched_by` provenance, and normalizes repo URLs.
 Tests use mock `gh` shell scripts — no real GitHub network or auth.
@@ -177,7 +177,7 @@ import (
 	"strings"
 	"testing"
 
-	ghrepos "github.com/xhd2015/dot-pkgs-github/go-pkgs/git/github"
+	ghrepos "github.com/xhd2015/dot-pkgs/go-pkgs/git/github"
 )
 
 type Request struct {
