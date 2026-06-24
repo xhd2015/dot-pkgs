@@ -1,0 +1,10 @@
+[
+  {
+    "name": "apple",
+    "url": "https://github.com/bob/apple",
+    "description": "bob repo",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "bob"}
+  }
+]

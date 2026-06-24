@@ -1,0 +1,20 @@
+[
+  {
+    "name": "widget-lib",
+    "fullName": "alice/widget-lib",
+    "url": "https://github.com/alice/widget-lib",
+    "description": "widget library",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  },
+  {
+    "name": "gadget",
+    "fullName": "alice/gadget",
+    "url": "https://github.com/alice/gadget",
+    "description": "another widget project",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "repository": {
+      "name": "tool-a",
+      "url": "https://github.com/alice/tool-a",
+      "description": "first handler impl",
+      "isFork": false,
+      "isArchived": false,
+      "owner": {"login": "alice"}
+    }
+  },
+  {
+    "repository": {
+      "name": "tool-a",
+      "url": "https://github.com/alice/tool-a",
+      "description": "duplicate hit same repo",
+      "isFork": false,
+      "isArchived": false,
+      "owner": {"login": "alice"}
+    }
+  },
+  {
+    "repository": {
+      "name": "tool-b",
+      "url": "https://github.com/alice/tool-b",
+      "description": "second handler impl",
+      "isFork": false,
+      "isArchived": false,
+      "owner": {"login": "alice"}
+    }
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "name": "beta",
+    "url": "git@github.com:alice/beta.git",
+    "description": "second repo",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  },
+  {
+    "name": "alpha",
+    "url": "https://github.com/alice/alpha",
+    "description": "first repo",
+    "isFork": true,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  }
+]

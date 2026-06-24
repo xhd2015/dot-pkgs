@@ -1,0 +1,4 @@
+owner	name	raw	expected
+o	r	git@github.com:o/r.git	https://github.com/o/r
+o	r	git://github.com/o/r.git	https://github.com/o/r
+o	r	https://github.com/o/r	https://github.com/o/r

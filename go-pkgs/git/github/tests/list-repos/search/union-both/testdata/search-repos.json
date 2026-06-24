@@ -1,0 +1,20 @@
+[
+  {
+    "name": "shared",
+    "fullName": "alice/shared",
+    "url": "https://github.com/alice/shared",
+    "description": "matched by description search",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  },
+  {
+    "name": "desc-only",
+    "fullName": "alice/desc-only",
+    "url": "https://github.com/alice/desc-only",
+    "description": "description only",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  }
+]

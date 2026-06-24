@@ -1,0 +1,22 @@
+[
+  {
+    "repository": {
+      "name": "shared",
+      "url": "https://github.com/alice/shared",
+      "description": "matched by code search",
+      "isFork": false,
+      "isArchived": false,
+      "owner": {"login": "alice"}
+    }
+  },
+  {
+    "repository": {
+      "name": "code-only",
+      "url": "https://github.com/alice/code-only",
+      "description": "code only",
+      "isFork": false,
+      "isArchived": false,
+      "owner": {"login": "alice"}
+    }
+  }
+]

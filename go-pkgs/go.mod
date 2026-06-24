@@ -1,11 +1,14 @@
-module github.com/xhd2015/dot-pkgs/go-pkgs
+module github.com/xhd2015/dot-pkgs-github/go-pkgs
 
 go 1.25.0
 
 require (
 	github.com/sashabaranov/go-openai v1.41.2
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.17
 	golang.org/x/tools v0.45.0
 )
+
+require github.com/xhd2015/less-flags v1.0.0
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0

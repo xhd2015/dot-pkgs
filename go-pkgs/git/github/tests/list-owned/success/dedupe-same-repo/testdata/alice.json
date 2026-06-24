@@ -1,0 +1,10 @@
+[
+  {
+    "name": "shared",
+    "url": "https://github.com/alice/shared",
+    "description": "from alice",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  }
+]

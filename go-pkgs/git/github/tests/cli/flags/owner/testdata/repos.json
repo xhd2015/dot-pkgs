@@ -1,0 +1,10 @@
+[
+  {
+    "name": "zebra",
+    "url": "https://github.com/alice/zebra",
+    "description": "alice repo",
+    "isFork": false,
+    "isArchived": false,
+    "owner": {"login": "alice"}
+  }
+]
