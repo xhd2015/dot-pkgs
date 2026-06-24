@@ -40,6 +40,7 @@ list-repos/
 ├── search
 │   ├── description-only       search repos
 │   ├── code-only              search code deduped
+│   │   └── gh-export-repository-shape  gh --json repository (nameWithOwner, no owner.login)
 │   └── union-both             OR merge matched_by
 └── options
     ├── limit-default-30       Limit 0 → --limit 30
@@ -55,6 +56,7 @@ list-repos/
 | `plain/owned-only` | Plain mode `["owned"]` tags |
 | `search/description-only` | Description search results |
 | `search/code-only` | Code search deduped |
+| `search/code-only/gh-export-repository-shape` | Real gh repository JSON (`nameWithOwner`) |
 | `search/union-both` | Union merges `matched_by` |
 | `options/limit-default-30` | Default limit 30 |
 | `options/multi-owner` | Multi-owner merge |

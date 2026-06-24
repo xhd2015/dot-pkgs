@@ -138,14 +138,36 @@ func parseSearchCode(data []byte) ([]Repo, error) {
 
 func repoFromGhWire(item ghRepoWire) (Repo, error) {
 	owner := item.Owner.Login
+	name := item.Name
+	fullName := item.FullName
+	if fullName == "" {
+		fullName = item.NameWithOwner
+	}
+	if owner == "" && fullName != "" {
+		parts := strings.SplitN(fullName, "/", 2)
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			owner = parts[0]
+			if name == "" {
+				name = parts[1]
+			}
+		}
+	}
 	if owner == "" {
 		return Repo{}, fmt.Errorf("decode gh search code JSON: missing repository owner")
 	}
+	if fullName == "" {
+		fullName = buildFullName(owner, name)
+	}
+	if name == "" {
+		if i := strings.Index(fullName, "/"); i >= 0 {
+			name = fullName[i+1:]
+		}
+	}
 	return Repo{
 		Owner:       owner,
-		Name:        item.Name,
-		FullName:    buildFullName(owner, item.Name),
-		URL:         NormalizeRepoURL(owner, item.Name, item.URL),
+		Name:        name,
+		FullName:    fullName,
+		URL:         NormalizeRepoURL(owner, name, item.URL),
 		Description: item.Description,
 		IsFork:      item.IsFork,
 		IsArchived:  item.IsArchived,

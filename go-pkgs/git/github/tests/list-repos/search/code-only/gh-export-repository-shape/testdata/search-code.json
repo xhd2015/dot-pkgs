@@ -1,0 +1,29 @@
+[
+  {
+    "repository": {
+      "id": "R_kgDOExampleRepo1",
+      "nameWithOwner": "xhd2015/lifelog",
+      "url": "https://github.com/xhd2015/lifelog",
+      "isPrivate": true,
+      "isFork": false
+    }
+  },
+  {
+    "repository": {
+      "id": "R_kgDOExampleRepo1",
+      "nameWithOwner": "xhd2015/lifelog",
+      "url": "https://github.com/xhd2015/lifelog",
+      "isPrivate": true,
+      "isFork": false
+    }
+  },
+  {
+    "repository": {
+      "id": "R_kgDOExampleRepo2",
+      "nameWithOwner": "xhd2015/dot-pkgs",
+      "url": "https://github.com/xhd2015/dot-pkgs",
+      "isPrivate": false,
+      "isFork": false
+    }
+  }
+]

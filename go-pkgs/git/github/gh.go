@@ -15,12 +15,15 @@ type ghRepoOwner struct {
 }
 
 type ghRepoWire struct {
-	Name        string      `json:"name"`
-	URL         string      `json:"url"`
-	Description string      `json:"description"`
-	IsFork      bool        `json:"isFork"`
-	IsArchived  bool        `json:"isArchived"`
-	Owner       ghRepoOwner `json:"owner"`
+	Name          string      `json:"name"`
+	NameWithOwner string      `json:"nameWithOwner"`
+	FullName      string      `json:"fullName"`
+	URL           string      `json:"url"`
+	Description   string      `json:"description"`
+	IsFork        bool        `json:"isFork"`
+	IsArchived    bool        `json:"isArchived"`
+	IsPrivate     bool        `json:"isPrivate"`
+	Owner         ghRepoOwner `json:"owner"`
 }
 
 func ghBinFromEnv() string {
