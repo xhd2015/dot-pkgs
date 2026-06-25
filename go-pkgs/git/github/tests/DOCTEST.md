@@ -192,16 +192,26 @@ type Request struct {
 	NormalizeInput string
 	FullNameOwner  string
 	FullNameName   string
+	ParseRefInput  string
 }
 
 type Response struct {
-	Repos      []ghrepos.Repo
-	Normalized string
-	FullName   string
-	GhArgv     string // captured "$*" from mock gh, for options/* leaves
+	Repos         []ghrepos.Repo
+	Normalized    string
+	FullName      string
+	ParseRefOwner string
+	ParseRefName  string
+	GhArgv        string // captured "$*" from mock gh, for options/* leaves
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
+	if req.ParseRefInput != "" {
+		owner, name, err := ghrepos.ParseRef(req.ParseRefInput)
+		if err != nil {
+			return nil, err
+		}
+		return &Response{ParseRefOwner: owner, ParseRefName: name}, nil
+	}
 	if req.NormalizeInput != "" {
 		normalized := ghrepos.NormalizeRepoURL(req.NormalizeOwner, req.NormalizeName, req.NormalizeInput)
 		return &Response{Normalized: normalized}, nil

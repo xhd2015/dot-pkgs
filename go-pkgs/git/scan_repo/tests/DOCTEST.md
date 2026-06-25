@@ -70,10 +70,13 @@ scan-repo
 │   ├── single-origin/
 │   ├── multiple-remotes/
 │   └── flags-false-skips-git/
-└── enrich-worktrees/          [ListWorktrees=true]
-    ├── main-only/
-    ├── main-plus-linked/
-    └── flags-false-skips-git/
+├── enrich-worktrees/          [ListWorktrees=true]
+│   ├── main-only/
+│   ├── main-plus-linked/
+│   └── flags-false-skips-git/
+└── find-github/               [FindLocalMainByGitHub]
+    ├── basename-mismatch/     clone dir name != github repo name
+    └── skips-worktree/        returns main, not linked worktree
 ```
 
 ## Test Index
@@ -102,6 +105,8 @@ scan-repo
 | `enrich-worktrees/main-only` | Enrich | Worktrees on main row only |
 | `enrich-worktrees/main-plus-linked` | Enrich | Two rows; Worktrees only on main |
 | `enrich-worktrees/flags-false-skips-git` | Enrich | ListWorktrees=false, fake repo OK |
+| `find-github/basename-mismatch` | Find | `myproject-clone` + origin `xhd2015/myproject` |
+| `find-github/skips-worktree` | Find | linked worktree skipped; main path returned |
 
 ## How to Run
 
@@ -125,16 +130,19 @@ import (
 )
 
 type Request struct {
-	Roots         []string
-	MaxDepth      int
-	IgnoreDirs    []string
-	ListRemotes   bool
-	ListWorktrees bool
-	ParseURL      string // non-empty → ParseRemoteOwnerRepo only
+	Roots           []string
+	MaxDepth        int
+	IgnoreDirs      []string
+	ListRemotes     bool
+	ListWorktrees   bool
+	ParseURL        string // non-empty → ParseRemoteOwnerRepo only
+	FindGitHubOwner string
+	FindGitHubRepo  string
 }
 
 type Response struct {
 	Repos   []scan_repo.Repo
+	Found   *scan_repo.Repo
 	Owner   string
 	Repo    string
 	ParseOK bool
@@ -144,6 +152,15 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.ParseURL != "" {
 		owner, repo, ok := scan_repo.ParseRemoteOwnerRepo(req.ParseURL)
 		return &Response{Owner: owner, Repo: repo, ParseOK: ok}, nil
+	}
+	if req.FindGitHubOwner != "" || req.FindGitHubRepo != "" {
+		found, err := scan_repo.FindLocalMainByGitHub(context.Background(), scan_repo.Options{
+			Roots: req.Roots,
+		}, req.FindGitHubOwner, req.FindGitHubRepo)
+		if err != nil {
+			return nil, err
+		}
+		return &Response{Found: found}, nil
 	}
 	repos, err := scan_repo.Scan(context.Background(), scan_repo.Options{
 		Roots:         req.Roots,
