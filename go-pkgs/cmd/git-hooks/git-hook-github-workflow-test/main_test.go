@@ -136,6 +136,32 @@ func TestDiscoverGoModules(t *testing.T) {
 	}
 }
 
+func TestRunFixFromSubdirCreatesWorkflowAtRepoRoot(t *testing.T) {
+	dir := t.TempDir()
+	mustRun(t, dir, "git", "init")
+	mustRun(t, dir, "git", "remote", "add", "origin", "git@github.com:owner/repo.git")
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/repo\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	subdir := filepath.Join(dir, "task-hub")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(subdir)
+	var out strings.Builder
+	if err := runWithOutput([]string{"--fix"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	rootWorkflow := filepath.Join(dir, ".github", "workflows", "test.yml")
+	if _, err := os.Stat(rootWorkflow); err != nil {
+		t.Fatalf("expected workflow at repo root %s: %v", rootWorkflow, err)
+	}
+	subdirWorkflow := filepath.Join(subdir, ".github", "workflows", "test.yml")
+	if _, err := os.Stat(subdirWorkflow); !os.IsNotExist(err) {
+		t.Fatalf("workflow must not be created in subdirectory %s", subdirWorkflow)
+	}
+}
+
 func mustRun(t *testing.T, dir string, name string, args ...string) {
 	t.Helper()
 	cmd := exec.Command(name, args...)

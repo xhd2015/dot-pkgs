@@ -26,6 +26,8 @@ doctest test -v ./
 - `check/non-github-origin`: Non-GitHub origin, check mode skips silently.
 - `check/origin-domain-mismatch`: GitHub origin but `--origin-domain` mismatch, check mode skips silently.
 - `fix/github-create-workflow`: GitHub origin, no workflow, `--fix` creates a Go test workflow.
+- `fix/github-create-workflow-from-subdir`: GitHub origin, `--fix` run from a subdirectory creates workflow at git toplevel.
+- `check/github-existing-workflow-from-subdir`: GitHub origin, workflow at git toplevel, check mode run from subdirectory exits silently.
 - `fix/github-existing-workflow`: GitHub origin, existing workflow, `--fix` reports that nothing changed.
 - `fix/non-github-origin`: Non-GitHub origin, `--fix` errors and does not create a workflow.
 - `fix/origin-domain-mismatch`: GitHub origin but `--origin-domain` mismatch, `--fix` skips silently.
@@ -44,6 +46,7 @@ import (
 
 type Request struct {
 	CommandDir string
+	RunDir     string
 	ToolPath   string
 	RepoDir    string
 	Args       []string
@@ -60,7 +63,11 @@ type Response struct {
 
 func Run(t *testing.T, req *Request) (*Response, error) {
 	cmd := exec.Command(req.ToolPath, req.Args...)
-	cmd.Dir = req.RepoDir
+	runDir := req.RepoDir
+	if req.RunDir != "" {
+		runDir = req.RunDir
+	}
+	cmd.Dir = runDir
 	output, err := cmd.CombinedOutput()
 	exitCode := 0
 	if err != nil {

@@ -83,7 +83,12 @@ func runWithOutput(args []string, out io.Writer) error {
 		return nil
 	}
 
-	modules, err := discoverGoModules(".")
+	root, err := repoRoot()
+	if err != nil {
+		return err
+	}
+
+	modules, err := discoverGoModules(root)
 	if err != nil {
 		return err
 	}
@@ -92,12 +97,13 @@ func runWithOutput(args []string, out io.Writer) error {
 		return err
 	}
 
-	exists, err := fileExists(workflowPath)
+	workflowFile := filepath.Join(root, workflowPath)
+	exists, err := fileExists(workflowFile)
 	if err != nil {
 		return err
 	}
 	if exists {
-		current, err := os.ReadFile(workflowPath)
+		current, err := os.ReadFile(workflowFile)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", workflowPath, err)
 		}
@@ -111,7 +117,7 @@ func runWithOutput(args []string, out io.Writer) error {
 			fmt.Fprintf(out, "warning: %s differs from recommended workflow. Run git-hook-github-workflow-test --fix to update it.\n", workflowPath)
 			return nil
 		}
-		if err := os.WriteFile(workflowPath, []byte(expectedWorkflow), 0o644); err != nil {
+		if err := os.WriteFile(workflowFile, []byte(expectedWorkflow), 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", workflowPath, err)
 		}
 		fmt.Fprintf(out, "updated %s\n", workflowPath)
@@ -120,10 +126,10 @@ func runWithOutput(args []string, out io.Writer) error {
 
 	if !exists {
 		if cfg.fix {
-			if err := os.MkdirAll(".github/workflows", 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Join(root, ".github", "workflows"), 0o755); err != nil {
 				return fmt.Errorf("create .github/workflows: %w", err)
 			}
-			if err := os.WriteFile(workflowPath, []byte(expectedWorkflow), 0o644); err != nil {
+			if err := os.WriteFile(workflowFile, []byte(expectedWorkflow), 0o644); err != nil {
 				return fmt.Errorf("write %s: %w", workflowPath, err)
 			}
 			fmt.Fprintf(out, "created %s\n", workflowPath)
@@ -173,6 +179,14 @@ func originHost() (string, error) {
 		return "", nil
 	}
 	return githook.OriginHost(strings.TrimSpace(remote)), nil
+}
+
+func repoRoot() (string, error) {
+	root, err := githook.GitOutput("rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(strings.TrimSpace(root)), nil
 }
 
 func fileExists(path string) (bool, error) {
