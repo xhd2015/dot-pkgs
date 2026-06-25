@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	wt "github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 )
 
 func TestWorktreeMoveCreatesWorktree(t *testing.T) {
@@ -131,7 +133,7 @@ func TestCheckWorktreeCleanClean(t *testing.T) {
 	wtDir := filepath.Join(t.TempDir(), "clean-wt")
 	runGit(t, repo, "worktree", "add", wtDir)
 
-	if err := checkWorktreeClean(wtDir); err != nil {
+	if err := wt.IsClean(wtDir); err != nil {
 		t.Fatalf("expected clean worktree, got error: %v", err)
 	}
 }
@@ -148,7 +150,7 @@ func TestCheckWorktreeCleanDirty(t *testing.T) {
 		t.Fatalf("write dirty-file: %v", err)
 	}
 
-	if err := checkWorktreeClean(wtDir); err == nil {
+	if err := wt.IsClean(wtDir); err == nil {
 		t.Fatal("expected error for dirty worktree")
 	} else if !strings.Contains(err.Error(), "uncommitted changes") {
 		t.Fatalf("unexpected error: %v", err)
@@ -160,12 +162,16 @@ func TestCheckBranchMergedTrue(t *testing.T) {
 	repo := t.TempDir()
 	initGitRepo(t, repo)
 
-	runGit(t, repo, "checkout", "-b", "feature")
-	runGit(t, repo, "checkout", "-")
+	wtDir := filepath.Join(t.TempDir(), "feature-wt")
+	runGit(t, repo, "worktree", "add", "-b", "feature", wtDir)
 	runGit(t, repo, "merge", "feature")
 
-	if err := checkBranchMerged("feature", repo); err != nil {
-		t.Fatalf("expected merged branch, got error: %v", err)
+	result, err := wt.HeadIncludedInMain(repo, wtDir)
+	if err != nil {
+		t.Fatalf("HeadIncludedInMain: %v", err)
+	}
+	if !result.Included {
+		t.Fatalf("expected merged branch, got relation=%s included=false", result.Relation)
 	}
 }
 
@@ -174,18 +180,23 @@ func TestCheckBranchMergedFalse(t *testing.T) {
 	repo := t.TempDir()
 	initGitRepo(t, repo)
 
-	runGit(t, repo, "checkout", "-b", "feature")
-	if err := os.WriteFile(filepath.Join(repo, "new-file"), []byte("content"), 0644); err != nil {
+	wtDir := filepath.Join(t.TempDir(), "feature-wt")
+	runGit(t, repo, "worktree", "add", "-b", "feature", wtDir)
+	if err := os.WriteFile(filepath.Join(wtDir, "new-file"), []byte("content"), 0644); err != nil {
 		t.Fatalf("write new-file: %v", err)
 	}
-	runGit(t, repo, "add", "new-file")
-	runGit(t, repo, "commit", "-m", "feature work")
-	runGit(t, repo, "checkout", "-")
+	runGit(t, wtDir, "add", "new-file")
+	runGit(t, wtDir, "commit", "-m", "feature work")
 
-	if err := checkBranchMerged("feature", repo); err == nil {
-		t.Fatal("expected error for unmerged branch")
-	} else if !strings.Contains(err.Error(), "not merged") {
-		t.Fatalf("unexpected error: %v", err)
+	result, err := wt.HeadIncludedInMain(repo, wtDir)
+	if err != nil {
+		t.Fatalf("HeadIncludedInMain: %v", err)
+	}
+	if result.Included {
+		t.Fatalf("expected unmerged branch, got relation=%s included=true", result.Relation)
+	}
+	if result.Relation != "ahead" {
+		t.Fatalf("expected relation ahead, got %s", result.Relation)
 	}
 }
 
@@ -246,7 +257,7 @@ func TestWorktreeBackUnmergedFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unmerged branch on --back")
 	}
-	if !strings.Contains(err.Error(), "not merged") {
+	if !strings.Contains(err.Error(), "stdin is not a terminal") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 

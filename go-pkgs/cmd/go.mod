@@ -1,9 +1,9 @@
 module github.com/xhd2015/dot-pkgs/go-pkgs/cmd
 
-go 1.24.0
+go 1.25.0
 
 require (
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.8
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.21
 	github.com/xhd2015/gitops v0.0.18
 	github.com/xhd2015/less-flags v1.0.0
 	github.com/xhd2015/lls v0.0.9
@@ -21,5 +21,5 @@ require (
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/image v0.28.0 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
-	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 )

@@ -285,6 +285,25 @@ func TestCmdBackWorktree(t *testing.T) {
 		t.Fatalf("cmdMove forward: %v", err)
 	}
 
+	// cmdMove records worktree Git metadata, which makes --back remove the
+	// worktree instead of moving it back. Clear Git info to test the plain
+	// move-back path for relocated worktrees.
+	hist, aliases, err := loadHistory()
+	if err != nil {
+		t.Fatalf("loadHistory: %v", err)
+	}
+	for key, locs := range hist {
+		if len(locs) >= 2 && resolvePath(locs[len(locs)-1].Path) == resolvePath(wtIntermediate) {
+			for i := range hist[key] {
+				hist[key][i].Git = nil
+			}
+			break
+		}
+	}
+	if err := saveHistory(hist, aliases); err != nil {
+		t.Fatalf("saveHistory: %v", err)
+	}
+
 	// Then move back
 	output := captureStdout(t, func() {
 		if err := cmdBack(wtIntermediate); err != nil {
@@ -394,49 +413,6 @@ func TestMoveDirRepoWithoutWorktrees(t *testing.T) {
 	// No worktree updates expected
 	if strings.Contains(output, "updated worktree:") {
 		t.Fatalf("expected no worktree updates, got: %s", output)
-	}
-}
-
-func TestParseWorktreeList(t *testing.T) {
-	input := `worktree /path/to/repo
-HEAD 1234567890abcdef
-branch refs/heads/main
-
-worktree /path/to/repo/feature
-HEAD 1234567890abcdef
-branch refs/heads/feature
-`
-
-	wts := parseWorktreeList(input)
-	if len(wts) != 2 {
-		t.Fatalf("expected 2 worktrees, got %d", len(wts))
-	}
-	if wts[0].path != "/path/to/repo" {
-		t.Fatalf("expected first worktree to be /path/to/repo, got %s", wts[0].path)
-	}
-	if wts[1].path != "/path/to/repo/feature" {
-		t.Fatalf("expected second worktree to be /path/to/repo/feature, got %s", wts[1].path)
-	}
-}
-
-func TestParseWorktreeListEmpty(t *testing.T) {
-	wts := parseWorktreeList("")
-	if len(wts) != 0 {
-		t.Fatalf("expected 0 worktrees, got %d", len(wts))
-	}
-}
-
-func TestParseWorktreeListWithBare(t *testing.T) {
-	input := `worktree /path/to/bare
-bare
-
-worktree /path/to/repo
-HEAD abc
-branch refs/heads/main
-`
-	wts := parseWorktreeList(input)
-	if len(wts) != 2 {
-		t.Fatalf("expected 2 worktrees, got %d", len(wts))
 	}
 }
 

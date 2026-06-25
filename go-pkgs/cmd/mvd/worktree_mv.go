@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	wt "github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/gitops/git"
 	"golang.org/x/term"
 )
@@ -105,7 +106,7 @@ func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 
 	branch := last.Git.Branch
 
-	if err := checkWorktreeClean(last.Path); err != nil {
+	if err := wt.IsClean(last.Path); err != nil {
 		return err
 	}
 
@@ -209,7 +210,7 @@ func cmdWorktreeBackAt(origKey string, locations []LocationEntry, idx int, wtLoc
 
 	branch := wtLoc.Git.Branch
 
-	if err := checkWorktreeClean(wtLoc.Path); err != nil {
+	if err := wt.IsClean(wtLoc.Path); err != nil {
 		return err
 	}
 
@@ -320,24 +321,6 @@ func generateBranchName(basename, repoPath string) (string, error) {
 func branchExists(branch, repoPath string) bool {
 	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", "refs/heads/"+branch)
 	return cmd.Run() == nil
-}
-
-func checkWorktreeClean(worktreePath string) error {
-	cmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
-	out, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("git status: %w", err)
-	}
-	if len(strings.TrimSpace(string(out))) > 0 {
-		return fmt.Errorf(
-			"worktree %s has uncommitted changes:\n"+
-				"  commit or stash them before moving back\n"+
-				"  %s",
-			displayPath(worktreePath),
-			string(out),
-		)
-	}
-	return nil
 }
 
 func revParseCommit(dir, ref string) (string, error) {

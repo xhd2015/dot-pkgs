@@ -4,8 +4,15 @@ go 1.25.0
 
 require (
 	github.com/sashabaranov/go-openai v1.41.2
+	github.com/xhd2015/gitops v0.0.17
 	github.com/xhd2015/less-flags v1.0.0
 	golang.org/x/tools v0.45.0
+)
+
+require (
+	github.com/xhd2015/go-coverage v1.0.41 // indirect
+	github.com/xhd2015/go-inspect v0.0.49 // indirect
+	github.com/xhd2015/xgo v1.0.40 // indirect
 )
 
 require (
