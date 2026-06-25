@@ -1,17 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	wt "github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
-	"github.com/xhd2015/gitops/git"
-	"golang.org/x/term"
 )
 
 func cmdWorktreeMove(src, dst string) error {
@@ -89,95 +85,18 @@ func cmdWorktreeMove(src, dst string) error {
 func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 	last := locations[len(locations)-1]
 
-	// Read the current main repo from the worktree's .git file on disk.
-	// The history's MainRepo may be stale if the main repo was moved
-	// via a plain move after the worktree was created.
-	mainRepo, err := readWorktreeMainRepo(last.Path)
-	if err != nil {
-		// Fall back to history value with a warning
-		mainRepo = last.Git.MainRepo
-		fmt.Fprintf(os.Stderr, "warning: could not read worktree main repo from disk, using history: %s\n", displayPath(mainRepo))
-	}
-
-	// Verify the main repo still exists on disk
-	if _, err := os.Stat(mainRepo); err != nil {
-		return fmt.Errorf("main repo %s no longer exists (worktree references stale path; the main repo may have been moved or deleted)", displayPath(mainRepo))
-	}
-
-	branch := last.Git.Branch
-
-	if err := wt.IsClean(last.Path); err != nil {
-		return err
-	}
-
-	// Determine branch relationship with main HEAD
-	result, err := git.CompareBranches(mainRepo, branch, "HEAD")
+	mainRepo, err := resolveWorktreeMainRepo(last)
 	if err != nil {
 		return err
 	}
 
-	switch result.Relation {
-	case git.BranchRelationAIsAncestorOfB, git.BranchRelationSame:
-		// CASE A: branch is ancestor of HEAD → already merged (existing behavior)
-	case git.BranchRelationBIsAncestorOfA:
-		// CASE B: HEAD is ancestor of branch → fast-forward possible
-		confirmed, err := promptConfirm(fmt.Sprintf("branch %s is ahead, merge and remove?", branch))
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return nil
-		}
-		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("git merge --ff-only %s: %w\n%s", branch, err, out)
-		}
-	case git.BranchRelationDiverged:
-		// CASE C: diverged - prompt and try rebase on worktree
-		confirmed, err := promptConfirm(fmt.Sprintf("branch %s has diverged, rebase and merge?", branch))
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return nil
-		}
-		mainCommit, err := revParseCommit(mainRepo, "HEAD")
-		if err != nil {
-			return err
-		}
-		rebaseCmd := exec.Command("git", "-C", last.Path, "rebase", mainCommit)
-		rebaseOut, rebaseErr := rebaseCmd.CombinedOutput()
-		if rebaseErr != nil {
-			abortCmd := exec.Command("git", "-C", last.Path, "rebase", "--abort")
-			abortCmd.Run()
-			return fmt.Errorf("rebase conflict: %w\n%s", rebaseErr, rebaseOut)
-		}
-		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("git merge --ff-only %s after rebase: %w\n%s", branch, err, out)
-		}
+	result, err := runWorktreeMergeBack(last.Path, mainRepo)
+	if err != nil {
+		return err
 	}
-
-	if dryRun {
-		fmt.Printf("dry-run: would remove worktree %s\n", displayPath(last.Path))
+	if result.Action == "aborted" || result.Action == "dry-run" {
 		return nil
 	}
-
-	cmd := exec.Command("git", "-C", mainRepo, "worktree", "remove", last.Path)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git worktree remove: %w\n%s", err, out)
-	}
-
-	cmd = exec.Command("git", "-C", mainRepo, "branch", "-D", branch)
-	out, err = cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git branch -D %s: %w\n%s", branch, err, out)
-	}
-
-	fmt.Printf("worktree removed: %s [branch: %s deleted]\n", displayPath(last.Path), branch)
 
 	hist, aliases, err := loadHistory()
 	if err != nil {
@@ -197,91 +116,18 @@ func cmdWorktreeBack(origKey string, locations []LocationEntry) error {
 // worktrees at any position — e.g. when the chain is [repo, wt(wt), mid] and
 // the user does --back on wt in the middle.
 func cmdWorktreeBackAt(origKey string, locations []LocationEntry, idx int, wtLoc LocationEntry) error {
-	// Read the current main repo from the worktree's .git file on disk.
-	mainRepo, err := readWorktreeMainRepo(wtLoc.Path)
-	if err != nil {
-		mainRepo = wtLoc.Git.MainRepo
-		fmt.Fprintf(os.Stderr, "warning: could not read worktree main repo from disk, using history: %s\n", displayPath(mainRepo))
-	}
-
-	if _, err := os.Stat(mainRepo); err != nil {
-		return fmt.Errorf("main repo %s no longer exists (worktree references stale path; the main repo may have been moved or deleted)", displayPath(mainRepo))
-	}
-
-	branch := wtLoc.Git.Branch
-
-	if err := wt.IsClean(wtLoc.Path); err != nil {
-		return err
-	}
-
-	// Determine branch relationship with main HEAD
-	result, err := git.CompareBranches(mainRepo, branch, "HEAD")
+	mainRepo, err := resolveWorktreeMainRepo(wtLoc)
 	if err != nil {
 		return err
 	}
 
-	switch result.Relation {
-	case git.BranchRelationAIsAncestorOfB, git.BranchRelationSame:
-		// CASE A: branch is ancestor of HEAD → already merged (existing behavior)
-	case git.BranchRelationBIsAncestorOfA:
-		// CASE B: HEAD is ancestor of branch → fast-forward possible
-		confirmed, err := promptConfirm(fmt.Sprintf("branch %s is ahead, merge and remove?", branch))
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return nil
-		}
-		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("git merge --ff-only %s: %w\n%s", branch, err, out)
-		}
-	case git.BranchRelationDiverged:
-		// CASE C: diverged - prompt and try rebase on worktree
-		confirmed, err := promptConfirm(fmt.Sprintf("branch %s has diverged, rebase and merge?", branch))
-		if err != nil {
-			return err
-		}
-		if !confirmed {
-			return nil
-		}
-		mainCommit, err := revParseCommit(mainRepo, "HEAD")
-		if err != nil {
-			return err
-		}
-		rebaseCmd := exec.Command("git", "-C", wtLoc.Path, "rebase", mainCommit)
-		rebaseOut, rebaseErr := rebaseCmd.CombinedOutput()
-		if rebaseErr != nil {
-			abortCmd := exec.Command("git", "-C", wtLoc.Path, "rebase", "--abort")
-			abortCmd.Run()
-			return fmt.Errorf("rebase conflict: %w\n%s", rebaseErr, rebaseOut)
-		}
-		cmd := exec.Command("git", "-C", mainRepo, "merge", "--ff-only", branch)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("git merge --ff-only %s after rebase: %w\n%s", branch, err, out)
-		}
+	result, err := runWorktreeMergeBack(wtLoc.Path, mainRepo)
+	if err != nil {
+		return err
 	}
-
-	if dryRun {
-		fmt.Printf("dry-run: would remove worktree %s\n", displayPath(wtLoc.Path))
+	if result.Action == "aborted" || result.Action == "dry-run" {
 		return nil
 	}
-
-	cmd := exec.Command("git", "-C", mainRepo, "worktree", "remove", wtLoc.Path)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git worktree remove: %w\n%s", err, out)
-	}
-
-	cmd = exec.Command("git", "-C", mainRepo, "branch", "-D", branch)
-	out, err = cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git branch -D %s: %w\n%s", branch, err, out)
-	}
-
-	fmt.Printf("worktree removed: %s [branch: %s deleted]\n", displayPath(wtLoc.Path), branch)
 
 	hist, aliases, err := loadHistory()
 	if err != nil {
@@ -298,6 +144,44 @@ func cmdWorktreeBackAt(origKey string, locations []LocationEntry, idx int, wtLoc
 	}
 
 	return saveHistory(hist, aliases)
+}
+
+func resolveWorktreeMainRepo(loc LocationEntry) (string, error) {
+	mainRepo, err := readWorktreeMainRepo(loc.Path)
+	if err != nil {
+		mainRepo = loc.Git.MainRepo
+		fmt.Fprintf(os.Stderr, "warning: could not read worktree main repo from disk, using history: %s\n", displayPath(mainRepo))
+	}
+
+	if _, err := os.Stat(mainRepo); err != nil {
+		return "", fmt.Errorf("main repo %s no longer exists (worktree references stale path; the main repo may have been moved or deleted)", displayPath(mainRepo))
+	}
+	return mainRepo, nil
+}
+
+func runWorktreeMergeBack(worktreePath, mainRepo string) (*wt.MergeBackResult, error) {
+	result, err := wt.MergeBack(wt.MergeBackOptions{
+		SourcePath: worktreePath,
+		TargetPath: mainRepo,
+		DryRun:     dryRun,
+		Remove:     true,
+		Confirm: func(plan wt.MergeBackPlan) (bool, error) {
+			return wt.PromptConfirmPlan(plan, confirmFromStdin)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	switch result.Action {
+	case "dry-run":
+		fmt.Printf("dry-run: would remove worktree %s\n", displayPath(worktreePath))
+	case "aborted":
+		// caller handles exit without history update
+	default:
+		fmt.Printf("worktree removed: %s [branch: %s deleted]\n", displayPath(worktreePath), result.Branch)
+	}
+	return result, nil
 }
 
 func generateBranchName(basename, repoPath string) (string, error) {
@@ -323,49 +207,4 @@ func branchExists(branch, repoPath string) bool {
 	return cmd.Run() == nil
 }
 
-func revParseCommit(dir, ref string) (string, error) {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "--verify", ref)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git rev-parse --verify %s: %w", ref, err)
-	}
-	return strings.TrimSpace(string(out)), nil
-}
 
-func stdinIsPipe() bool {
-	fi, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeCharDevice == 0
-}
-
-func promptConfirm(msg string) (bool, error) {
-	isTTY := term.IsTerminal(int(os.Stdin.Fd()))
-	if !isTTY {
-		if stdinIsPipe() {
-			if !confirmFromStdin {
-				return false, fmt.Errorf("stdin is not a terminal; pass --confirm-from-stdin to read confirmation from piped stdin")
-			}
-		} else {
-			return false, fmt.Errorf("stdin is not a terminal; cannot prompt for confirmation")
-		}
-	}
-	if isTTY {
-		fmt.Fprintf(os.Stderr, "%s [Y/n]: ", msg)
-	}
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return false, fmt.Errorf("read input: %w", err)
-	}
-	line = strings.TrimSpace(strings.ToLower(line))
-	switch line {
-	case "", "y", "yes":
-		return true, nil
-	case "n", "no":
-		return false, nil
-	default:
-		return false, fmt.Errorf("invalid input: %q (expected y/n)", strings.TrimSpace(line))
-	}
-}
