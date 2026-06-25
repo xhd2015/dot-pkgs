@@ -1,5 +1,6 @@
 ## Expected
 - Exit code is 0 (validation passes — worktree is clean, branch is merged).
+- Output contains planned `git -C` commands from MergeBack dry-run, including `worktree remove`.
 - Output contains `dry-run: would remove worktree`.
 - The worktree directory still exists.
 - History still has the worktree entry.
@@ -17,6 +18,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.ExitCode != 0 {
 		t.Fatalf("exit code %d: %s", resp.ExitCode, resp.Output)
 	}
+	assertContains(t, resp.Output, "git -C")
+	assertContains(t, resp.Output, "worktree remove")
 	assertContains(t, resp.Output, "dry-run: would remove worktree")
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	assertFileExists(t, filepath.Join(wtDir, ".git"))

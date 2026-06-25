@@ -131,7 +131,7 @@ mvd tests
 | mode-dry-run | dry-run-rm-force | --dry-run with --rm -f: force path exercised, history entry retained |
 | mode-dry-run | dry-run-rebase | --dry-run with --rebase: prints "would rebase", history unchanged |
 | mode-dry-run | dry-run-back | --dry-run with --back (plain): prints "would move back", no os.Rename |
-| mode-dry-run | dry-run-back-worktree | --dry-run with --back (worktree): prints "would remove worktree", no git worktree remove |
+| mode-dry-run | dry-run-back-worktree | --dry-run with --back (worktree): lists planned git -C commands + "would remove worktree", no mutations |
 | mode-dry-run | dry-run-back-at-origin | --dry-run --back at origin: "nothing to move back", no dry-run message |
 | mode-dry-run | dry-run-clear | --dry-run with --clear: prints "would clear", history intact |
 | mode-dry-run | dry-run-cd | --dry-run with --cd: prints "would cd", no shell launched |
@@ -153,10 +153,12 @@ mvd tests
 | mode-worktree-back-enhanced | branch-ahead/pipe-without-confirm-flag | Piped stdin without --confirm-from-stdin → error (no accidental merge) |
 | mode-worktree-back-enhanced | branch-ahead/confirm-default | HEAD ancestor of branch, user presses Enter → ff merge + remove |
 | mode-worktree-back-enhanced | branch-ahead/decline | HEAD ancestor of branch, user types 'n' → abort, no changes |
+| mode-worktree-back-enhanced | branch-ahead/prompt-shows-commands | HEAD ancestor of branch, decline after prompt lists git -C merge/remove/delete commands |
 | mode-worktree-back-enhanced | branch-ahead/non-tty | HEAD ancestor of branch, stdin not a TTY → error |
 | mode-worktree-back-enhanced | branches-diverged/rebase-success | Neither ancestor, confirm (Enter) → rebase+ff merge+remove |
 | mode-worktree-back-enhanced | branches-diverged/rebase-conflict | Neither ancestor, confirm (Enter) → rebase conflicts → abort rebase, error |
 | mode-worktree-back-enhanced | branches-diverged/decline | Neither ancestor, decline ('n') → abort, no changes |
+| mode-worktree-back-enhanced | branches-diverged/prompt-shows-commands | Neither ancestor, decline after prompt lists git -C rebase/merge/remove/delete commands |
 | mode-worktree-back-enhanced | branches-diverged/non-tty | Neither ancestor, no TTY → error |
 | mode-worktree-back-enhanced | back-at/diverged-rebase-splice | cmdWorktreeBackAt: diverged, confirm (Enter) → rebase succeeds → splice chain |
 | mode-worktree-back-enhanced | back-at/ahead-confirm-splice | cmdWorktreeBackAt: branch ahead, confirm → splice chain |
