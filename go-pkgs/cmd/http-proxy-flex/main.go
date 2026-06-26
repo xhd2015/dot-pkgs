@@ -61,7 +61,7 @@ func run(args []string) error {
 		proxyAddr = net.JoinHostPort(proxyHost, "80")
 	}
 
-	handler := NewProxyHandler()
+	handler := NewProxyHandler(fallbackDirect)
 
 	// Probe upstream synchronously before accepting requests so the first
 	// proxied request uses the correct transport (avoids race with async setup).

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -10,16 +11,19 @@ import (
 	"time"
 )
 
+const connectDialTimeout = 2 * time.Second
+
 type ProxyHandler struct {
 	transport atomic.Pointer[http.Transport]
 
-	mu         sync.RWMutex
-	proxyAddr  string // "host:port" of upstream proxy, empty = direct
-	usingProxy bool
+	mu             sync.RWMutex
+	proxyAddr      string // "host:port" of upstream proxy, empty = direct
+	usingProxy     bool
+	fallbackDirect bool
 }
 
-func NewProxyHandler() *ProxyHandler {
-	h := &ProxyHandler{}
+func NewProxyHandler(fallbackDirect bool) *ProxyHandler {
+	h := &ProxyHandler{fallbackDirect: fallbackDirect}
 	h.transport.Store(newDirectTransport())
 	return h
 }
@@ -47,54 +51,12 @@ func (h *ProxyHandler) getProxyAddr() string {
 }
 
 func (h *ProxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
-	h.mu.RLock()
-	proxyAddr := h.proxyAddr
-	h.mu.RUnlock()
-
-	via := "direct"
-	if proxyAddr != "" {
-		via = "upstream proxy"
+	destConn, via, err := h.dialConnectDest(r)
+	if err != nil {
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		return
 	}
 	log.Printf("CONNECT %s via %s", r.Host, via)
-
-	var destConn net.Conn
-	var err error
-
-	if proxyAddr != "" {
-		destConn, err = net.DialTimeout("tcp", proxyAddr, 10*time.Second)
-		if err != nil {
-			http.Error(w, "Bad Gateway", http.StatusBadGateway)
-			log.Printf("connect to upstream proxy %s: %v", proxyAddr, err)
-			return
-		}
-
-		connectReq := "CONNECT " + r.Host + " HTTP/1.1\r\nHost: " + r.Host + "\r\n\r\n"
-		if _, err := io.WriteString(destConn, connectReq); err != nil {
-			destConn.Close()
-			http.Error(w, "Bad Gateway", http.StatusBadGateway)
-			return
-		}
-
-		buf := make([]byte, 4096)
-		n, err := destConn.Read(buf)
-		if err != nil || n < 12 {
-			destConn.Close()
-			http.Error(w, "Bad Gateway", http.StatusBadGateway)
-			return
-		}
-		respStr := string(buf[:n])
-		if len(respStr) < 12 || respStr[9:12] != "200" {
-			destConn.Close()
-			http.Error(w, "Bad Gateway", http.StatusBadGateway)
-			return
-		}
-	} else {
-		destConn, err = net.DialTimeout("tcp", r.Host, 10*time.Second)
-		if err != nil {
-			http.Error(w, "Bad Gateway", http.StatusBadGateway)
-			return
-		}
-	}
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
@@ -118,6 +80,57 @@ func (h *ProxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}()
 	io.Copy(clientConn, destConn)
 	clientConn.Close()
+}
+
+func (h *ProxyHandler) dialConnectDest(r *http.Request) (net.Conn, string, error) {
+	h.mu.RLock()
+	proxyAddr := h.proxyAddr
+	fallbackDirect := h.fallbackDirect
+	h.mu.RUnlock()
+
+	if proxyAddr != "" {
+		conn, err := h.dialViaUpstreamProxy(proxyAddr, r.Host)
+		if err == nil {
+			return conn, "upstream proxy", nil
+		}
+		if !fallbackDirect {
+			log.Printf("connect to upstream proxy %s: %v", proxyAddr, err)
+			return nil, "upstream proxy", err
+		}
+		h.SetTransport(newDirectTransport(), "")
+	}
+
+	conn, err := net.DialTimeout("tcp", r.Host, connectDialTimeout)
+	if err != nil {
+		return nil, "direct", err
+	}
+	return conn, "direct", nil
+}
+
+func (h *ProxyHandler) dialViaUpstreamProxy(proxyAddr, targetHost string) (net.Conn, error) {
+	conn, err := net.DialTimeout("tcp", proxyAddr, connectDialTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	connectReq := "CONNECT " + targetHost + " HTTP/1.1\r\nHost: " + targetHost + "\r\n\r\n"
+	if _, err := io.WriteString(conn, connectReq); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	buf := make([]byte, 4096)
+	n, err := conn.Read(buf)
+	if err != nil || n < 12 {
+		conn.Close()
+		return nil, err
+	}
+	respStr := string(buf[:n])
+	if len(respStr) < 12 || respStr[9:12] != "200" {
+		conn.Close()
+		return nil, fmt.Errorf("upstream proxy CONNECT failed: %s", respStr)
+	}
+	return conn, nil
 }
 
 func (h *ProxyHandler) handleHTTP(w http.ResponseWriter, r *http.Request) {

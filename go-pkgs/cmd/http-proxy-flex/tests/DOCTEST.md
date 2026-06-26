@@ -35,8 +35,10 @@ SETUP.md                              # Root: build & run binary
 │   ├── switch-and-back/              # Leaf: dead → live → dead upstream transitions
 │   └── start-live-down-up/           # Leaf: live → dead → live upstream transitions
 └── request-log/
-    ├── direct/                       # Leaf: request logged as "via direct"
-    └── upstream/                     # Leaf: request logged as "via upstream proxy"
+    ├── direct/                       # Leaf: HTTP GET logged as "via direct"
+    ├── upstream/                     # Leaf: HTTP GET logged as "via upstream proxy"
+    ├── connect-dead-upstream/        # Leaf: CONNECT with dead upstream logs "via direct"
+    └── connect-upstream-down-immediate-fallback/  # Leaf: CONNECT falls back when upstream dial fails
 ```
 
 ## Test Case Index
@@ -52,8 +54,10 @@ SETUP.md                              # Root: build & run binary
 | 7 | upstream/unreachable-fallback | Upstream is dead, `--fallback-direct` → prints "falling back to direct", starts listening |
 | 8 | dynamic/switch-and-back | Dead upstream → becomes reachable → becomes dead → fallback transitions |
 | 9 | dynamic/start-live-down-up | Live upstream → goes dead → comes back live → health check detects both |
-| 10 | request-log/direct | HTTP request in fallback mode logs "via direct" |
-| 11 | request-log/upstream | HTTP request through upstream proxy logs "via upstream proxy" |
+| 10 | request-log/direct | HTTP GET in fallback mode logs "via direct" |
+| 11 | request-log/upstream | HTTP GET through upstream proxy logs "via upstream proxy" |
+| 12 | request-log/connect-dead-upstream | CONNECT with dead upstream at startup logs "via direct" |
+| 13 | request-log/connect-upstream-down-immediate-fallback | CONNECT falls back to direct when upstream stops listening |
 
 ## How to Run
 
@@ -71,8 +75,10 @@ import (
 )
 
 type Request struct {
-	Args           []string
-	CapturedOutput string
+	Args            []string
+	CapturedOutput  string
+	ConnectTarget   string
+	ConnectResponse string
 }
 
 type Response struct {
