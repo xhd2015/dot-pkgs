@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code is 0 (server starts despite unreachable upstream)
-- Logs contain "falling back to direct" (warning on bootstrap)
+- Logs contain "upstream proxy unreachable" but NOT "falling back to direct"
 - Logs contain "listening on" (server started)
 
 ```go
@@ -15,8 +15,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected exit code 0, got %d\noutput:\n%s", resp.ExitCode, resp.Output)
 	}
 	output := resp.Output
-	if !strings.Contains(output, "falling back to direct") {
-		t.Fatalf("expected 'falling back to direct' in output, got:\n%s", output)
+	if strings.Contains(output, "falling back to direct") {
+		t.Fatalf("did not expect 'falling back to direct' with --no-fallback-direct, got:\n%s", output)
+	}
+	if !strings.Contains(output, "upstream proxy unreachable") {
+		t.Fatalf("expected 'upstream proxy unreachable' in output, got:\n%s", output)
 	}
 	if !strings.Contains(output, "listening on") {
 		t.Fatalf("expected 'listening on' in output, got:\n%s", output)

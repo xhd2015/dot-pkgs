@@ -2,7 +2,7 @@
 
 - Logs contain "using upstream proxy" (upstream was reachable at startup)
 - Logs contain "listening on" (server started)
-- With `--fallback-direct`, the health check loop starts even on initial success
+- Default flex mode: health check loop runs even on initial success
 
 ```go
 import "strings"

@@ -6,7 +6,7 @@
 ## Steps
 
 - Testing the `--listen-port` flag: default vs custom values
-- Both children use `--upstream-proxy` pointing to a dead port with `--fallback-direct`
+- Both children use `--upstream-proxy` pointing to a dead port (default flex)
 
 ```go
 func Setup(t *testing.T, req *Request) error {

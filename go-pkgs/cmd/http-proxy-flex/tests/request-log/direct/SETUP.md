@@ -1,7 +1,7 @@
 ## Steps
 
 1. Start a local HTTP test server as the request target
-2. Build and start http-proxy with a dead upstream and `--fallback-direct`
+2. Build and start http-proxy with a dead upstream (default flex)
 3. Wait for "falling back to direct" and "listening on" logs
 4. Make an HTTP GET request through the proxy to the test server
 5. Wait briefly for the log line to appear
@@ -35,7 +35,7 @@ func Setup(t *testing.T, req *Request) error {
 
 	cmd := exec.Command(binPath,
 		"--upstream-proxy", "http://127.0.0.1:19989",
-		"--fallback-direct",
+
 		"--listen-port", fmt.Sprintf("%d", proxyPort),
 	)
 

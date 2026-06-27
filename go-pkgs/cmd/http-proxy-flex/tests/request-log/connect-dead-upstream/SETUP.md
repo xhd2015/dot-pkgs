@@ -1,7 +1,7 @@
 ## Steps
 
 1. Reserve random upstream and proxy ports (nothing listening on upstream port)
-2. Start `http-proxy` with `--fallback-direct` pointing at the dead upstream port
+2. Start `http-proxy` (default flex) pointing at the dead upstream port
 3. Wait for "falling back to direct" and "listening on" logs
 4. Send a CONNECT request through the proxy
 5. Kill http-proxy and capture all output
@@ -21,7 +21,7 @@ func Setup(t *testing.T, req *Request) error {
 	binPath := getBinPath(t)
 	cmd := exec.Command(binPath,
 		"--upstream-proxy", fmt.Sprintf("http://127.0.0.1:%d", upstreamPort),
-		"--fallback-direct",
+
 		"--listen-port", fmt.Sprintf("%d", proxyPort),
 	)
 

@@ -4,7 +4,7 @@
 
 ## Steps
 
-- Testing `--upstream-proxy` behavior: accessible vs unreachable at startup, with and without `--fallback-direct`
+- Testing `--upstream-proxy` behavior: accessible vs unreachable at startup, default flex vs `--no-fallback-direct`
 
 ```go
 import "net"

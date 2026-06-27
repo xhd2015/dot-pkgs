@@ -44,10 +44,16 @@ func (h *ProxyHandler) SetTransport(t *http.Transport, proxyAddr string) {
 	h.mu.Unlock()
 }
 
-func (h *ProxyHandler) getProxyAddr() string {
+func (h *ProxyHandler) isUsingProxy() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.proxyAddr
+	return h.usingProxy
+}
+
+func (h *ProxyHandler) allowsFallbackDirect() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.fallbackDirect
 }
 
 func (h *ProxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +104,8 @@ func (h *ProxyHandler) dialConnectDest(r *http.Request) (net.Conn, string, error
 			return nil, "upstream proxy", err
 		}
 		h.SetTransport(newDirectTransport(), "")
+	} else if !fallbackDirect {
+		return nil, "upstream proxy", fmt.Errorf("upstream proxy unavailable")
 	}
 
 	conn, err := net.DialTimeout("tcp", r.Host, connectDialTimeout)
@@ -139,7 +147,15 @@ func (h *ProxyHandler) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.usingProxy {
 		via = "upstream proxy"
 	}
+	fallbackDirect := h.fallbackDirect
+	usingProxy := h.usingProxy
 	h.mu.RUnlock()
+
+	if !usingProxy && !fallbackDirect {
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		return
+	}
+
 	log.Printf("%s %s via %s", r.Method, r.URL.String(), via)
 
 	transport := h.transport.Load()

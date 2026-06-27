@@ -1,19 +1,26 @@
 # Scenario
 
-Dynamic upstream health: dead at startup → comes up → goes down again.
+**Feature**: default flex detects upstream becoming available after dead startup
+
+```
+# flex proxy starts with dead upstream, uses direct
+http-proxy --upstream-proxy URL -> direct transport
+
+# upstream later starts listening on URL
+upstream proxy starts listening
+
+# expected: flex proxy detects and switches to upstream
+health monitor -> upstream proxy available, switching
+```
 
 ## Steps
 
-1. Build the `http-proxy` binary
-2. Reserve random upstream and listen ports (no listener on upstream port yet)
-3. Start `http-proxy` pointing at the reserved upstream port (default flex)
-4. Wait for initial "falling back to direct" and "listening on" logs (upstream dead at startup)
-5. Start a TCP listener on the upstream port (simulate upstream becoming available)
-6. Wait for "upstream proxy available, switching" log
-7. Keep upstream available for 3 seconds
-8. Close the TCP listener (simulate upstream going down)
-9. Wait for second "falling back to direct" log
-10. Kill http-proxy and collect all output
+1. Reserve random upstream and proxy ports (nothing listening on upstream port)
+2. Start `http-proxy` with default flex (no flags) pointing at the dead upstream port
+3. Wait for initial "falling back to direct" and "listening on" logs
+4. Start a TCP listener on the upstream port (upstream becomes available)
+5. Wait for "upstream proxy available, switching" log
+6. Kill http-proxy and collect all output
 
 ```go
 import (
@@ -27,7 +34,6 @@ import (
 func Setup(t *testing.T, req *Request) error {
 	binPath := getBinPath(t)
 
-	// Reserve upstream port but keep it closed at startup.
 	reserved, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("reserve upstream port: %w", err)
@@ -81,21 +87,9 @@ func Setup(t *testing.T, req *Request) error {
 	defer upstream.Close()
 
 	if !waitForPattern(getOutput, "upstream proxy available, switching", 10*time.Second) {
-		upstream.Close()
 		cmd.Process.Kill()
 		cmd.Wait()
 		return fmt.Errorf("timed out waiting for 'upstream proxy available, switching'\noutput:\n%s", scFullOutput(sc))
-	}
-	scConsume(sc)
-
-	time.Sleep(3 * time.Second)
-
-	upstream.Close()
-
-	if !waitForPattern(getOutput, "falling back to direct", 10*time.Second) {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return fmt.Errorf("timed out waiting for second 'falling back to direct'\noutput:\n%s", scFullOutput(sc))
 	}
 	scConsume(sc)
 

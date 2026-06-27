@@ -2,7 +2,7 @@
 
 1. Reserve random upstream and proxy ports
 2. Start a TCP listener on the upstream port (upstream reachable at bootstrap)
-3. Start `http-proxy` with `--fallback-direct`
+3. Start `http-proxy` (default flex)
 4. Wait for "using upstream proxy" and "listening on" logs
 5. Close the upstream listener (upstream no longer listening)
 6. Immediately send a CONNECT request — before the 1s health check can switch to direct
@@ -31,7 +31,7 @@ func Setup(t *testing.T, req *Request) error {
 	binPath := getBinPath(t)
 	cmd := exec.Command(binPath,
 		"--upstream-proxy", fmt.Sprintf("http://127.0.0.1:%d", upstreamPort),
-		"--fallback-direct",
+
 		"--listen-port", fmt.Sprintf("%d", proxyPort),
 	)
 

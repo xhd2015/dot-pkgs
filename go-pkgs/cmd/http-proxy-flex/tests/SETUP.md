@@ -4,7 +4,7 @@
 
 ```
 # build binary once, run with flags, capture stdout/stderr
-http-proxy --listen-port PORT --upstream-proxy URL [--fallback-direct]
+http-proxy --listen-port PORT --upstream-proxy URL [--no-fallback-direct]
 ```
 
 ## Preconditions
@@ -21,7 +21,7 @@ http-proxy --listen-port PORT --upstream-proxy URL [--fallback-direct]
 ## Context
 
 - The binary is a forward HTTP proxy that listens on a local port
-- It supports `--listen-port`, `--upstream-proxy`, `--fallback-direct`, and `--help`
+- It supports `--listen-port`, `--upstream-proxy`, `--no-fallback-direct`, and `--help`
 
 ```go
 import (

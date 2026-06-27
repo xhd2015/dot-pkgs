@@ -18,7 +18,7 @@ Start a forward HTTP proxy with optional upstream proxy and fallback.
 Options:
   --listen-port PORT         Port to listen on (default: 7821)
   --upstream-proxy URL       Upstream proxy URL (e.g. http://localhost:1087)
-  --fallback-direct          Fall back to direct network access if upstream is unreachable
+  --no-fallback-direct       Disable direct routing when upstream is unreachable (default: fallback enabled)
   -h, --help                 Show this help message
 `
 
@@ -32,11 +32,11 @@ func main() {
 func run(args []string) error {
 	var listenPort int
 	var upstreamProxy string
-	var fallbackDirect bool
+	var noFallbackDirect bool
 
 	args, err := lessflags.Int("--listen-port", &listenPort).
 		String("--upstream-proxy", &upstreamProxy).
-		Bool("--fallback-direct", &fallbackDirect).
+		Bool("--no-fallback-direct", &noFallbackDirect).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -61,6 +61,7 @@ func run(args []string) error {
 		proxyAddr = net.JoinHostPort(proxyHost, "80")
 	}
 
+	fallbackDirect := !noFallbackDirect
 	handler := NewProxyHandler(fallbackDirect)
 
 	// Probe upstream synchronously before accepting requests so the first
@@ -68,13 +69,13 @@ func run(args []string) error {
 	if tcpDial(proxyAddr, 100*time.Millisecond) {
 		log.Printf("using upstream proxy %s", upstreamProxy)
 		handler.SetTransport(newProxyTransport(upstreamProxy), proxyAddr)
-	} else {
+	} else if fallbackDirect {
 		log.Printf("upstream proxy unreachable, falling back to direct")
+	} else {
+		log.Printf("upstream proxy unreachable")
 	}
 
-	if fallbackDirect {
-		go healthCheckLoop(handler, proxyAddr, upstreamProxy)
-	}
+	go healthCheckLoop(handler, proxyAddr, upstreamProxy)
 
 	addr := fmt.Sprintf(":%d", listenPort)
 	log.Printf("listening on %s", addr)
@@ -85,7 +86,7 @@ func healthCheckLoop(handler *ProxyHandler, proxyAddr string, upstreamURL string
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	lastState := handler.usingProxy
+	lastState := handler.isUsingProxy()
 
 	for range ticker.C {
 		reachable := tcpDial(proxyAddr, 100*time.Millisecond)
@@ -95,8 +96,13 @@ func healthCheckLoop(handler *ProxyHandler, proxyAddr string, upstreamURL string
 			handler.SetTransport(newProxyTransport(upstreamURL), proxyAddr)
 			lastState = true
 		} else if !reachable && lastState {
-			log.Printf("upstream proxy unreachable, falling back to direct")
-			handler.SetTransport(newDirectTransport(), "")
+			if handler.allowsFallbackDirect() {
+				log.Printf("upstream proxy unreachable, falling back to direct")
+				handler.SetTransport(newDirectTransport(), "")
+			} else {
+				log.Printf("upstream proxy unreachable")
+				handler.SetTransport(newDirectTransport(), "")
+			}
 			lastState = false
 		}
 	}

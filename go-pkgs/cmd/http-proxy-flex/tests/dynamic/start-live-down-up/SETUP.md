@@ -5,7 +5,7 @@ Dynamic upstream health: live at startup → goes down → comes back up.
 ## Steps
 
 1. Start a TCP listener on a random port to simulate an available upstream proxy
-2. Build and start `http-proxy` pointing at that port with `--fallback-direct` on a random listen port
+2. Build and start `http-proxy` pointing at that port on a random listen port (default flex)
 3. Wait for "using upstream proxy" and "listening on" logs (upstream live at startup)
 4. Close the TCP listener (simulate upstream going down)
 5. Wait for "falling back to direct" log
@@ -41,7 +41,6 @@ func Setup(t *testing.T, req *Request) error {
 
 	cmd := exec.Command(binPath,
 		"--upstream-proxy", fmt.Sprintf("http://127.0.0.1:%d", upstreamPort),
-		"--fallback-direct",
 		"--listen-port", fmt.Sprintf("%d", proxyPort),
 	)
 

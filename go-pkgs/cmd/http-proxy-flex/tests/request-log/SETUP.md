@@ -11,6 +11,8 @@
 import (
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -46,6 +48,21 @@ func startLocalConnectTarget(t *testing.T) string {
 		ln.Close()
 	}()
 	return target
+}
+
+func getThroughProxy(t *testing.T, proxyPort int, targetURL string) {
+	t.Helper()
+	proxyURL, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{
+		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+		Timeout:   3 * time.Second,
+	}
+	if _, err := client.Get(targetURL); err != nil {
+		t.Fatalf("GET through proxy: %v", err)
+	}
 }
 
 func connectThroughProxy(t *testing.T, proxyPort int, targetHost string) string {
