@@ -175,7 +175,7 @@ func runWorktreeMergeBack(worktreePath, mainRepo string) (*wt.MergeBackResult, e
 
 	switch result.Action {
 	case "dry-run":
-		fmt.Printf("dry-run: would remove worktree %s\n", displayPath(worktreePath))
+		fmt.Print("\ndry-run: would remove worktree")
 	case "aborted":
 		// caller handles exit without history update
 	default:
