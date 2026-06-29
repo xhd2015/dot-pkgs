@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 	"github.com/xhd2015/gitops/git"
 )
 
@@ -113,7 +114,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 		targetPath:  targetAbs,
 		mainRepo:    mainRepo,
 		remove:      opts.Remove,
-		targetLabel: targetLabel(targetAbs, mainRepo),
+		targetLabel: targetLabel(targetAbs),
 	})
 	if err != nil {
 		return nil, err
@@ -241,17 +242,72 @@ func buildMergeBackPlan(in mergeBackPlanInput) (MergeBackPlan, error) {
 	return plan, nil
 }
 
-func targetLabel(targetAbs, mainRepo string) string {
-	if samePath(targetAbs, mainRepo) {
-		return "main"
+// displayPath shortens paths for CLI output consistently with doctest fixtures
+// that build paths via filepath.Join (macOS /var vs /private/var).
+func displayPath(p string) string {
+	p = filepath.Clean(p)
+	if strings.HasPrefix(p, "/private/var/") {
+		p = "/var/" + strings.TrimPrefix(p, "/private/var/")
 	}
-	return filepath.Base(targetAbs)
+	return pathfmt.Short(p)
+}
+
+func targetLabel(targetAbs string) string {
+	branch, err := ReadBranch(targetAbs)
+	if err != nil || branch == "" || branch == "HEAD" {
+		return filepath.Base(targetAbs)
+	}
+	return branch
+}
+
+func plannedCommandComment(cmd PlannedCommand, plan MergeBackPlan) string {
+	if len(cmd.Args) == 0 {
+		return ""
+	}
+	switch cmd.Args[0] {
+	case "merge":
+		return fmt.Sprintf("# %s: fast forward", plan.TargetLabel)
+	case "rebase":
+		return fmt.Sprintf("# %s: rebase onto %s", plan.Branch, plan.TargetLabel)
+	case "worktree":
+		if len(cmd.Args) >= 2 && cmd.Args[1] == "remove" {
+			return "# worktree: remove"
+		}
+	case "branch":
+		if len(cmd.Args) >= 2 && cmd.Args[1] == "-D" {
+			return "# worktree branch: drop"
+		}
+	}
+	return ""
+}
+
+func formatPlannedCommandForDisplay(cmd PlannedCommand) string {
+	dir := displayPath(cmd.Dir)
+	args := append([]string(nil), cmd.Args...)
+	if len(args) >= 3 && args[0] == "worktree" && args[1] == "remove" {
+		args[2] = displayPath(args[2])
+	}
+	if len(args) >= 2 && args[0] == "rebase" {
+		args = args[:1]
+	}
+	return fmt.Sprintf("git -C %s %s", dir, strings.Join(args, " "))
+}
+
+// WritePlannedCommandsDisplay writes indented comment + command lines for a plan.
+func WritePlannedCommandsDisplay(b *strings.Builder, plan MergeBackPlan) {
+	for _, cmd := range plan.Commands {
+		if comment := plannedCommandComment(cmd, plan); comment != "" {
+			fmt.Fprintf(b, "  %s\n", comment)
+		}
+		fmt.Fprintf(b, "  %s\n", formatPlannedCommandForDisplay(cmd))
+	}
 }
 
 func printDryRun(result *MergeBackResult, plan MergeBackPlan) (*MergeBackResult, error) {
-	for _, cmd := range plan.Commands {
-		fmt.Println(cmd.String())
-	}
+	var b strings.Builder
+	b.WriteByte('\n')
+	WritePlannedCommandsDisplay(&b, plan)
+	fmt.Print(strings.TrimSuffix(b.String(), "\n"))
 	result.Action = "dry-run"
 	result.Message = "dry-run: planned commands listed"
 	return result, nil

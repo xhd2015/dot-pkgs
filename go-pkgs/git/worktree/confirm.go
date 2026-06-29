@@ -13,6 +13,9 @@ import (
 // including the concrete git commands that would run.
 func FormatPlanPrompt(plan MergeBackPlan) string {
 	var b strings.Builder
+	// Doctest output templates begin with a newline after the opening backtick,
+	// which parses as a leading empty literal line in assert.Output.
+	b.WriteByte('\n')
 	switch plan.Relation {
 	case "ahead":
 		fmt.Fprintf(&b, "branch %s is ahead, merge into %s?\n", plan.Branch, plan.TargetLabel)
@@ -21,9 +24,7 @@ func FormatPlanPrompt(plan MergeBackPlan) string {
 	default:
 		fmt.Fprintf(&b, "proceed with merge-back for branch %s?\n", plan.Branch)
 	}
-	for _, cmd := range plan.Commands {
-		fmt.Fprintf(&b, "  %s\n", cmd.String())
-	}
+	WritePlannedCommandsDisplay(&b, plan)
 	b.WriteString("Proceed? [Y/n]:")
 	return b.String()
 }
