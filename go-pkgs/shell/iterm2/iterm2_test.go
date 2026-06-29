@@ -22,8 +22,8 @@ func TestBuildScriptCreatesWindowAndCDs(t *testing.T) {
 	if !strings.Contains(script, "create window with default profile") {
 		t.Fatalf("script must create a window: %q", script)
 	}
-	if strings.Contains(script, "create tab") {
-		t.Fatal("script must not create a tab")
+	if !strings.Contains(script, "create tab with default profile") {
+		t.Fatal("script must support tab reuse branch")
 	}
 	if !strings.Contains(script, `set targetDir to "/tmp/proj"`) {
 		t.Fatalf("script missing targetDir: %q", script)
