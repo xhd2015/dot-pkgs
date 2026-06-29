@@ -25,7 +25,10 @@ func FindLocalMainByGitHub(ctx context.Context, opts Options, owner, repo string
 		return nil, fmt.Errorf("at least one root is required")
 	}
 
-	ignoreSet := buildIgnoreSet(opts.IgnoreDirs)
+	ignore, err := buildIgnoreConfig(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, root := range opts.Roots {
 		select {
@@ -39,7 +42,7 @@ func FindLocalMainByGitHub(ctx context.Context, opts Options, owner, repo string
 			return nil, err
 		}
 
-		found, err := walkRootFindGitHub(ctx, absRoot, owner, repo, opts.MaxDepth, ignoreSet)
+		found, err := walkRootFindGitHub(ctx, absRoot, owner, repo, opts.MaxDepth, ignore, opts.Verbose)
 		if err == errFound {
 			return found, nil
 		}
@@ -51,11 +54,15 @@ func FindLocalMainByGitHub(ctx context.Context, opts Options, owner, repo string
 	return nil, fmt.Errorf("no local main repo for github.com/%s/%s", owner, repo)
 }
 
-func walkRootFindGitHub(ctx context.Context, root, owner, repo string, maxDepth int, ignoreSet map[string]struct{}) (*Repo, error) {
+func walkRootFindGitHub(ctx context.Context, root, owner, repo string, maxDepth int, ignore ignoreConfig, verbose bool) (*Repo, error) {
 	var found *Repo
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if isPermissionError(walkErr) {
+				maybeWarnSkip(verbose, path, walkErr)
+				return filepath.SkipDir
+			}
 			return walkErr
 		}
 
@@ -70,7 +77,11 @@ func walkRootFindGitHub(ctx context.Context, root, owner, repo string, maxDepth 
 		}
 
 		if path != root {
-			if _, skip := ignoreSet[d.Name()]; skip {
+			cleanPath := filepath.Clean(path)
+			if _, skip := ignore.fullPaths[cleanPath]; skip {
+				return filepath.SkipDir
+			}
+			if _, skip := ignore.basenames[d.Name()]; skip {
 				return filepath.SkipDir
 			}
 			if maxDepth > 0 && depthFromRoot(root, path) > maxDepth {

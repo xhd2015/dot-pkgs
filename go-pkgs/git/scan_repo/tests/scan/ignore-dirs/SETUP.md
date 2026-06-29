@@ -1,9 +1,10 @@
 # Scenario
 
-**Feature**: default ignore skips repos under `node_modules`
+**Feature**: default ignore basenames skip repos under `node_modules`
 
 ```
-node_modules/ is ignored -> hidden-repo/.git not discovered
+# basename ignore set includes node_modules
+Walk skips node_modules/ -> hidden-repo/.git not discovered
 ```
 
 ## Steps

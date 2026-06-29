@@ -45,4 +45,16 @@ func fakeGitWorktree(t *testing.T, mainDir, wtDir string) {
 	absWtGitDir := absPath(t, wtGitDir)
 	writeFile(t, filepath.Join(wtDir, ".git"), "gitdir: "+absWtGitDir+"\n")
 }
+
+func addUnreadableDir(t *testing.T, root, name string) {
+	t.Helper()
+	secret := filepath.Join(root, name)
+	mkdirAll(t, secret)
+	if err := os.Chmod(secret, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(secret, 0755)
+	})
+}
 ```

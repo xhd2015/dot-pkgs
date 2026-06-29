@@ -2,7 +2,8 @@
 
 - Exit code 0.
 - Stdout contains usage text documenting `--root`, `--max-depth`, `--ignore-dir`,
-  `--list-remotes`, `--list-worktrees`, and `--json`.
+  `--ignore-dir-basename`, `-v` / `--verbose`, `--list-remotes`, `--list-worktrees`,
+  and `--json`.
 - Stderr is empty.
 
 ## Side Effects
@@ -29,7 +30,10 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stderr != "" {
 		t.Fatalf("expected empty stderr, got:\n%s", resp.Stderr)
 	}
-	for _, flag := range []string{"--root", "--max-depth", "--ignore-dir", "--list-remotes", "--list-worktrees", "--json"} {
+	for _, flag := range []string{
+		"--root", "--max-depth", "--ignore-dir", "--ignore-dir-basename",
+		"-v", "--verbose", "--list-remotes", "--list-worktrees", "--json",
+	} {
 		if !strings.Contains(resp.Stdout, flag) {
 			t.Fatalf("help should mention %q, got:\n%s", flag, resp.Stdout)
 		}

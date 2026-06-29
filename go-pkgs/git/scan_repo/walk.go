@@ -2,18 +2,23 @@ package scan_repo
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func walkRoot(ctx context.Context, root string, maxDepth int, ignoreSet map[string]struct{}) ([]Repo, error) {
+func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfig, verbose bool) ([]Repo, error) {
 	var repos []Repo
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if isPermissionError(walkErr) {
+				maybeWarnSkip(verbose, path, walkErr)
+				return filepath.SkipDir
+			}
+			return walkErr
 		}
 
 		select {
@@ -27,7 +32,11 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignoreSet map[stri
 		}
 
 		if path != root {
-			if _, skip := ignoreSet[d.Name()]; skip {
+			cleanPath := filepath.Clean(path)
+			if _, skip := ignore.fullPaths[cleanPath]; skip {
+				return filepath.SkipDir
+			}
+			if _, skip := ignore.basenames[d.Name()]; skip {
 				return filepath.SkipDir
 			}
 			if maxDepth > 0 && depthFromRoot(root, path) > maxDepth {
@@ -59,6 +68,17 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignoreSet map[stri
 		return nil, err
 	}
 	return repos, nil
+}
+
+func isPermissionError(err error) bool {
+	return os.IsPermission(err)
+}
+
+func maybeWarnSkip(verbose bool, path string, err error) {
+	if !verbose {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "\nwarning: skipping\n%s: %v", path, err)
 }
 
 func depthFromRoot(root, path string) int {

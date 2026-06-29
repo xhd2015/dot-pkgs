@@ -14,7 +14,8 @@ empty scans exit 0 with empty stdout.
 
 - **Caller** — supplies CLI argv (`[]string`) with flags only (no config file).
 - **RunCLI** — parses flags via `less-flags`, validates `--root` is present,
-  maps flags to `Options`, invokes `Scan`.
+  maps flags to `Options` (full-path `--ignore-dir`, basename `--ignore-dir-basename`,
+  `--verbose` for permission-skip warnings), invokes `Scan`.
 - **Scan** — filesystem walk and optional git enrichment (same as library tests).
 - **Stdout formatter** — lines mode: `{path}\t{RepoType}` plus optional
   `\torigin:{owner}/{repo}@{host}` when `--list-remotes` and origin exists;
@@ -50,7 +51,11 @@ cli
 │   ├── single-root/
 │   ├── multiple-roots/
 │   ├── max-depth/
-│   └── ignore-dir/
+│   ├── ignore-dir/                    [full normalized path]
+│   ├── ignore-dir-no-basename-match/  [relative path does not basename-skip]
+│   ├── ignore-dir-basename/
+│   ├── verbose-permission-skip/       [-v + unreadable dir]
+│   └── verbose-quiet-default/         [no -v, silent skip]
 ├── output/                       [format selection]
 │   ├── lines-default/          [--json absent, multi-repo fixture]
 │   ├── json/                   [--json, multi-repo fixture]
@@ -70,7 +75,11 @@ cli
 | `flags/single-root` | Flags | One `--root`, one repo discovered |
 | `flags/multiple-roots` | Flags | Two `--root` values union results |
 | `flags/max-depth` | Flags | `--max-depth` excludes deep repo |
-| `flags/ignore-dir` | Flags | `--ignore-dir` skips custom dir |
+| `flags/ignore-dir` | Flags | `--ignore-dir` skips by full path |
+| `flags/ignore-dir-no-basename-match` | Flags | Relative `--ignore-dir` does not basename-skip |
+| `flags/ignore-dir-basename` | Flags | `--ignore-dir-basename` skips by basename |
+| `flags/verbose-permission-skip` | Flags | `-v` warns on permission-denied skip |
+| `flags/verbose-quiet-default` | Flags | Default: no stderr on permission skip |
 | `output/lines-default` | Output | Tab-separated lines, path-sorted |
 | `output/json` | Output | JSON array with string RepoType |
 | `output/json-empty` | Output | Empty workspace → `[]` |

@@ -19,7 +19,9 @@ Discover git repositories under filesystem roots.
 Options:
   --root PATH              Root directory to scan (required, repeatable)
   --max-depth N            Maximum directory depth relative to each root (0 = unlimited)
-  --ignore-dir NAME        Additional directory names to skip (repeatable)
+  --ignore-dir PATH        Full directory path to skip after normalization (repeatable)
+  --ignore-dir-basename NAME Directory basename to skip anywhere in the tree (repeatable)
+  -v, --verbose            Warn on stderr when skipping unreadable directories
   --list-remotes           List git remotes and append origin info to lines output
   --list-worktrees         Enrich main repos with git worktree metadata
   --json                   Output JSON array instead of tab-separated lines
@@ -33,14 +35,18 @@ func (r RepoType) String() string {
 func RunCLI(args []string) error {
 	var roots []string
 	var ignoreDirs []string
+	var ignoreDirBasenames []string
 	var maxDepth int
+	var verbose bool
 	var listRemotes bool
 	var listWorktrees bool
 	var jsonOut bool
 
 	remain, err := lessflags.StringSlice("--root", &roots).
 		StringSlice("--ignore-dir", &ignoreDirs).
+		StringSlice("--ignore-dir-basename", &ignoreDirBasenames).
 		Int("--max-depth", &maxDepth).
+		Bool("-v,--verbose", &verbose).
 		Bool("--list-remotes", &listRemotes).
 		Bool("--list-worktrees", &listWorktrees).
 		Bool("--json", &jsonOut).
@@ -66,12 +72,25 @@ func RunCLI(args []string) error {
 		return err
 	}
 
+	normalizedIgnoreDirs := make([]string, 0, len(ignoreDirs))
+	for _, dir := range ignoreDirs {
+		norm, normErr := normalizeIgnoreDir(dir)
+		if normErr != nil {
+			err := fmt.Errorf("%s: %w", dir, normErr)
+			fmt.Fprintln(os.Stderr, err)
+			return err
+		}
+		normalizedIgnoreDirs = append(normalizedIgnoreDirs, norm)
+	}
+
 	repos, err := Scan(context.Background(), Options{
-		Roots:         roots,
-		MaxDepth:      maxDepth,
-		IgnoreDirs:    ignoreDirs,
-		ListRemotes:   listRemotes,
-		ListWorktrees: listWorktrees,
+		Roots:              roots,
+		MaxDepth:           maxDepth,
+		IgnoreDirs:         normalizedIgnoreDirs,
+		IgnoreDirBasenames: ignoreDirBasenames,
+		Verbose:            verbose,
+		ListRemotes:        listRemotes,
+		ListWorktrees:      listWorktrees,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

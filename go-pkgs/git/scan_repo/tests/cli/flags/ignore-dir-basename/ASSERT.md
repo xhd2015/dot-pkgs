@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- Stdout is empty — the entire `scratch` subtree is skipped by full-path ignore.
+- Stdout is empty (`scratch` basename is ignored).
 - Stderr is empty.
 
 ## Exit Code
@@ -19,7 +19,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("exit code = %d, want 0\nstdout:\n%s\nstderr:\n%s", resp.ExitCode, resp.Stdout, resp.Stderr)
 	}
 	if resp.Stdout != "" {
-		t.Fatalf("expected empty stdout with full-path --ignore-dir, got:\n%s", resp.Stdout)
+		t.Fatalf("expected empty stdout with --ignore-dir-basename scratch, got:\n%s", resp.Stdout)
 	}
 	if resp.Stderr != "" {
 		t.Fatalf("expected empty stderr, got:\n%s", resp.Stderr)

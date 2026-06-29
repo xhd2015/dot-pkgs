@@ -41,11 +41,13 @@ type Worktree struct {
 }
 
 type Options struct {
-	Roots         []string
-	MaxDepth      int
-	IgnoreDirs    []string
-	ListRemotes   bool
-	ListWorktrees bool
+	Roots              []string
+	MaxDepth           int
+	IgnoreDirs         []string
+	IgnoreDirBasenames []string
+	Verbose            bool
+	ListRemotes        bool
+	ListWorktrees      bool
 }
 
 var defaultIgnoreDirs = []string{
@@ -57,7 +59,10 @@ func Scan(ctx context.Context, opts Options) ([]Repo, error) {
 		return nil, fmt.Errorf("at least one root is required")
 	}
 
-	ignoreSet := buildIgnoreSet(opts.IgnoreDirs)
+	ignore, err := buildIgnoreConfig(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	var repos []Repo
 	for _, root := range opts.Roots {
@@ -72,7 +77,7 @@ func Scan(ctx context.Context, opts Options) ([]Repo, error) {
 			return nil, err
 		}
 
-		found, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignoreSet)
+		found, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose)
 		if err != nil {
 			return nil, err
 		}
@@ -103,15 +108,42 @@ func Scan(ctx context.Context, opts Options) ([]Repo, error) {
 	return repos, nil
 }
 
-func buildIgnoreSet(extra []string) map[string]struct{} {
-	set := make(map[string]struct{}, len(defaultIgnoreDirs)+len(extra))
+type ignoreConfig struct {
+	basenames map[string]struct{}
+	fullPaths map[string]struct{}
+}
+
+func buildIgnoreConfig(opts Options) (ignoreConfig, error) {
+	cfg := ignoreConfig{
+		basenames: make(map[string]struct{}, len(defaultIgnoreDirs)+len(opts.IgnoreDirBasenames)),
+		fullPaths: make(map[string]struct{}, len(opts.IgnoreDirs)),
+	}
 	for _, name := range defaultIgnoreDirs {
-		set[name] = struct{}{}
+		cfg.basenames[name] = struct{}{}
 	}
-	for _, name := range extra {
-		set[name] = struct{}{}
+	for _, name := range opts.IgnoreDirBasenames {
+		cfg.basenames[name] = struct{}{}
 	}
-	return set
+	for _, dir := range opts.IgnoreDirs {
+		norm, err := normalizeIgnoreDir(dir)
+		if err != nil {
+			return ignoreConfig{}, fmt.Errorf("%s: %w", dir, err)
+		}
+		cfg.fullPaths[norm] = struct{}{}
+	}
+	return cfg, nil
+}
+
+func normalizeIgnoreDir(path string) (string, error) {
+	expanded, err := expandPath(path)
+	if err != nil {
+		return "", err
+	}
+	abs, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(abs), nil
 }
 
 func expandPath(path string) (string, error) {
