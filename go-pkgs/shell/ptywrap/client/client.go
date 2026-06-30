@@ -172,7 +172,7 @@ func daemonConnError(err error) error {
 	}
 	msg := err.Error()
 	if strings.Contains(msg, "connection refused") || strings.Contains(msg, "connect: connection refused") {
-		return fmt.Errorf("daemon not running: start with `agent-term serve` (%w)", err)
+		return fmt.Errorf("agent-term serve: daemon not running (%w)", err)
 	}
 	return err
 }

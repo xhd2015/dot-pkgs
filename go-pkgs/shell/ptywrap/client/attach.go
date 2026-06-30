@@ -176,6 +176,7 @@ func readSessionID(conn *websocket.Conn) (AttachResult, error) {
 				return AttachResult{}, err
 			}
 			if handled && sessionID != "" {
+				_ = conn.SetReadDeadline(time.Time{})
 				return AttachResult{SessionID: sessionID}, nil
 			}
 		}
@@ -267,6 +268,9 @@ func readTerminalOutput(conn *websocket.Conn, stdout io.Writer) error {
 				return err
 			}
 		case websocket.TextMessage:
+			if isTerminalExitMarker(data) {
+				continue
+			}
 			handled, _, err := parseServerMessage(data)
 			if err != nil {
 				return err
@@ -278,6 +282,10 @@ func readTerminalOutput(conn *websocket.Conn, stdout io.Writer) error {
 			}
 		}
 	}
+}
+
+func isTerminalExitMarker(data []byte) bool {
+	return strings.Contains(string(data), "[Terminal exited]")
 }
 
 func normalizeTerminalReadError(err error) error {
