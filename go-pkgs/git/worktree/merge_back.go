@@ -101,7 +101,16 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 		return nil, err
 	}
 
-	compare, err := git.CompareBranches(targetAbs, branch, "HEAD")
+	compareRef, err := worktreeRef(sourceAbs)
+	if err != nil {
+		return nil, err
+	}
+	mergeRef := compareRef
+	if branch != "HEAD" {
+		mergeRef = branch
+	}
+
+	compare, err := git.CompareBranches(targetAbs, compareRef, "HEAD")
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +118,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	relation, included := relationFromCompare(compare.Relation)
 	plan, err := buildMergeBackPlan(mergeBackPlanInput{
 		relation:    relation,
-		branch:      branch,
+		branch:      mergeRef,
 		sourcePath:  sourceAbs,
 		targetPath:  targetAbs,
 		mainRepo:    mainRepo,

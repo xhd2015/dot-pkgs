@@ -66,7 +66,10 @@ absolute paths — covered by mvd integration tests).
 plan-prompt-display
 ├── relation-ahead/                    [CASE B: ff-merge + optional remove]
 │   ├── confirm-prompt-with-remove/    FormatPlanPrompt via Confirm abort
-│   └── dry-run-with-remove/           printDryRun stdout
+│   ├── dry-run-with-remove/           printDryRun stdout
+│   └── merge-uses-branch/             attached branch name in merge (not SHA)
+├── relation-detached-head/            [detached HEAD ahead of target]
+│   └── dry-run/                       merge --ff-only <commit-sha>
 ├── relation-diverged/                 [CASE C: rebase + ff-merge + remove]
 │   ├── confirm-prompt-with-remove/
 │   └── dry-run-with-remove/
@@ -83,6 +86,8 @@ plan-prompt-display
 |------|------|-------------|
 | `relation-ahead/confirm-prompt-with-remove` | Prompt | Ahead + Remove: comments, Short paths, dynamic target in question |
 | `relation-ahead/dry-run-with-remove` | Dry-run | Same command display as prompt body, no Proceed line |
+| `relation-ahead/merge-uses-branch` | Dry-run | Attached worktree uses branch name in merge, not commit hash |
+| `relation-detached-head/dry-run` | Dry-run | Detached HEAD uses commit SHA; not falsely already-included |
 | `relation-diverged/confirm-prompt-with-remove` | Prompt | Rebase comment `# <branch>: rebase onto <target>` + full command set |
 | `relation-diverged/dry-run-with-remove` | Dry-run | Diverged command list formatting |
 | `relation-included/dry-run-remove-only` | Dry-run | Only `# worktree: remove` and `# worktree branch: drop` |

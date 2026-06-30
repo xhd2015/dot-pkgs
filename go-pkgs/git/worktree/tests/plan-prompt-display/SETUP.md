@@ -77,6 +77,16 @@ func addWorktree(t *testing.T, mainRepo, wtDir, branch string) {
 	runGit(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
 }
 
+func revParseHEAD(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func shortPath(t *testing.T, abs string) string {
 	t.Helper()
 	p := filepath.Clean(abs)
