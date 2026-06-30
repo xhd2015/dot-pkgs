@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/file/remotefs"
 )
 
 var errFound = errors.New("scan_repo: github match found")
@@ -42,7 +45,7 @@ func FindLocalMainByGitHub(ctx context.Context, opts Options, owner, repo string
 			return nil, err
 		}
 
-		found, err := walkRootFindGitHub(ctx, absRoot, owner, repo, opts.MaxDepth, ignore, opts.Verbose)
+		found, err := walkRootFindGitHub(ctx, absRoot, owner, repo, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr)
 		if err == errFound {
 			return found, nil
 		}
@@ -54,13 +57,13 @@ func FindLocalMainByGitHub(ctx context.Context, opts Options, owner, repo string
 	return nil, fmt.Errorf("no local main repo for github.com/%s/%s", owner, repo)
 }
 
-func walkRootFindGitHub(ctx context.Context, root, owner, repo string, maxDepth int, ignore ignoreConfig, verbose bool) (*Repo, error) {
+func walkRootFindGitHub(ctx context.Context, root, owner, repo string, maxDepth int, ignore ignoreConfig, verbose bool, stderr io.Writer) (*Repo, error) {
 	var found *Repo
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if isPermissionError(walkErr) {
-				maybeWarnSkip(verbose, path, walkErr)
+				maybeWarnSkip(verbose, stderr, path, walkErr)
 				return filepath.SkipDir
 			}
 			return walkErr
@@ -85,6 +88,13 @@ func walkRootFindGitHub(ctx context.Context, root, owner, repo string, maxDepth 
 				return filepath.SkipDir
 			}
 			if maxDepth > 0 && depthFromRoot(root, path) > maxDepth {
+				return filepath.SkipDir
+			}
+			if remote, err := remotefs.IsRemoteBackedPath(path); err != nil {
+				maybeWarnSkip(verbose, stderr, path, err)
+				return filepath.SkipDir
+			} else if remote {
+				maybeWarnSkipRemote(verbose, stderr, path)
 				return filepath.SkipDir
 			}
 		}

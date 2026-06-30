@@ -34,7 +34,9 @@ Optional enrichment lists remotes and worktrees via git subprocesses.
 - Expand `~`, absolutize and clean paths; sort results by `Path` ascending.
 - Apply default ignore basenames unioned with `IgnoreDirBasenames`.
 - Skip directories whose normalized full path is listed in `IgnoreDirs`.
-- When `Verbose` is true, log permission-denied skips to stderr as warnings.
+- When `Verbose` is true, log permission-denied and remote-backed filesystem
+  skips to stderr as warnings.
+- Skip `Library/CloudStorage/...` paths before walking them (macOS cloud-sync roots).
 - Respect `MaxDepth` relative to each root (0 = unlimited).
 - Option A: every checkout with `.git` is its own row; no dedup by `GitDir`.
 
@@ -69,6 +71,8 @@ scan-repo
 │   ├── ignore-dir-basename/      [custom IgnoreDirBasenames]
 │   ├── ignore-dir-full-path/     [IgnoreDirs full path]
 │   ├── permission-denied-skip/   [WalkDir EACCES → SkipDir]
+│   ├── skip-cloud-storage/       [CloudStorage subtree → SkipDir]
+│   ├── remote-root-skip/         [CloudStorage root → empty result]
 │   ├── gitlink-worktree/
 │   ├── main-and-linked/
 │   ├── empty-roots-error/
@@ -105,6 +109,8 @@ scan-repo
 | `scan/ignore-dir-basename` | Scan | Custom `IgnoreDirBasenames` skips tree |
 | `scan/ignore-dir-full-path` | Scan | `IgnoreDirs` exact full path skips tree |
 | `scan/permission-denied-skip` | Scan | Unreadable child dir; scan still succeeds |
+| `scan/skip-cloud-storage` | Scan | CloudStorage subtree skipped; local repo found |
+| `scan/remote-root-skip` | Scan | CloudStorage scan root yields no repos |
 | `scan/gitlink-worktree` | Scan | Gitlink → RepoTypeWorktree |
 | `scan/main-and-linked` | Scan | Main + linked worktree as two rows |
 | `scan/empty-roots-error` | Scan | No roots → error |

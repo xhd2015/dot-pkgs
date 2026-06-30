@@ -3,6 +3,7 @@ package scan_repo
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -48,6 +49,7 @@ type Options struct {
 	Verbose            bool
 	ListRemotes        bool
 	ListWorktrees      bool
+	Stderr             io.Writer
 }
 
 var defaultIgnoreDirs = []string{
@@ -77,7 +79,7 @@ func Scan(ctx context.Context, opts Options) ([]Repo, error) {
 			return nil, err
 		}
 
-		found, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose)
+		found, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr)
 		if err != nil {
 			return nil, err
 		}

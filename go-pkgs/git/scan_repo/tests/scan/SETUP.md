@@ -46,6 +46,13 @@ func fakeGitWorktree(t *testing.T, mainDir, wtDir string) {
 	writeFile(t, filepath.Join(wtDir, ".git"), "gitdir: "+absWtGitDir+"\n")
 }
 
+func cloudStorageProvider(t *testing.T, root, provider string) string {
+	t.Helper()
+	dir := filepath.Join(root, "Library", "CloudStorage", provider)
+	mkdirAll(t, dir)
+	return dir
+}
+
 func addUnreadableDir(t *testing.T, root, name string) {
 	t.Helper()
 	secret := filepath.Join(root, name)

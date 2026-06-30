@@ -55,7 +55,9 @@ cli
 │   ├── ignore-dir-no-basename-match/  [relative path does not basename-skip]
 │   ├── ignore-dir-basename/
 │   ├── verbose-permission-skip/       [-v + unreadable dir]
-│   └── verbose-quiet-default/         [no -v, silent skip]
+│   ├── verbose-quiet-default/         [no -v, silent skip]
+│   ├── verbose-remote-skip/           [-v + CloudStorage skip warning]
+│   └── verbose-quiet-remote/          [no -v, silent CloudStorage skip]
 ├── output/                       [format selection]
 │   ├── lines-default/          [--json absent, multi-repo fixture]
 │   ├── json/                   [--json, multi-repo fixture]
@@ -80,6 +82,8 @@ cli
 | `flags/ignore-dir-basename` | Flags | `--ignore-dir-basename` skips by basename |
 | `flags/verbose-permission-skip` | Flags | `-v` warns on permission-denied skip |
 | `flags/verbose-quiet-default` | Flags | Default: no stderr on permission skip |
+| `flags/verbose-remote-skip` | Flags | `-v` warns on CloudStorage skip |
+| `flags/verbose-quiet-remote` | Flags | Default: no stderr on CloudStorage skip |
 | `output/lines-default` | Output | Tab-separated lines, path-sorted |
 | `output/json` | Output | JSON array with string RepoType |
 | `output/json-empty` | Output | Empty workspace → `[]` |

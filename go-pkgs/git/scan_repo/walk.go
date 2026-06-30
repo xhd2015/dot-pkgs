@@ -3,19 +3,30 @@ package scan_repo
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/file/remotefs"
 )
 
-func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfig, verbose bool) ([]Repo, error) {
+func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfig, verbose bool, stderr io.Writer) ([]Repo, error) {
+	if remote, err := remotefs.IsRemoteBackedPath(root); err != nil {
+		maybeWarnSkip(verbose, stderr, root, err)
+		return nil, nil
+	} else if remote {
+		maybeWarnSkipRemote(verbose, stderr, root)
+		return []Repo{}, nil
+	}
+
 	var repos []Repo
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if isPermissionError(walkErr) {
-				maybeWarnSkip(verbose, path, walkErr)
+				maybeWarnSkip(verbose, stderr, path, walkErr)
 				return filepath.SkipDir
 			}
 			return walkErr
@@ -40,6 +51,13 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 				return filepath.SkipDir
 			}
 			if maxDepth > 0 && depthFromRoot(root, path) > maxDepth {
+				return filepath.SkipDir
+			}
+			if remote, err := remotefs.IsRemoteBackedPath(path); err != nil {
+				maybeWarnSkip(verbose, stderr, path, err)
+				return filepath.SkipDir
+			} else if remote {
+				maybeWarnSkipRemote(verbose, stderr, path)
 				return filepath.SkipDir
 			}
 		}
@@ -74,11 +92,25 @@ func isPermissionError(err error) bool {
 	return os.IsPermission(err)
 }
 
-func maybeWarnSkip(verbose bool, path string, err error) {
+func maybeWarnSkip(verbose bool, stderr io.Writer, path string, err error) {
 	if !verbose {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "\nwarning: skipping\n%s: %v", path, err)
+	fmt.Fprintf(stderrWriter(stderr), "\nwarning: skipping\n%s: %v", path, err)
+}
+
+func maybeWarnSkipRemote(verbose bool, stderr io.Writer, path string) {
+	if !verbose {
+		return
+	}
+	fmt.Fprintf(stderrWriter(stderr), "\nwarning: skipping remote-backed filesystem\n%s", path)
+}
+
+func stderrWriter(stderr io.Writer) io.Writer {
+	if stderr != nil {
+		return stderr
+	}
+	return os.Stderr
 }
 
 func depthFromRoot(root, path string) int {
