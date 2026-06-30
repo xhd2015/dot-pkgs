@@ -44,6 +44,31 @@ func normalizePath(path string) string {
 	return path
 }
 
+// IsInsideWorkTree reports whether path is inside a git work tree.
+func IsInsideWorkTree(path string) bool {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--is-inside-work-tree")
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "true"
+}
+
+// ShowToplevel returns the root of the git work tree containing path.
+func ShowToplevel(path string) (string, error) {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --show-toplevel: %w", err)
+	}
+	top := strings.TrimSpace(string(out))
+	abs, err := filepath.Abs(top)
+	if err != nil {
+		return "", fmt.Errorf("resolve work tree root: %w", err)
+	}
+	return abs, nil
+}
+
 // IsLinked reports whether path is a linked worktree (.git is a file, not a directory).
 func IsLinked(path string) bool {
 	info, err := os.Stat(filepath.Join(path, ".git"))

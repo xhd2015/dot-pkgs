@@ -1,0 +1,18 @@
+## Expected
+
+- `ResolveLocalModules` returns no error.
+- `IsDependency` is false (module path not referenced in consumer go.mod).
+
+```go
+func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	if err != nil {
+		t.Fatalf("unexpected run error: %v", err)
+	}
+	if resp.Err != nil {
+		t.Fatalf("ResolveLocalModules failed: %v", resp.Err)
+	}
+	if resp.IsDependency {
+		t.Fatalf("IsDependency = true, want false for unknown module %q", depModulePath)
+	}
+}
+```
