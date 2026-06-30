@@ -1,8 +1,8 @@
 ## Expected
 
-- Script uses `current session of current tab of current window`.
-- Script does not scan session `path` or `create tab`.
-- Script cds via `write text ("cd " & quoted form of targetDir)`.
+- Script scans session `path` and tracks matching tab/session.
+- On match, focuses via `select` without `write text` cd in the match branch.
+- Miss branch creates window and cds; must not use `current session of current tab of current window`.
 
 ```go
 import (
@@ -15,17 +15,19 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatal(err)
 	}
 	s := resp.Script
-	if !strings.Contains(s, "current session of current tab of current window") {
-		t.Fatalf("missing current session target: %q", s)
+	if !strings.Contains(s, `variable named "path"`) {
+		t.Fatalf("reuse script must scan session path: %q", s)
 	}
-	if strings.Contains(s, `variable named "path"`) {
-		t.Fatal("reuse script must not scan session path")
+	if !strings.Contains(s, "matchingTab") && !strings.Contains(s, "matchingSession") {
+		t.Fatal("reuse script must track matching tab/session")
 	}
-	if strings.Contains(s, "create tab with default profile") {
-		t.Fatal("reuse script must not create tab")
+	if strings.Contains(s, "current session of current tab of current window") {
+		t.Fatal("reuse script must not cd in arbitrary current session")
+	}
+	if !strings.Contains(s, "create window with default profile") {
+		t.Fatal("reuse script must support new-window miss branch")
 	}
 	if !strings.Contains(s, `write text ("cd " & quoted form of targetDir)`) {
-		t.Fatalf("missing cd write text: %q", s)
+		t.Fatalf("miss branch must cd via quoted form of targetDir: %q", s)
 	}
 }
-```

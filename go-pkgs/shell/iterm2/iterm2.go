@@ -56,7 +56,7 @@ type OpenMode int
 const (
 	// ModeSmart scans session paths and reuses window with new tab or new window.
 	ModeSmart OpenMode = iota
-	// ModeReuseCurrent cds in current session of current tab/window (kool -r).
+	// ModeReuseCurrent focuses a session at targetDir when found, else new window + cd (kool -r).
 	ModeReuseCurrent
 )
 
@@ -178,7 +178,8 @@ func BuildScript(dirPath string, followUps ...string) string {
 	return strings.Join(lines, "\n")
 }
 
-// BuildReuseCurrentSessionScript returns AppleScript that cds in the current iTerm2 session.
+// BuildReuseCurrentSessionScript returns AppleScript that scans session paths like smart-open.
+// On match it focuses the tab/session at targetDir without cd; on miss it creates a window and cds.
 func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string {
 	escaped := EscapePathForAppleScript(dirPath)
 	sessionCommandLines := buildSessionCommandLines(followUps)
@@ -186,14 +187,46 @@ func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string 
 		`tell application "iTerm2"`,
 		`  activate`,
 		`  set targetDir to "` + escaped + `"`,
-		`  if (count of windows) is 0 then`,
-		`    create window with default profile`,
-		`  end if`,
-		`  tell current session of current tab of current window`,
+		`  set matchingWindow to missing value`,
+		`  set matchingTab to missing value`,
+		`  set matchingSession to missing value`,
+		`  repeat with aWindow in windows`,
+		`    if not (is hotkey window of aWindow) then`,
+		`      repeat with aTab in tabs of aWindow`,
+		`        repeat with aSession in sessions of aTab`,
+		`          try`,
+		`            tell aSession`,
+		`              set sessionPath to variable named "path"`,
+		`            end tell`,
+		`            if sessionPath is targetDir then`,
+		`              set matchingWindow to aWindow`,
+		`              set matchingTab to aTab`,
+		`              set matchingSession to aSession`,
+		`              exit repeat`,
+		`            end if`,
+		`          on error`,
+		`          end try`,
+		`        end repeat`,
+		`        if matchingWindow is not missing value then exit repeat`,
+		`      end repeat`,
+		`      if matchingWindow is not missing value then exit repeat`,
+		`    end if`,
+		`  end repeat`,
+		`  if matchingWindow is not missing value then`,
+		`    tell matchingWindow`,
+		`      select matchingTab`,
+		`    end tell`,
+		`    tell matchingSession`,
+		`      select`,
+		`    end tell`,
+		`  else`,
+		`    set newWindow to (create window with default profile)`,
+		`    tell current session of newWindow`,
 	}
 	lines = append(lines, sessionCommandLines...)
 	lines = append(lines,
-		`  end tell`,
+		`    end tell`,
+		`  end if`,
 		`end tell`,
 	)
 	return strings.Join(lines, "\n")

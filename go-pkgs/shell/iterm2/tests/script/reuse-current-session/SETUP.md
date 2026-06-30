@@ -1,6 +1,6 @@
 # Scenario
 
-**Feature**: `-r` reuse path targets current session without path scan or new tab
+**Feature**: `-r` reuse path scans sessions; focus on match, new window + cd on miss
 
 ```go
 import "testing"
