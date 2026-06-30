@@ -12,7 +12,7 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/file/remotefs"
 )
 
-func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfig, verbose bool, stderr io.Writer) ([]Repo, error) {
+func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfig, verbose bool, stderr io.Writer, onRepo func(Repo) error) ([]Repo, error) {
 	if remote, err := remotefs.IsRemoteBackedPath(root); err != nil {
 		maybeWarnSkip(verbose, stderr, root, err)
 		return nil, nil
@@ -73,12 +73,19 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 			return resolveErr
 		}
 
-		repos = append(repos, Repo{
+		repo := Repo{
 			Path:     path,
 			Name:     filepath.Base(path),
 			GitDir:   gitDir,
 			RepoType: repoType,
-		})
+		}
+		if onRepo != nil {
+			if err := onRepo(repo); err != nil {
+				return err
+			}
+		} else {
+			repos = append(repos, repo)
+		}
 
 		return filepath.SkipDir
 	})

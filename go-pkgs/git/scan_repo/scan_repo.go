@@ -50,6 +50,8 @@ type Options struct {
 	ListRemotes        bool
 	ListWorktrees      bool
 	Stderr             io.Writer
+	// OnRepo is invoked immediately when a repository is discovered during the walk.
+	OnRepo func(Repo) error
 }
 
 var defaultIgnoreDirs = []string{
@@ -79,7 +81,27 @@ func Scan(ctx context.Context, opts Options) ([]Repo, error) {
 			return nil, err
 		}
 
-		found, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr)
+		if opts.OnRepo != nil {
+			_, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, func(repo Repo) error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				repo, err := enrichRepo(ctx, repo, opts)
+				if err != nil {
+					return err
+				}
+				repos = append(repos, repo)
+				return opts.OnRepo(repo)
+			})
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		found, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -90,24 +112,35 @@ func Scan(ctx context.Context, opts Options) ([]Repo, error) {
 		return repos[i].Path < repos[j].Path
 	})
 
-	for i := range repos {
-		if opts.ListRemotes {
-			remotes, err := listRemotes(ctx, repos[i].Path)
+	if opts.OnRepo == nil {
+		for i := range repos {
+			enriched, err := enrichRepo(ctx, repos[i], opts)
 			if err != nil {
 				return nil, err
 			}
-			repos[i].Remotes = remotes
-		}
-		if opts.ListWorktrees && repos[i].RepoType == RepoTypeMain {
-			worktrees, err := listWorktrees(ctx, repos[i].Path)
-			if err != nil {
-				return nil, err
-			}
-			repos[i].Worktrees = worktrees
+			repos[i] = enriched
 		}
 	}
 
 	return repos, nil
+}
+
+func enrichRepo(ctx context.Context, repo Repo, opts Options) (Repo, error) {
+	if opts.ListRemotes {
+		remotes, err := listRemotes(ctx, repo.Path)
+		if err != nil {
+			return repo, err
+		}
+		repo.Remotes = remotes
+	}
+	if opts.ListWorktrees && repo.RepoType == RepoTypeMain {
+		worktrees, err := listWorktrees(ctx, repo.Path)
+		if err != nil {
+			return repo, err
+		}
+		repo.Worktrees = worktrees
+	}
+	return repo, nil
 }
 
 type ignoreConfig struct {
