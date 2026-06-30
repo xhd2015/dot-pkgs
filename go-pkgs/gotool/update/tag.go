@@ -31,7 +31,8 @@ func addVersionPrefix(prefix string) string {
 	return strings.TrimSuffix(prefix, "/") + "/v"
 }
 
-func stripVersionPrefix(prefix, tag string) string {
+// StripVersionPrefix strips the version prefix from a tag to get the clean version.
+func StripVersionPrefix(prefix, tag string) string {
 	version := tag
 	if strings.HasPrefix(tag, prefix) {
 		version = tag[len(prefix):]
@@ -75,7 +76,8 @@ func getSubPath(dir string) (string, []string, error) {
 	return topLevel, subPathList, nil
 }
 
-func getLatestVersionTag(dir, versionPrefix string) (string, error) {
+// GetLatestVersionTag returns the latest version tag in dir with versionPrefix as prefix.
+func GetLatestVersionTag(dir, versionPrefix string) (string, error) {
 	cmd := exec.Command("git", "tag", "-l", "--sort=-version:refname", versionPrefix+"*")
 	cmd.Dir = dir
 	tagOutput, err := cmd.Output()

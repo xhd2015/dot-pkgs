@@ -33,15 +33,15 @@ func Update(dir string) error {
 		return fmt.Errorf("not a go module: %s", dir)
 	}
 
-	versionPrefix, err := calculateVersionPrefix(dir, mod.Module.Path)
+	versionPrefix, err := CalculateVersionPrefix(dir, mod.Module.Path)
 	if err != nil {
 		return fmt.Errorf("failed to calculate version prefix for %s: %w", mod.Module.Path, err)
 	}
-	latestTag, err := getLatestVersionTag(dir, versionPrefix)
+	latestTag, err := GetLatestVersionTag(dir, versionPrefix)
 	if err != nil {
 		return fmt.Errorf("failed to get latest version tag for %s: %w", mod.Module.Path, err)
 	}
-	version := stripVersionPrefix(versionPrefix, latestTag)
+	version := StripVersionPrefix(versionPrefix, latestTag)
 	if !isValidVersionTag(version) {
 		return fmt.Errorf("latest version tag %s resolved to invalid version %s", latestTag, version)
 	}
@@ -69,7 +69,8 @@ func isValidVersionTag(version string) bool {
 	return version != "" && semverPattern.MatchString(version)
 }
 
-func calculateVersionPrefix(targetDir, modulePath string) (string, error) {
+// CalculateVersionPrefix returns the git tag prefix for a module directory.
+func CalculateVersionPrefix(targetDir, modulePath string) (string, error) {
 	gitRoot, subPathList, err := getSubPath(targetDir)
 	if err != nil {
 		return "", err
