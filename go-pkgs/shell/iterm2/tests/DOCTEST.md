@@ -58,6 +58,7 @@ iterm2-lib/
 │   ├── follow-up-single/           one follow-up after cd
 │   ├── follow-up-multiple/         ordered follow-ups
 │   ├── uses-tell-session/          tell aSession path access
+│   ├── reuse-current-session/      -r: current session, no path scan/tab
 │   └── no-exec-shell/              no exec $SHELL
 ├── escaping/                       [Phase=escape-*]
 │   ├── path-quotes/                EscapePathForAppleScript
@@ -82,6 +83,7 @@ iterm2-lib/
 | `script/follow-up-single/` | build-script | Single follow-up write text |
 | `script/follow-up-multiple/` | build-script | Multiple follow-ups in order |
 | `script/uses-tell-session/` | build-script | `tell aSession` + `on error` |
+| `script/reuse-current-session/` | build-script | Reuse current session; no scan/tab |
 | `script/no-exec-shell/` | build-script | No `exec $SHELL` |
 | `escaping/path-quotes/` | escape-path | Escapes `"` in paths |
 | `escaping/command-quotes/` | escape-command | Escapes `"` in commands |
@@ -117,6 +119,7 @@ import (
 type Request struct {
 	Phase                string
 	Dir                  string
+	Mode                 string // "reuse" for BuildReuseCurrentSessionScript
 	FollowUps            []string
 	EscapeInput          string
 	UseInstalledOverride bool
@@ -136,7 +139,11 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	resp := &Response{}
 	switch req.Phase {
 	case "build-script":
-		resp.Script = iterm2.BuildScript(req.Dir, req.FollowUps...)
+		if req.Mode == "reuse" {
+			resp.Script = iterm2.BuildReuseCurrentSessionScript(req.Dir, req.FollowUps...)
+		} else {
+			resp.Script = iterm2.BuildScript(req.Dir, req.FollowUps...)
+		}
 		return resp, nil
 	case "escape-path":
 		resp.Escaped = iterm2.EscapePathForAppleScript(req.EscapeInput)
@@ -145,8 +152,12 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		resp.Escaped = iterm2.EscapeCommandForAppleScript(req.EscapeInput)
 		return resp, nil
 	case "open-config":
-		if req.ForceGOOS != "" {
-			iterm2.SetGOOSForTest(req.ForceGOOS)
+		goos := req.ForceGOOS
+		if goos == "" && runtime.GOOS != "darwin" {
+			goos = "darwin"
+		}
+		if goos != "" {
+			iterm2.SetGOOSForTest(goos)
 			t.Cleanup(func() { iterm2.SetGOOSForTest("") })
 		}
 		var captured string

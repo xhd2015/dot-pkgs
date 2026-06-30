@@ -25,6 +25,7 @@ const (
 	envInstalled     = "KOOL_ITERM2_INSTALLED"
 	envScriptOut     = "KOOL_ITERM2_SCRIPT_OUT"
 	envOsascriptExit = "KOOL_ITERM2_OSASCRIPT_EXIT"
+	envGOOS          = "KOOL_ITERM2_GOOS"
 )
 
 var (
@@ -43,8 +44,21 @@ func effectiveGOOS() string {
 	if testGOOS != "" {
 		return testGOOS
 	}
+	if v := os.Getenv(envGOOS); v != "" {
+		return v
+	}
 	return runtime.GOOS
 }
+
+// OpenMode selects smart-open vs reuse-current-session behavior.
+type OpenMode int
+
+const (
+	// ModeSmart scans session paths and reuses window with new tab or new window.
+	ModeSmart OpenMode = iota
+	// ModeReuseCurrent cds in current session of current tab/window (kool -r).
+	ModeReuseCurrent
+)
 
 // Config customizes Open for tests or alternate runners.
 type Config struct {
@@ -54,6 +68,8 @@ type Config struct {
 	Installed func() bool
 	// FollowUpCommands are shell commands written after cd (OpenConfig only).
 	FollowUpCommands []string
+	// Mode defaults to ModeSmart when zero.
+	Mode OpenMode
 }
 
 // IsInstalled reports whether iTerm2.app exists at AppPath.
@@ -162,6 +178,27 @@ func BuildScript(dirPath string, followUps ...string) string {
 	return strings.Join(lines, "\n")
 }
 
+// BuildReuseCurrentSessionScript returns AppleScript that cds in the current iTerm2 session.
+func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string {
+	escaped := EscapePathForAppleScript(dirPath)
+	sessionCommandLines := buildSessionCommandLines(followUps)
+	lines := []string{
+		`tell application "iTerm2"`,
+		`  activate`,
+		`  set targetDir to "` + escaped + `"`,
+		`  if (count of windows) is 0 then`,
+		`    create window with default profile`,
+		`  end if`,
+		`  tell current session of current tab of current window`,
+	}
+	lines = append(lines, sessionCommandLines...)
+	lines = append(lines,
+		`  end tell`,
+		`end tell`,
+	)
+	return strings.Join(lines, "\n")
+}
+
 func normalizeTargetDirectory(dirPath string) (string, error) {
 	abs, err := filepath.Abs(dirPath)
 	if err != nil {
@@ -207,10 +244,19 @@ func OpenConfig(dir string, cfg *Config) error {
 	}
 
 	var followUps []string
-	if cfg != nil && len(cfg.FollowUpCommands) > 0 {
-		followUps = cfg.FollowUpCommands
+	mode := ModeSmart
+	if cfg != nil {
+		if len(cfg.FollowUpCommands) > 0 {
+			followUps = cfg.FollowUpCommands
+		}
+		mode = cfg.Mode
 	}
-	script := BuildScript(target, followUps...)
+	var script string
+	if mode == ModeReuseCurrent {
+		script = BuildReuseCurrentSessionScript(target, followUps...)
+	} else {
+		script = BuildScript(target, followUps...)
+	}
 	if err := osascriptRunner(cfg)(script); err != nil {
 		return fmt.Errorf("iterm2: osascript: %w", err)
 	}
