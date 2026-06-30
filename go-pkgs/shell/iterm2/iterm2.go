@@ -21,6 +21,9 @@ import (
 
 const AppPath = "/Applications/iTerm.app"
 
+// KoolTargetDirVar is the iTerm2 user session variable used to track kool-opened dirs.
+const KoolTargetDirVar = "user.koolTargetDir"
+
 const (
 	envInstalled     = "KOOL_ITERM2_INSTALLED"
 	envScriptOut     = "KOOL_ITERM2_SCRIPT_OUT"
@@ -139,16 +142,24 @@ func BuildScript(dirPath string, followUps ...string) string {
 		`    if not (is hotkey window of aWindow) then`,
 		`      repeat with aTab in tabs of aWindow`,
 		`        repeat with aSession in sessions of aTab`,
+		`          set sessionPath to ""`,
+		`          set koolTargetDir to ""`,
 		`          try`,
 		`            tell aSession`,
 		`              set sessionPath to variable named "path"`,
 		`            end tell`,
-		`            if sessionPath is targetDir then`,
-		`              set matchingWindow to aWindow`,
-		`              exit repeat`,
-		`            end if`,
 		`          on error`,
 		`          end try`,
+		`          try`,
+		`            tell aSession`,
+		`              set koolTargetDir to variable named "` + KoolTargetDirVar + `"`,
+		`            end tell`,
+		`          on error`,
+		`          end try`,
+		`          if sessionPath is targetDir or koolTargetDir is targetDir then`,
+		`            set matchingWindow to aWindow`,
+		`            exit repeat`,
+		`          end if`,
 		`        end repeat`,
 		`        if matchingWindow is not missing value then exit repeat`,
 		`      end repeat`,
@@ -157,8 +168,8 @@ func BuildScript(dirPath string, followUps ...string) string {
 		`  end repeat`,
 		`  if matchingWindow is not missing value then`,
 		`    tell matchingWindow`,
-		`      create tab with default profile`,
-		`      tell current session of current tab`,
+		`      set newTab to (create tab with default profile)`,
+		`      tell current session of newTab`,
 	}
 	lines = append(lines, sessionCommandLines...)
 	lines = append(lines,
@@ -171,6 +182,7 @@ func BuildScript(dirPath string, followUps ...string) string {
 	)
 	lines = append(lines, sessionCommandLines...)
 	lines = append(lines,
+		`        set variable named "`+KoolTargetDirVar+`" to targetDir`,
 		`    end tell`,
 		`  end if`,
 		`end tell`,
@@ -194,18 +206,26 @@ func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string 
 		`    if not (is hotkey window of aWindow) then`,
 		`      repeat with aTab in tabs of aWindow`,
 		`        repeat with aSession in sessions of aTab`,
+		`          set sessionPath to ""`,
+		`          set koolTargetDir to ""`,
 		`          try`,
 		`            tell aSession`,
 		`              set sessionPath to variable named "path"`,
 		`            end tell`,
-		`            if sessionPath is targetDir then`,
-		`              set matchingWindow to aWindow`,
-		`              set matchingTab to aTab`,
-		`              set matchingSession to aSession`,
-		`              exit repeat`,
-		`            end if`,
 		`          on error`,
 		`          end try`,
+		`          try`,
+		`            tell aSession`,
+		`              set koolTargetDir to variable named "` + KoolTargetDirVar + `"`,
+		`            end tell`,
+		`          on error`,
+		`          end try`,
+		`          if sessionPath is targetDir or koolTargetDir is targetDir then`,
+		`            set matchingWindow to aWindow`,
+		`            set matchingTab to aTab`,
+		`            set matchingSession to aSession`,
+		`            exit repeat`,
+		`          end if`,
 		`        end repeat`,
 		`        if matchingWindow is not missing value then exit repeat`,
 		`      end repeat`,
@@ -213,6 +233,7 @@ func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string 
 		`    end if`,
 		`  end repeat`,
 		`  if matchingWindow is not missing value then`,
+		`    select matchingWindow`,
 		`    tell matchingWindow`,
 		`      select matchingTab`,
 		`    end tell`,
@@ -225,6 +246,7 @@ func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string 
 	}
 	lines = append(lines, sessionCommandLines...)
 	lines = append(lines,
+		`        set variable named "`+KoolTargetDirVar+`" to targetDir`,
 		`    end tell`,
 		`  end if`,
 		`end tell`,

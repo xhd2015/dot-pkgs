@@ -59,6 +59,11 @@ iterm2-lib/
 │   ├── follow-up-multiple/         ordered follow-ups
 │   ├── uses-tell-session/          tell aSession path access
 │   ├── reuse-current-session/      -r: path scan; focus match, window+cd miss
+│   ├── reuse-registers-user-variable/  miss branch sets user.koolTargetDir
+│   ├── reuse-scans-user-variable/      scan matches path or user.koolTargetDir
+│   ├── smart-open-match-cd-scoped/     match branch cd scoped to matchingWindow tab
+│   ├── smart-open-scans-user-variable/ scan matches path or user.koolTargetDir
+│   ├── reuse-match-selects-window/     reuse match selects matchingWindow to front
 │   └── no-exec-shell/              no exec $SHELL
 ├── escaping/                       [Phase=escape-*]
 │   ├── path-quotes/                EscapePathForAppleScript
@@ -84,6 +89,11 @@ iterm2-lib/
 | `script/follow-up-multiple/` | build-script | Multiple follow-ups in order |
 | `script/uses-tell-session/` | build-script | `tell aSession` + `on error` |
 | `script/reuse-current-session/` | build-script | Reuse: scan, focus match, window fallback |
+| `script/reuse-registers-user-variable/` | build-script | Reuse miss branch sets `user.koolTargetDir` |
+| `script/reuse-scans-user-variable/` | build-script | Reuse scan matches `path` or `user.koolTargetDir` |
+| `script/smart-open-match-cd-scoped/` | build-script | Smart match cd scoped to matchingWindow tab |
+| `script/smart-open-scans-user-variable/` | build-script | Smart scan matches `path` or `user.koolTargetDir` |
+| `script/reuse-match-selects-window/` | build-script | Reuse match selects matchingWindow to front |
 | `script/no-exec-shell/` | build-script | No `exec $SHELL` |
 | `escaping/path-quotes/` | escape-path | Escapes `"` in paths |
 | `escaping/command-quotes/` | escape-command | Escapes `"` in commands |
