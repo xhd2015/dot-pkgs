@@ -23,3 +23,5 @@ require (
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 	golang.org/x/sys v0.44.0 // indirect
 )
+
+replace github.com/xhd2015/dot-pkgs/go-pkgs => ../

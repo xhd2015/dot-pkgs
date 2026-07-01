@@ -4,7 +4,8 @@
 0.0.2
 
 Decision tree covering the `wrk` CLI: no-args worktree creation, optional `wrk <dir>`
-first positional, `wrk --dep` external dependency worktrees, `wrk --done` merge-back
+first positional, `wrk <dir> <target-dir>` second positional spawn-location override,
+`wrk --dep` external dependency worktrees, `wrk --done` merge-back
 (including external cascade), and `wrk --list`.
 
 # DSN (Domain Specific Notion)
@@ -22,6 +23,7 @@ first positional, `wrk --dep` external dependency worktrees, `wrk --done` merge-
 - **--confirm-from-stdin** — when set with piped `StdinInput`, reads Y/n from stdin for merge-back confirmation (required for non-TTY ahead/diverged cases).
 - **Request.Args** — CLI arguments passed to `wrk` after optional `<dir>` (empty → no-args create; `["--dep", depPath]` for dep tests; `["--done"]` or `["--done", "--confirm-from-stdin"]` for done tests; `["--list"]` for list tests).
 - **Request.TargetDir** — when set, prepended as the first positional argument to `wrk` (`wrk <dir> ...`); used by `dir-arg/` tests to run from `WorkRoot` while targeting a repo elsewhere.
+- **Request.SpawnDir** — optional second positional `<target-dir>` (`wrk <dir> <target-dir>`); appended after `TargetDir` when set. Overrides the worktree spawn location: missing target with existing parent → spawn exactly at `<target-dir>` (no naming suffix on the path); existing target dir → spawn a default-named sub-dir under it; missing parent → error. Resolved relative to the process (shell) cwd, not `<dir>`. Create-only — errors with `wrk: unexpected arguments` when combined with `--list`/`--done`/`--dep`. `WRK_HOME` is ignored when set.
 - **external/** — dependency worktrees live at `{consumerTop}/external/{basename}-{token}-{WRK_DATE}[-N]`; not under `WRK_HOME`.
 - **gitWorktreeList** — helper capturing raw `git worktree list` stdout from a directory for list-test comparison.
 - **Request.StdinInput** — when non-empty, piped to wrk stdin before wait (mvd merge-back pattern).
@@ -61,12 +63,24 @@ wrk tests
 │   ├── from-subpath/             # cwd nested inside main repo
 │   └── non-git/                  # cwd is not a git repo (error)
 ├── non-git-cwd/                  # cwd is not a git repo (error, no-args create)
-└── dir-arg/                      # wrk <dir> optional first positional
-    ├── create/
-    │   └── basic/                # wrk <repoDir> from WorkRoot creates worktree
-    ├── list/
-    │   └── from-dir/             # wrk <repoDir> --list from WorkRoot
-    └── missing-dir/              # wrk <nonexistent> → does not exist
+├── dir-arg/                      # wrk <dir> optional first positional
+│   ├── create/
+│   │   └── basic/                # wrk <repoDir> from WorkRoot creates worktree
+│   ├── list/
+│   │   └── from-dir/             # wrk <repoDir> --list from WorkRoot
+│   └── missing-dir/              # wrk <nonexistent> → does not exist
+└── target-dir/                   # wrk <dir> <target-dir> custom spawn location
+    ├── target-missing/           # <target-dir> does not exist
+    │   ├── parent-exists/        # spawn exactly at <target-dir> (case 1)
+    │   └── parent-missing/       # parent missing → error (case 3)
+    ├── target-exists/            # <target-dir> exists
+    │   ├── basic-subdir/         # spawn default-named sub-dir under it (case 2)
+    │   ├── collision-suffix/     # sub-dir name collides → -N suffix (case 2)
+    │   └── target-is-file/       # target is a file → error (edge)
+    ├── relative-path/            # relative <target-dir> resolved vs shell cwd
+    └── with-other-mode/          # target-dir + other mode → error
+        ├── with-list/            # wrk <dir> <target-dir> --list
+        └── with-dep/             # wrk <dir> <target-dir> --dep <dep>
 ```
 
 ## Test Case Index
@@ -102,6 +116,14 @@ wrk tests
 | 27 | dir-arg/create/basic | `wrk <repoDir>` from WorkRoot creates worktree |
 | 28 | dir-arg/list/from-dir | `wrk <repoDir> --list` matches `git worktree list` |
 | 29 | dir-arg/missing-dir | `wrk <nonexistent>` → does not exist |
+| 30 | target-dir/target-missing/parent-exists | `wrk <dir> <target>` spawns exactly at `<target>` (parent exists) |
+| 31 | target-dir/target-missing/parent-missing | `wrk <dir> <target>` parent missing → error |
+| 32 | target-dir/target-exists/basic-subdir | `wrk <dir> <target>` existing dir → default-named sub-dir |
+| 33 | target-dir/target-exists/collision-suffix | existing dir + colliding sub-dir → `-N` suffix |
+| 34 | target-dir/target-exists/target-is-file | `<target>` is a file → error |
+| 35 | target-dir/relative-path | relative `<target>` resolved against shell cwd |
+| 36 | target-dir/with-other-mode/with-list | `wrk <dir> <target> --list` → unexpected arguments |
+| 37 | target-dir/with-other-mode/with-dep | `wrk <dir> <target> --dep <dep>` → unexpected arguments |
 
 ## How to Run
 
@@ -131,6 +153,12 @@ doctest test ./tests/done/external-cascade
 doctest test ./tests/dir-arg/create/basic
 doctest test ./tests/dir-arg/list/from-dir
 doctest test ./tests/dir-arg/missing-dir
+
+# Run a target-dir leaf
+doctest vet ./tests/target-dir
+doctest test ./tests/target-dir/target-missing/parent-exists
+doctest test ./tests/target-dir/target-exists/collision-suffix
+doctest test ./tests/target-dir/relative-path
 ```
 
 ```go
@@ -147,6 +175,7 @@ type Request struct {
 	WrkHome    string
 	RepoDir    string   // process cwd when running wrk
 	TargetDir  string   // optional first positional <dir>; prepended to Args when set
+	SpawnDir   string   // optional second positional <target-dir>; appended after TargetDir when set
 	HashToken  string   // detached-head: 7-char short commit hash
 	Args       []string // CLI args after <dir>; empty → no-args create
 	StdinInput string   // piped to stdin when set
@@ -171,6 +200,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	var args []string
 	if req.TargetDir != "" {
 		args = append(args, req.TargetDir)
+	}
+	if req.SpawnDir != "" {
+		args = append(args, req.SpawnDir)
 	}
 	args = append(args, req.Args...)
 

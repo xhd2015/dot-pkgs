@@ -76,7 +76,13 @@ func getWrkBin(t *testing.T) string {
 }
 
 func Setup(t *testing.T, req *Request) error {
-	req.WorkRoot = t.TempDir()
+	// Resolve symlinks so derived paths match git's resolved output (macOS
+	// serves /var from /private/var; t.TempDir returns the symlinked form).
+	workRoot, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		return fmt.Errorf("resolve work root: %w", err)
+	}
+	req.WorkRoot = workRoot
 	req.WrkHome = filepath.Join(req.WorkRoot, ".wrk")
 	ensureHelpersUsed()
 	return os.MkdirAll(req.WrkHome, 0755)
@@ -311,6 +317,10 @@ func setupWrkWorktreeFromMain(t *testing.T, req *Request) (mainRepo, wtDir, bran
 	mainRepo = filepath.Join(req.WorkRoot, "myrepo")
 	req.MainRepo = mainRepo
 	initGitRepoOnMain(t, mainRepo)
+	// wrk --done requires a consumer go.mod (it tidies after merge-back).
+	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/myrepo\n\ngo 1.21\n")
+	runGit(t, mainRepo, "add", "go.mod")
+	runGit(t, mainRepo, "commit", "-m", "add go.mod")
 	wtDir = runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir
 	branch = branchName("main", wrkDate, 0)

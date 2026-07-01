@@ -33,10 +33,10 @@ func Run(cwd string, args []string) error {
 	}
 	defer func() { _ = os.Chdir(origWd) }()
 
-	return run(args)
+	return run(origWd, args)
 }
 
-func run(args []string) error {
+func run(origWd string, args []string) error {
 	var done bool
 	var list bool
 	var confirmFromStdin bool
@@ -45,23 +45,44 @@ func run(args []string) error {
 		Bool("--list", &list).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
 		String("--dep", &depPath).
+		Help("-h, --help", usage()).
+		HelpNoExit().
 		Parse(args)
 	if err != nil {
+		if errors.Is(err, lessflags.ErrHelp) {
+			// Help text already printed by Parse; exit 0.
+			return nil
+		}
 		return err
 	}
-	if depPath != "" && len(remaining) > 0 {
+
+	// remaining holds 0 or 1 positional: the optional <target-dir> (the first
+	// positional <dir> is consumed by cmd/wrk extractDir before Run is called).
+	// More than one extra positional is an error.
+	var targetDir string
+	if len(remaining) > 1 {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
+	if len(remaining) == 1 {
+		targetDir = remaining[0]
+	}
+
 	if list && done {
 		return fmt.Errorf("wrk: --list and --done are mutually exclusive")
 	}
 	if confirmFromStdin && !done {
 		return fmt.Errorf("wrk: --confirm-from-stdin is only valid with --done")
 	}
+	if depPath != "" && (done || list) {
+		return fmt.Errorf("wrk: --dep is mutually exclusive with --done and --list")
+	}
+
+	// <target-dir> only applies to the create path. Reject it for any other mode.
+	if targetDir != "" && (depPath != "" || list || done) {
+		return fmt.Errorf("wrk: unexpected arguments")
+	}
+
 	if depPath != "" {
-		if done || list {
-			return fmt.Errorf("wrk: --dep is mutually exclusive with --done and --list")
-		}
 		return runDep(depPath)
 	}
 	if list {
@@ -70,10 +91,38 @@ func run(args []string) error {
 	if done {
 		return runDone(confirmFromStdin)
 	}
-	if len(remaining) > 0 {
-		return fmt.Errorf("wrk: unexpected arguments")
-	}
-	return runCreate()
+	return runCreate(origWd, targetDir)
+}
+
+// usage returns the wrk help text printed by lessflags when -h/--help is given.
+func usage() string {
+	return `wrk — git worktree helper
+
+Usage:
+  wrk [dir] [target-dir] [flags]
+
+Creates a git worktree from the current directory (or <dir>) and prints its
+path. With <target-dir>, the worktree is spawned there instead of the default
+location (~/.wrk/worktrees/).
+
+Positional arguments:
+  <dir>          optional source checkout to create the worktree from
+                 (default: current directory)
+  <target-dir>   optional spawn location for the worktree:
+                   - missing, parent exists   -> spawn exactly at <target-dir>
+                   - existing directory        -> spawn a default-named sub-dir
+                   - missing parent            -> error
+
+Flags:
+  --done [--confirm-from-stdin]   merge worktree branch back and remove it
+  --list                          list worktrees (git worktree list)
+  --dep <path>                    spawn a dependency worktree under ./external
+  --help, -h                      show this help and exit
+
+Environment:
+  WRK_HOME   worktree storage root (default: ~/.wrk)
+  WRK_DATE   override the run date (YYYY-MM-DD) used in worktree/branch names
+`
 }
 
 func runList() error {
@@ -439,7 +488,7 @@ func gitIn(dir string, args ...string) error {
 	return nil
 }
 
-func runCreate() error {
+func runCreate(origWd string, targetDir string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get cwd: %w", err)
@@ -468,18 +517,22 @@ func runCreate() error {
 		return err
 	}
 
-	wrkHome, err := resolveWrkHome()
-	if err != nil {
-		return err
-	}
-
 	date := resolveWrkDate()
 	branchBase, pathToken, err := resolveNamingInputs(cwd, baseBranch)
 	if err != nil {
 		return err
 	}
-
 	basename := filepath.Base(mainRepo)
+
+	if targetDir != "" {
+		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date)
+	}
+
+	wrkHome, err := resolveWrkHome()
+	if err != nil {
+		return err
+	}
+
 	worktreesDir := filepath.Join(wrkHome, "worktrees")
 	if err := os.MkdirAll(worktreesDir, 0o755); err != nil {
 		return fmt.Errorf("create worktrees dir: %w", err)
@@ -503,6 +556,71 @@ func runCreate() error {
 		return nil
 	}
 	return fmt.Errorf("could not find available worktree name after 99 attempts")
+}
+
+// runCreateTargetDir handles wrk <dir> <target-dir>. A relative <target-dir> is
+// resolved against origWd (the process/shell cwd), NOT the repo dir that Run
+// chdir'd into.
+func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date string) error {
+	// Resolve <target-dir> against the shell cwd (origWd), not the repo dir.
+	absTarget := targetDir
+	if !filepath.IsAbs(absTarget) {
+		absTarget = filepath.Join(origWd, absTarget)
+	}
+	absTarget = filepath.Clean(absTarget)
+
+	info, err := os.Stat(absTarget)
+	if err == nil {
+		// Case 2 / file edge: <target-dir> exists.
+		if !info.IsDir() {
+			return fmt.Errorf("wrk: %s is not a directory", absTarget)
+		}
+		// Case 2: spawn a default-named sub-dir under <target-dir>, with the
+		// usual -N collision handling on both path and branch.
+		for suffix := 0; suffix < 100; suffix++ {
+			wtPath, branch := candidateNames(absTarget, basename, branchBase, pathToken, date, suffix)
+			if candidateBlocked(mainRepo, wtPath, branch) {
+				continue
+			}
+			if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
+				return err
+			}
+			absPath, err := filepath.Abs(wtPath)
+			if err != nil {
+				return fmt.Errorf("resolve worktree path: %w", err)
+			}
+			fmt.Println(absPath)
+			return nil
+		}
+		return fmt.Errorf("could not find available worktree name after 99 attempts")
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("stat target dir: %w", err)
+	}
+
+	// <target-dir> does not exist. Case 1 (parent exists) vs case 3 (parent missing).
+	parentDir := filepath.Dir(absTarget)
+	if _, perr := os.Stat(parentDir); perr != nil {
+		if os.IsNotExist(perr) {
+			return fmt.Errorf("wrk: %s does not exist", parentDir)
+		}
+		return fmt.Errorf("stat target parent: %w", perr)
+	}
+
+	// Case 1: spawn the worktree exactly at <target-dir> (fixed path, no naming
+	// suffix on the path). Branch follows the default convention; if that branch
+	// ref already exists, reuse it via the branchPreExists checkout path.
+	wtPath := absTarget
+	branch := branchBase + "-" + date
+	if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
+		return err
+	}
+	absPath, err := filepath.Abs(wtPath)
+	if err != nil {
+		return fmt.Errorf("resolve worktree path: %w", err)
+	}
+	fmt.Println(absPath)
+	return nil
 }
 
 func resolveWrkHome() (string, error) {
