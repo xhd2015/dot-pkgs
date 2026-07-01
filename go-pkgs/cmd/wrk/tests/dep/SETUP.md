@@ -134,6 +134,12 @@ func initConsumerRepo(t *testing.T, workRoot string, withRequire bool) string {
 	if withRequire {
 		runGo(t, consumer, "mod", "edit", "-require="+depModulePath+"@v0.0.0")
 	}
+	// Canonicalize so path comparisons match git's toplevel canonicalization
+	// (e.g. macOS /var -> /private/var). No-op on filesystems without symlinks.
+	consumer, err := filepath.EvalSymlinks(consumer)
+	if err != nil {
+		t.Fatalf("eval symlinks %s: %v", consumer, err)
+	}
 	return consumer
 }
 

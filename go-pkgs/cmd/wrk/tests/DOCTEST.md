@@ -46,7 +46,8 @@ wrk tests
 │   ├── gitignore-already/        # /external already in .gitignore → no duplicate
 │   ├── not-a-dependency/         # dep not in go.mod → error
 │   ├── not-git-repo/             # dep path not git → error
-│   └── not-go-module/            # dep git without go.mod → error
+│   ├── not-go-module/            # dep git without go.mod → error
+│   └── sub-module/               # dep root has no go.mod; module in subdir consumer requires → external wt + replace => <external>/sub
 ├── done/                         # wrk --done merge-back --rm from linked worktree
 │   ├── already-included/         # branch already merged into main; remove only
 │   ├── ahead-confirm/            # ahead + --confirm-from-stdin + Enter
@@ -111,19 +112,20 @@ wrk tests
 | 22 | dep/not-a-dependency | Dep not in go.mod → error |
 | 23 | dep/not-git-repo | Path not git → error |
 | 24 | dep/not-go-module | Git dir without go.mod → error |
-| 25 | done/external-cascade | `--done` cascades to `external/*` dep wt first; parent errors on local replace |
-| 26 | done/local-replace-blocks | `replace => ./external/foo` blocks `--done` at guard |
-| 27 | dir-arg/create/basic | `wrk <repoDir>` from WorkRoot creates worktree |
-| 28 | dir-arg/list/from-dir | `wrk <repoDir> --list` matches `git worktree list` |
-| 29 | dir-arg/missing-dir | `wrk <nonexistent>` → does not exist |
-| 30 | target-dir/target-missing/parent-exists | `wrk <dir> <target>` spawns exactly at `<target>` (parent exists) |
-| 31 | target-dir/target-missing/parent-missing | `wrk <dir> <target>` parent missing → error |
-| 32 | target-dir/target-exists/basic-subdir | `wrk <dir> <target>` existing dir → default-named sub-dir |
-| 33 | target-dir/target-exists/collision-suffix | existing dir + colliding sub-dir → `-N` suffix |
-| 34 | target-dir/target-exists/target-is-file | `<target>` is a file → error |
-| 35 | target-dir/relative-path | relative `<target>` resolved against shell cwd |
-| 36 | target-dir/with-other-mode/with-list | `wrk <dir> <target> --list` → unexpected arguments |
-| 37 | target-dir/with-other-mode/with-dep | `wrk <dir> <target> --dep <dep>` → unexpected arguments |
+| 25 | dep/sub-module | Dep root has no go.mod; module in subdir that consumer requires → external wt + replace => `<external>/sub` |
+| 26 | done/external-cascade | `--done` cascades to `external/*` dep wt first; parent errors on local replace |
+| 27 | done/local-replace-blocks | `replace => ./external/foo` blocks `--done` at guard |
+| 28 | dir-arg/create/basic | `wrk <repoDir>` from WorkRoot creates worktree |
+| 29 | dir-arg/list/from-dir | `wrk <repoDir> --list` matches `git worktree list` |
+| 30 | dir-arg/missing-dir | `wrk <nonexistent>` → does not exist |
+| 31 | target-dir/target-missing/parent-exists | `wrk <dir> <target>` spawns exactly at `<target>` (parent exists) |
+| 32 | target-dir/target-missing/parent-missing | `wrk <dir> <target>` parent missing → error |
+| 33 | target-dir/target-exists/basic-subdir | `wrk <dir> <target>` existing dir → default-named sub-dir |
+| 34 | target-dir/target-exists/collision-suffix | existing dir + colliding sub-dir → `-N` suffix |
+| 35 | target-dir/target-exists/target-is-file | `<target>` is a file → error |
+| 36 | target-dir/relative-path | relative `<target>` resolved against shell cwd |
+| 37 | target-dir/with-other-mode/with-list | `wrk <dir> <target> --list` → unexpected arguments |
+| 38 | target-dir/with-other-mode/with-dep | `wrk <dir> <target> --dep <dep>` → unexpected arguments |
 
 ## How to Run
 

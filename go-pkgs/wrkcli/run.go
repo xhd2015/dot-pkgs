@@ -11,6 +11,7 @@ import (
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/commands"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/mod/scan"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/replace"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/resolve"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
@@ -311,20 +312,14 @@ func runDep(depArg string) error {
 		return err
 	}
 
-	depModInfo, err := resolve.GetModuleInfo(depPath)
+	// Resolve the dep module the consumer requires. The dep repo may have no
+	// go.mod at its root (e.g. dot-pkgs, whose module lives in go-pkgs/), so
+	// scan the whole repo and match a discovered module against the consumer's
+	// require/replace paths. depModDir is the module dir relative to the dep
+	// repo root ("." for a root go.mod).
+	depModDir, _, err := resolveDepModule(consumerModDir, depPath)
 	if err != nil {
-		return fmt.Errorf("not a go module: %s", depPath)
-	}
-	if depModInfo.Module.Path == "" {
-		return fmt.Errorf("not a go module: %s", depPath)
-	}
-
-	isDep, _, err := resolve.IsDependency(consumerModDir, depPath)
-	if err != nil {
-		return fmt.Errorf("resolve dependency: %w", err)
-	}
-	if !isDep {
-		return fmt.Errorf("%s is not a dependency of the consumer module", depPath)
+		return err
 	}
 
 	externalDir := filepath.Join(consumerTop, "external")
@@ -367,7 +362,13 @@ func runDep(depArg string) error {
 		return fmt.Errorf("could not find available external worktree name after 99 attempts")
 	}
 
-	if _, _, err := replace.ReplaceIn(consumerModDir, externalPath); err != nil {
+	// The replace must target the directory holding the dep module's go.mod:
+	// the repo root when depModDir is ".", or the sub-module subdir otherwise.
+	replaceDir := externalPath
+	if depModDir != "." {
+		replaceDir = filepath.Join(externalPath, depModDir)
+	}
+	if _, _, err := replace.ReplaceIn(consumerModDir, replaceDir); err != nil {
 		return err
 	}
 	if err := commands.GoModTidy(&commands.GoModEditOptions{Dir: consumerModDir, Stderr: false, Stdout: false}); err != nil {
@@ -380,6 +381,47 @@ func runDep(depArg string) error {
 	}
 	fmt.Println(absPath)
 	return nil
+}
+
+// resolveDepModule scans the dep repo at depPath for Go modules and returns the
+// directory (relative to depPath, "." for a root go.mod) and module path of the
+// module the consumer requires. This handles dependency repos whose module
+// lives in a subdirectory rather than at the repo root.
+//
+// It returns:
+//   - "not a go module" when the dep repo contains no go.mod at all,
+//   - "<depPath> is not a dependency of the consumer module" when none of the
+//     discovered modules matches a consumer require/replace path.
+func resolveDepModule(consumerModDir, depPath string) (modDir string, modPath string, err error) {
+	consumerMod, err := resolve.GetModuleInfo(consumerModDir)
+	if err != nil {
+		return "", "", fmt.Errorf("read consumer go.mod: %w", err)
+	}
+	// Module paths the consumer depends on, either via require or replace.
+	wanted := make(map[string]struct{})
+	for _, req := range consumerMod.Require {
+		wanted[req.Path] = struct{}{}
+	}
+	for _, repl := range consumerMod.Replace {
+		wanted[repl.Old.Path] = struct{}{}
+	}
+
+	modules, err := scan.Scan(depPath, scan.Options{})
+	if err != nil {
+		return "", "", fmt.Errorf("scan dep modules: %w", err)
+	}
+	if len(modules) == 0 {
+		return "", "", fmt.Errorf("not a go module: %s", depPath)
+	}
+	for _, m := range modules {
+		if m.Path == "" {
+			continue
+		}
+		if _, ok := wanted[m.Path]; ok {
+			return m.Dir, m.Path, nil
+		}
+	}
+	return "", "", fmt.Errorf("%s is not a dependency of the consumer module", depPath)
 }
 
 func createExternalWorktree(consumerMain, depMain, depPath, externalPath, branch string) error {
