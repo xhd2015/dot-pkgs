@@ -1,6 +1,7 @@
 package wrkcli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/commands"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/mod/scan"
@@ -42,10 +44,16 @@ func run(origWd string, args []string) error {
 	var list bool
 	var confirmFromStdin bool
 	var depPath string
+	var allDeps bool
+	var dryRun bool
+	var scanRoot string
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("--list", &list).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
+		Bool("--all-deps", &allDeps).
+		Bool("--dry-run", &dryRun).
 		String("--dep", &depPath).
+		String("--scan-root", &scanRoot).
 		Help("-h, --help", usage()).
 		HelpNoExit().
 		Parse(args)
@@ -77,14 +85,23 @@ func run(origWd string, args []string) error {
 	if depPath != "" && (done || list) {
 		return fmt.Errorf("wrk: --dep is mutually exclusive with --done and --list")
 	}
+	if allDeps && (depPath != "" || done || list) {
+		return fmt.Errorf("wrk: --all-deps is mutually exclusive with --dep, --done and --list")
+	}
+	if dryRun && !allDeps {
+		return fmt.Errorf("wrk: --dry-run is only valid with --all-deps")
+	}
 
 	// <target-dir> only applies to the create path. Reject it for any other mode.
-	if targetDir != "" && (depPath != "" || list || done) {
+	if targetDir != "" && (depPath != "" || allDeps || list || done) {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
 
 	if depPath != "" {
 		return runDep(depPath)
+	}
+	if allDeps {
+		return runAllDeps(scanRoot, dryRun)
 	}
 	if list {
 		return runList()
@@ -424,6 +441,283 @@ func resolveDepModule(consumerModDir, depPath string) (modDir string, modPath st
 	return "", "", fmt.Errorf("%s is not a dependency of the consumer module", depPath)
 }
 
+// planExternalWorktreePath is the read-only planner for an external dep
+// worktree: it resolves the dep's main repo, basename, branch base, path token,
+// date and consumer main repo, then runs the suffix loop
+// (externalCandidateNames + externalCandidateBlocked) to return the first
+// non-blocked candidate external worktree path. It performs NO writes: no
+// MkdirAll(external/), no ensureGitignoreExternal, no createExternalWorktree.
+// It may call read-only git helpers (ShowToplevel, ResolveMainRepo, ReadBranch,
+// resolveNamingInputs) which only run git rev-parse / git symbolic-ref.
+func planExternalWorktreePath(consumerTop, depPath string) (externalPath string, err error) {
+	depSource, err := worktree.ShowToplevel(depPath)
+	if err != nil {
+		return "", err
+	}
+	depMain, err := worktree.ResolveMainRepo(depSource)
+	if err != nil {
+		return "", err
+	}
+	consumerMain, err := worktree.ResolveMainRepo(consumerTop)
+	if err != nil {
+		return "", err
+	}
+
+	baseBranch, err := worktree.ReadBranch(depPath)
+	if err != nil {
+		return "", err
+	}
+	basename := filepath.Base(depMain)
+	branchBase, pathToken, err := resolveNamingInputs(depPath, baseBranch)
+	if err != nil {
+		return "", err
+	}
+	date := resolveWrkDate()
+
+	for suffix := 0; suffix < 100; suffix++ {
+		candidatePath, branch := externalCandidateNames(consumerTop, basename, branchBase, pathToken, date, suffix)
+		if externalCandidateBlocked(consumerMain, candidatePath, branch) {
+			continue
+		}
+		return candidatePath, nil
+	}
+	return "", fmt.Errorf("could not find available external worktree name after 99 attempts")
+}
+
+// createExternalWorktreeForRepo materializes the external worktree for the dep
+// repo resolved from depPath under {consumerTop}/external/ and returns its path.
+// It plans the path via planExternalWorktreePath (so dry-run and real runs
+// agree on naming), then creates the external dir, ensures .gitignore, and adds
+// the worktree. It does NOT add a replace directive or run tidy. Used by
+// runAllDeps (one worktree per repo, with per-module replaces added separately).
+func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath string, err error) {
+	externalPath, err = planExternalWorktreePath(consumerTop, depPath)
+	if err != nil {
+		return "", err
+	}
+
+	externalDir := filepath.Join(consumerTop, "external")
+	if err := os.MkdirAll(externalDir, 0o755); err != nil {
+		return "", fmt.Errorf("create external dir: %w", err)
+	}
+	if err := ensureGitignoreExternal(consumerTop); err != nil {
+		return "", err
+	}
+
+	depSource, err := worktree.ShowToplevel(depPath)
+	if err != nil {
+		return "", err
+	}
+	depMain, err := worktree.ResolveMainRepo(depSource)
+	if err != nil {
+		return "", err
+	}
+	consumerMain, err := worktree.ResolveMainRepo(consumerTop)
+	if err != nil {
+		return "", err
+	}
+
+	baseBranch, err := worktree.ReadBranch(depPath)
+	if err != nil {
+		return "", err
+	}
+	basename := filepath.Base(depMain)
+	branchBase, pathToken, err := resolveNamingInputs(depPath, baseBranch)
+	if err != nil {
+		return "", err
+	}
+	date := resolveWrkDate()
+
+	for suffix := 0; suffix < 100; suffix++ {
+		candidatePath, branch := externalCandidateNames(consumerTop, basename, branchBase, pathToken, date, suffix)
+		if candidatePath != externalPath {
+			// planExternalWorktreePath already selected the first non-blocked
+			// candidate; later suffixes are never needed here.
+			continue
+		}
+		if err := createExternalWorktree(consumerMain, depMain, depPath, candidatePath, branch); err != nil {
+			return "", err
+		}
+		break
+	}
+	return externalPath, nil
+}
+
+func runAllDeps(scanRootFlag string, dryRun bool) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get cwd: %w", err)
+	}
+	cwd, err = filepath.Abs(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve cwd: %w", err)
+	}
+
+	if !worktree.IsInsideWorkTree(cwd) {
+		return fmt.Errorf("%s is not a git repository", cwd)
+	}
+
+	consumerTop, err := worktree.ShowToplevel(cwd)
+	if err != nil {
+		return err
+	}
+	consumerModDir, err := findGoModDir(cwd, consumerTop)
+	if err != nil {
+		return err
+	}
+
+	consumerModInfo, err := resolve.GetModuleInfo(consumerModDir)
+	if err != nil {
+		return fmt.Errorf("read consumer go.mod: %w", err)
+	}
+	consumerModule := consumerModInfo.Module.Path
+
+	required := make(map[string]bool, len(consumerModInfo.Require))
+	for _, r := range consumerModInfo.Require {
+		required[r.Path] = true
+	}
+	alreadyReplaced := make(map[string]bool, len(consumerModInfo.Replace))
+	for _, r := range consumerModInfo.Replace {
+		alreadyReplaced[r.Old.Path] = true
+	}
+
+	scanRoot, err := resolveScanRoot(scanRootFlag)
+	if err != nil {
+		return err
+	}
+
+	wrkHome, err := resolveWrkHome()
+	if err != nil {
+		return err
+	}
+
+	repos, err := scan_repo.Scan(context.Background(), scan_repo.Options{
+		Roots:      []string{scanRoot},
+		IgnoreDirs: []string{wrkHome},
+	})
+	if err != nil {
+		return fmt.Errorf("scan repos: %w", err)
+	}
+
+	type linkedDep struct {
+		modulePath   string
+		externalPath string // replace target (repo-root external path, or a sub-dir for nested sub-modules)
+	}
+	seen := make(map[string]bool)
+	var linked []linkedDep
+	for _, repo := range repos {
+		if repo.RepoType != scan_repo.RepoTypeMain {
+			continue
+		}
+		// mod/scan finds all modules in the repo (root + nested sub-modules) in
+		// process, with vendor/testdata/gitignore skips. On error (e.g. unreadable
+		// go.mod) skip the repo.
+		modules, err := scan.Scan(repo.Path, scan.Options{})
+		if err != nil {
+			continue
+		}
+		// Collect matched modules first so the repo's worktree is only created
+		// when at least one module matches (and shared across all of them).
+		var matched []scan.Module
+		for _, m := range modules {
+			if m.Path == "" || m.Path == consumerModule {
+				continue
+			}
+			if !required[m.Path] || alreadyReplaced[m.Path] || seen[m.Path] {
+				continue
+			}
+			matched = append(matched, m)
+		}
+		if len(matched) == 0 {
+			continue
+		}
+
+		if dryRun {
+			// Dry-run: compute the planned external path (read-only) and per-
+			// module replace targets, but write nothing (no
+			// createExternalWorktree, no GoModEditReplace, no tidy, no
+			// gitignore).
+			externalPath, err := planExternalWorktreePath(consumerTop, repo.Path)
+			if err != nil {
+				return err
+			}
+			for _, m := range matched {
+				target := externalPath
+				if m.Dir != "." {
+					target = filepath.Join(externalPath, filepath.FromSlash(m.Dir))
+				}
+				seen[m.Path] = true
+				linked = append(linked, linkedDep{modulePath: m.Path, externalPath: target})
+			}
+			continue
+		}
+		// Real run: materialize the planned external worktree.
+		externalPath, err := createExternalWorktreeForRepo(consumerTop, repo.Path)
+		if err != nil {
+			return err
+		}
+		opts := &commands.GoModEditOptions{Dir: consumerModDir, Stderr: false, Stdout: false}
+		for _, m := range matched {
+			// m.Dir is "." for the repo root module, or a slash-joined sub-dir
+			// (e.g. "services/dep") for a nested sub-module. The replace target
+			// is the sub-module's directory inside the external worktree.
+			target := externalPath
+			if m.Dir != "." {
+				target = filepath.Join(externalPath, filepath.FromSlash(m.Dir))
+			}
+			if err := commands.GoModEditReplace(m.Path, target, opts); err != nil {
+				return err
+			}
+			seen[m.Path] = true
+			linked = append(linked, linkedDep{modulePath: m.Path, externalPath: target})
+		}
+	}
+
+	if !dryRun && len(linked) > 0 {
+		if err := commands.GoModTidy(&commands.GoModEditOptions{Dir: consumerModDir, Stderr: false, Stdout: false}); err != nil {
+			return err
+		}
+	}
+
+	prefix := ""
+	if dryRun {
+		prefix = "would: "
+	}
+	for _, d := range linked {
+		rel, err := filepath.Rel(consumerTop, d.externalPath)
+		if err != nil {
+			return fmt.Errorf("rel external path: %w", err)
+		}
+		fmt.Printf("%swrk %s at ./%s\n", prefix, d.modulePath, rel)
+	}
+	fmt.Printf("%swrk %d deps\n", prefix, len(linked))
+	return nil
+}
+
+// resolveScanRoot determines the scan root: the --scan-root flag value if
+// non-empty, else WRK_SCAN_ROOT env (with ~ expanded), else the user home dir.
+func resolveScanRoot(scanRootFlag string) (string, error) {
+	if scanRootFlag != "" {
+		abs, err := filepath.Abs(pathfmt.Expand(scanRootFlag))
+		if err != nil {
+			return "", fmt.Errorf("resolve scan-root: %w", err)
+		}
+		return abs, nil
+	}
+	if v := os.Getenv("WRK_SCAN_ROOT"); v != "" {
+		abs, err := filepath.Abs(pathfmt.Expand(v))
+		if err != nil {
+			return "", fmt.Errorf("resolve WRK_SCAN_ROOT: %w", err)
+		}
+		return abs, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return home, nil
+}
+
 func createExternalWorktree(consumerMain, depMain, depPath, externalPath, branch string) error {
 	depBranch, err := worktree.ReadBranch(depPath)
 	if err != nil {
@@ -507,7 +801,10 @@ func findGoModDir(cwd, top string) (string, error) {
 
 func externalCandidateNames(consumerTop, basename, branchBase, pathToken, date string, suffix int) (path, branch string) {
 	name := fmt.Sprintf("%s-%s-%s", basename, pathToken, date)
-	branch = branchBase + "-" + date
+	// Branch includes the dep basename so that multiple distinct deps on the
+	// same source branch (e.g. wrk --all-deps) do not collide on the branch
+	// name and get spurious path suffixes. The printed path/name is unchanged.
+	branch = basename + "-" + branchBase + "-" + date
 	if suffix > 0 {
 		name = fmt.Sprintf("%s-%d", name, suffix)
 		branch = fmt.Sprintf("%s-%d", branch, suffix)
