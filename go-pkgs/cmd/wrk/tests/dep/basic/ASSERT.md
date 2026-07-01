@@ -23,7 +23,9 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	assertFileExists(t, wantPath)
 	assertGitFileIsWorktreeLink(t, wantPath)
-	assertWorktreeListContains(t, req.ConsumerTop, wantPath)
+	// The external dep worktree is owned by the DEP repo, not the consumer.
+	assertWorktreeListContains(t, req.DepPath, wantPath)
+	assertWorktreeListNotContains(t, req.ConsumerTop, wantPath)
 
 	mod, err := readGoMod(req.RepoDir)
 	if err != nil {

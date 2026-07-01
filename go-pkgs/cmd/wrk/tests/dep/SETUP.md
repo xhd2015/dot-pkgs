@@ -181,4 +181,27 @@ func hasReplaceForModule(mod *goModJSON, modulePath, wantPath string) bool {
 	}
 	return false
 }
+
+// readWorktreeMainRepo reads a linked worktree's .git file and returns the main
+// repository path it is registered under (i.e. the <mainRepo> in
+// "<mainRepo>/.git/worktrees/<name>"). The result is symlink-canonicalized so
+// comparisons match git's resolved paths (macOS /var -> /private/var).
+func readWorktreeMainRepo(wtDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(wtDir, ".git"))
+	if err != nil {
+		return "", fmt.Errorf("read .git file: %w", err)
+	}
+	s := strings.TrimSpace(string(data))
+	const prefix = "gitdir: "
+	if !strings.HasPrefix(s, prefix) {
+		return "", fmt.Errorf("unexpected .git file format in %s: %s", wtDir, s)
+	}
+	gitdir := strings.TrimSpace(s[len(prefix):])
+	// gitdir is <mainRepo>/.git/worktrees/<name>; climb three dirs to mainRepo.
+	mainRepo := filepath.Dir(filepath.Dir(filepath.Dir(gitdir)))
+	if resolved, err := filepath.EvalSymlinks(mainRepo); err == nil {
+		mainRepo = resolved
+	}
+	return mainRepo, nil
+}
 ```

@@ -347,11 +347,6 @@ func runDep(depArg string) error {
 		return err
 	}
 
-	consumerMain, err := worktree.ResolveMainRepo(consumerTop)
-	if err != nil {
-		return err
-	}
-
 	baseBranch, err := worktree.ReadBranch(depPath)
 	if err != nil {
 		return err
@@ -366,10 +361,12 @@ func runDep(depArg string) error {
 	var externalPath string
 	for suffix := 0; suffix < 100; suffix++ {
 		candidatePath, branch := externalCandidateNames(consumerTop, basename, branchBase, pathToken, date, suffix)
-		if externalCandidateBlocked(consumerMain, candidatePath, branch) {
+		// The external worktree + its branch are owned by the DEP repo, so the
+		// branch-collision check must run against depMain (not the consumer).
+		if externalCandidateBlocked(depMain, candidatePath, branch) {
 			continue
 		}
-		if err := createExternalWorktree(consumerMain, depMain, depPath, candidatePath, branch); err != nil {
+		if err := createExternalWorktree(depMain, depPath, candidatePath, branch); err != nil {
 			return err
 		}
 		externalPath = candidatePath
@@ -458,10 +455,6 @@ func planExternalWorktreePath(consumerTop, depPath string) (externalPath string,
 	if err != nil {
 		return "", err
 	}
-	consumerMain, err := worktree.ResolveMainRepo(consumerTop)
-	if err != nil {
-		return "", err
-	}
 
 	baseBranch, err := worktree.ReadBranch(depPath)
 	if err != nil {
@@ -476,7 +469,9 @@ func planExternalWorktreePath(consumerTop, depPath string) (externalPath string,
 
 	for suffix := 0; suffix < 100; suffix++ {
 		candidatePath, branch := externalCandidateNames(consumerTop, basename, branchBase, pathToken, date, suffix)
-		if externalCandidateBlocked(consumerMain, candidatePath, branch) {
+		// Branch-collision check runs against depMain: the external worktree's
+		// branch lives in the dep repo (see createExternalWorktree).
+		if externalCandidateBlocked(depMain, candidatePath, branch) {
 			continue
 		}
 		return candidatePath, nil
@@ -512,10 +507,6 @@ func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath st
 	if err != nil {
 		return "", err
 	}
-	consumerMain, err := worktree.ResolveMainRepo(consumerTop)
-	if err != nil {
-		return "", err
-	}
 
 	baseBranch, err := worktree.ReadBranch(depPath)
 	if err != nil {
@@ -535,7 +526,7 @@ func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath st
 			// candidate; later suffixes are never needed here.
 			continue
 		}
-		if err := createExternalWorktree(consumerMain, depMain, depPath, candidatePath, branch); err != nil {
+		if err := createExternalWorktree(depMain, depPath, candidatePath, branch); err != nil {
 			return "", err
 		}
 		break
@@ -718,7 +709,15 @@ func resolveScanRoot(scanRootFlag string) (string, error) {
 	return home, nil
 }
 
-func createExternalWorktree(consumerMain, depMain, depPath, externalPath, branch string) error {
+// createExternalWorktree spawns the external dep worktree as a worktree of the
+// DEP repo (not the consumer). The dep already holds its own objects, so no
+// remote/fetch into the consumer is needed; the worktree and its branch are
+// registered under <depMain>/.git/worktrees/ — where they semantically belong.
+// This also lets `wrk --done` cascade merge dep changes back into the dep repo:
+// the dep branch shares the dep's history, so merge-base resolves (the previous
+// consumer-owned design failed with "failed to find merge base" because the dep
+// branch and the consumer's main had no common ancestor).
+func createExternalWorktree(depMain, depPath, externalPath, branch string) error {
 	depBranch, err := worktree.ReadBranch(depPath)
 	if err != nil {
 		return err
@@ -727,32 +726,23 @@ func createExternalWorktree(consumerMain, depMain, depPath, externalPath, branch
 		return fmt.Errorf("dep repository is on a detached HEAD")
 	}
 
-	remoteName := "wrk-dep-" + filepath.Base(depMain)
-	if err := gitIn(consumerMain, "remote", "add", remoteName, depMain); err != nil {
-		return fmt.Errorf("git remote add: %w", err)
-	}
-	defer gitIn(consumerMain, "remote", "remove", remoteName)
-
-	if err := gitIn(consumerMain, "fetch", remoteName, depBranch); err != nil {
-		return fmt.Errorf("git fetch dep: %w", err)
-	}
-
-	ref := remoteName + "/" + depBranch
-	if !branchExists(consumerMain, branch) {
-		cmd := exec.Command("git", "-C", consumerMain, "worktree", "add", "-b", branch, externalPath, ref)
+	if !branchExists(depMain, branch) {
+		cmd := exec.Command("git", "-C", depMain, "worktree", "add", "-b", branch, externalPath, depBranch)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git worktree add: %w\n%s", err, out)
 		}
 		return nil
 	}
 
-	cmd := exec.Command("git", "-C", consumerMain, "worktree", "add", "--no-checkout", externalPath)
+	// Branch already exists in the dep repo (e.g. an earlier --dep created it):
+	// add a linked worktree on that branch without checkout, then check it out.
+	cmd := exec.Command("git", "-C", depMain, "worktree", "add", "--no-checkout", externalPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree add: %w\n%s", err, out)
 	}
 	checkout := exec.Command("git", "-C", externalPath, "checkout", "--ignore-other-worktrees", branch)
 	if out, err := checkout.CombinedOutput(); err != nil {
-		_ = exec.Command("git", "-C", consumerMain, "worktree", "remove", "--force", externalPath).Run()
+		_ = exec.Command("git", "-C", depMain, "worktree", "remove", "--force", externalPath).Run()
 		return fmt.Errorf("git checkout: %w\n%s", err, out)
 	}
 	return nil
@@ -817,14 +807,6 @@ func externalCandidateBlocked(mainRepo, wtPath, branch string) bool {
 		return true
 	}
 	return branchExists(mainRepo, branch)
-}
-
-func gitIn(dir string, args ...string) error {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, out)
-	}
-	return nil
 }
 
 func runCreate(origWd string, targetDir string) error {

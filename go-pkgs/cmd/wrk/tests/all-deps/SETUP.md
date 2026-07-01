@@ -152,6 +152,20 @@ func allDepsExternalAbsPath(consumerTop, depBasename string) string {
 	return filepath.Join(resolved, "external", fmt.Sprintf("%s-main-%s", depBasename, wrkDate))
 }
 
+// allDepsDepMainRepo returns the resolved main-repo path of a dep repo created
+// under {workRoot}/scan-root/<depBasename>. The external dep worktree is owned
+// by the dep repo (registered under its .git/worktrees/), so ownership checks
+// must run against this path, not the consumer. EvalSymlinks-resolved to match
+// git's resolved paths on macOS (/var -> /private/var).
+func allDepsDepMainRepo(workRoot, depBasename string) string {
+	dep := filepath.Join(workRoot, "scan-root", depBasename)
+	resolved, err := filepath.EvalSymlinks(dep)
+	if err != nil {
+		return dep
+	}
+	return resolved
+}
+
 // allDepsRunGo runs a go command in dir, failing the test on error.
 func allDepsRunGo(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -213,6 +227,7 @@ func allDepsEnsureHelpersUsed() {
 	_ = allDepsCountGitignoreExternalLines
 	_ = allDepsExternalRelPath
 	_ = allDepsExternalAbsPath
+	_ = allDepsDepMainRepo
 	_ = allDepsRunGo
 	_ = initAllDepsRepo
 	_ = initAllDepsConsumer

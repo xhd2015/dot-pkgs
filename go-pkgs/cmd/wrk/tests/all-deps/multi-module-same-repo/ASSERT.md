@@ -30,7 +30,9 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	repoExternal := allDepsExternalAbsPath(req.ConsumerTop, "myrepo")
 	assertFileExists(t, repoExternal)
 	assertGitFileIsWorktreeLink(t, repoExternal)
-	assertWorktreeListContains(t, req.ConsumerTop, repoExternal)
+	// The external dep worktree is owned by the DEP repo, not the consumer.
+	assertWorktreeListContains(t, allDepsDepMainRepo(req.WorkRoot, "myrepo"), repoExternal)
+	assertWorktreeListNotContains(t, req.ConsumerTop, repoExternal)
 	// No collision-suffixed second worktree was created.
 	suffixed := repoExternal + "-1"
 	assertWorktreeListNotContains(t, req.ConsumerTop, suffixed)

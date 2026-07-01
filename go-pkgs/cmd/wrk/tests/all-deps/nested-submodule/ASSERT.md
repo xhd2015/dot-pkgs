@@ -27,7 +27,9 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	repoExternal := allDepsExternalAbsPath(req.ConsumerTop, "myrepo")
 	assertFileExists(t, repoExternal)
 	assertGitFileIsWorktreeLink(t, repoExternal)
-	assertWorktreeListContains(t, req.ConsumerTop, repoExternal)
+	// The external dep worktree is owned by the DEP repo, not the consumer.
+	assertWorktreeListContains(t, allDepsDepMainRepo(req.WorkRoot, "myrepo"), repoExternal)
+	assertWorktreeListNotContains(t, req.ConsumerTop, repoExternal)
 
 	// Replace points at the sub-module sub-directory, not the repo root.
 	wantSubAbs := nestedExternalAbsSubPath(req.ConsumerTop, "myrepo", "services/dep")
