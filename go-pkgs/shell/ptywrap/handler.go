@@ -26,6 +26,15 @@ func RegisterAPIWithManager(mux *http.ServeMux, mgr *Manager) {
 	mux.HandleFunc("/api/terminal", func(w http.ResponseWriter, r *http.Request) {
 		HandleTerminalWebSocket(w, r, mgr)
 	})
+	RegisterSessionAPI(mux, mgr)
+}
+
+// RegisterSessionAPI registers only the session-management HTTP routes
+// (/api/terminal/sessions and /api/terminal/sessions/), not the /api/terminal
+// WebSocket route. Adapters that register their own /api/terminal handler
+// (e.g. to layer SSH support on top) call this to avoid a duplicate-pattern
+// panic under Go 1.22+ ServeMux.
+func RegisterSessionAPI(mux *http.ServeMux, mgr *Manager) {
 	mux.HandleFunc("/api/terminal/sessions", func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(w, r, mgr)
 	})

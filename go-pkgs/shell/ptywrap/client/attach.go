@@ -90,7 +90,7 @@ func AttachWithIO(c *Client, opts ConnectOptions, stdin io.Reader, stdout io.Wri
 		return AttachResult{}, terminalDialError(err, resp)
 	}
 
-	result, err := readSessionID(conn)
+	result, err := readSessionID(conn, opts.SessionID)
 	if err != nil {
 		conn.Close()
 		return AttachResult{}, err
@@ -159,14 +159,37 @@ func runBridge(conn *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 	return runErr
 }
 
-func readSessionID(conn *websocket.Conn) (AttachResult, error) {
+// readSessionID reads the server's session_id handshake frame. knownSessionID
+// is the SessionID the caller is attaching to ("" for create/new mode).
+//
+// In attach mode (knownSessionID != "") the client is lenient: a pre-refactor
+// daemon reattaches by serving the session immediately (writing a binary
+// scrollback/output frame) without echoing a session_id frame. Rather than
+// timing out against such a server, the client proceeds with the known
+// SessionID. The consumed binary frame is best-effort (a scrollback snapshot).
+func readSessionID(conn *websocket.Conn, knownSessionID string) (AttachResult, error) {
+	// Set a single read deadline for the whole handshake window. gorilla
+	// permanently poisons the connection's readErr on a deadline timeout
+	// (hideTempErr wraps it as a non-temporary netError), so the connection
+	// cannot be reused for reads after the first timeout. Re-arming the
+	// deadline each iteration and continuing therefore spins ReadMessage
+	// against the cached readErr until gorilla panics with
+	// "repeated read on failed websocket connection". Use one deadline and
+	// surface any error immediately instead.
 	deadline := time.Now().Add(10 * time.Second)
+	_ = conn.SetReadDeadline(deadline)
 	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		msgType, data, err := conn.ReadMessage()
 		if err != nil {
 			if ne, ok := err.(interface{ Timeout() bool }); ok && ne.Timeout() {
-				continue
+				// No session_id arrived. In attach mode, a silent server is
+				// the pre-refactor reattach behavior — proceed with the known
+				// SessionID instead of timing out.
+				if knownSessionID != "" {
+					_ = conn.SetReadDeadline(time.Time{})
+					return AttachResult{SessionID: knownSessionID}, nil
+				}
+				return AttachResult{}, fmt.Errorf("timeout waiting for session_id message")
 			}
 			return AttachResult{}, err
 		}
@@ -179,7 +202,19 @@ func readSessionID(conn *websocket.Conn) (AttachResult, error) {
 				_ = conn.SetReadDeadline(time.Time{})
 				return AttachResult{SessionID: sessionID}, nil
 			}
+		} else {
+			// Binary frame: the server has started serving without a
+			// session_id handshake (pre-refactor reattach). In attach mode,
+			// proceed with the known SessionID.
+			if knownSessionID != "" {
+				_ = conn.SetReadDeadline(time.Time{})
+				return AttachResult{SessionID: knownSessionID}, nil
+			}
 		}
+	}
+	if knownSessionID != "" {
+		_ = conn.SetReadDeadline(time.Time{})
+		return AttachResult{SessionID: knownSessionID}, nil
 	}
 	return AttachResult{}, fmt.Errorf("timeout waiting for session_id message")
 }
