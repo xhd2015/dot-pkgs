@@ -4,6 +4,7 @@
 .cursor
 .codex
 .opencode
+.commandcode
 
 node_modules
 dist
