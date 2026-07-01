@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/xhd2015/gitops/git"
 	"golang.org/x/mod/modfile"
@@ -40,6 +41,24 @@ type ModuleReplace struct {
 	OldPath    string
 	NewPath    string
 	NewVersion string
+}
+
+// HasLocalFilesystemReplace reports whether m contains a filesystem replace
+// directive — a replace whose target is a relative (./ or ../) or absolute path
+// with no version. Such replaces point at a local checkout rather than a
+// published module version. Mirrors resolve.HasLocalFilesystemReplace but
+// operates on a scanned Module.
+func (m Module) HasLocalFilesystemReplace() bool {
+	for _, repl := range m.Replaces {
+		p := repl.NewPath
+		if p == "" || repl.NewVersion != "" {
+			continue
+		}
+		if strings.HasPrefix(p, "./") || strings.HasPrefix(p, "../") || filepath.IsAbs(p) {
+			return true
+		}
+	}
+	return false
 }
 
 // Options configures Scan / ScanStream. The zero value applies all skip rules

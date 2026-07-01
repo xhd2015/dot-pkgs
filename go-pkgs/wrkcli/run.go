@@ -196,16 +196,15 @@ func runDone(confirmFromStdin bool) error {
 		return err
 	}
 
-	consumerModDir, err := findGoModDir(cwd, consumerTop)
-	if err != nil {
+	// Guard: block --done if any Go module under the checkout (main or
+	// sub-module) carries a local filesystem replace. wrk --dep/--all-deps write
+	// replace => ./external/... and --done's cascade removes those external
+	// worktrees, so a remaining local replace would dangle. Scanning every
+	// module (not just the nearest go.mod) also catches sub-module replaces a
+	// single upward lookup would miss. A checkout with no go.mod yields zero
+	// modules → guard is a no-op → MergeBack proceeds (it is pure git).
+	if err := blockIfLocalReplace(consumerTop); err != nil {
 		return err
-	}
-	modInfo, err := resolve.GetModuleInfo(consumerModDir)
-	if err != nil {
-		return fmt.Errorf("read consumer go.mod: %w", err)
-	}
-	if resolve.HasLocalFilesystemReplace(modInfo) {
-		return fmt.Errorf("consumer go.mod has a local filesystem replace; resolve replace directives manually before running wrk --done")
 	}
 
 	result, err := worktree.MergeBack(worktree.MergeBackOptions{
@@ -248,6 +247,18 @@ func cascadeExternalWorktrees(consumerTop string, confirmFromStdin bool) error {
 	return nil
 }
 
+// mergeBackExternalWorktree merge-backs (or removes) an external dependency
+// worktree during the --done cascade.
+//
+// External dep worktrees are worktrees of the DEP repo (registered under
+// <depMain>/.git/worktrees/, per createExternalWorktree's git -C depMain worktree
+// add), so MergeBack resolves the owning main repo from the worktree's .git
+// gitdir (the dep main) and merges the dep branch back into the dep repo — the
+// branch shares the dep's history, so the merge-base check resolves. This
+// ensures dep work committed on the external worktree is merged back into the
+// dep repo before the worktree is removed. Relation to dep main: already-included
+// → remove only; ahead/diverged → prompt (via confirmFromStdin). A
+// non-interactive ahead/diverged worktree falls back to force-removal.
 func mergeBackExternalWorktree(externalPath string, confirmFromStdin bool) error {
 	_, err := worktree.MergeBack(worktree.MergeBackOptions{
 		SourcePath: externalPath,
@@ -766,6 +777,27 @@ func ensureGitignoreExternal(top string) error {
 	content += "/external\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write .gitignore: %w", err)
+	}
+	return nil
+}
+
+// blockIfLocalReplace scans every Go module under top (main + sub-modules) and
+// returns an error if any carries a local filesystem replace directive. A
+// checkout with no go.mod yields zero modules and is allowed: no go.mod means no
+// replace can exist, and MergeBack itself is pure git.
+func blockIfLocalReplace(top string) error {
+	modules, err := scan.Scan(top, scan.Options{})
+	if err != nil {
+		return fmt.Errorf("scan modules under %s: %w", top, err)
+	}
+	for _, m := range modules {
+		if m.HasLocalFilesystemReplace() {
+			path := m.Path
+			if path == "" {
+				path = m.Dir
+			}
+			return fmt.Errorf("module %s has a local filesystem replace; resolve replace directives manually before running wrk --done", path)
+		}
 	}
 	return nil
 }
