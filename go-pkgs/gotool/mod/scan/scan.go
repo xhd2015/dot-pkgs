@@ -61,6 +61,25 @@ func (m Module) HasLocalFilesystemReplace() bool {
 	return false
 }
 
+// LocalFilesystemReplaces returns the replace directives of m whose target is a
+// filesystem/local path — a relative (./ or ../) or absolute path with no
+// version. Such replaces point at a local checkout rather than a published
+// module version. It is the returning form of HasLocalFilesystemReplace so
+// callers can render the offending directives.
+func (m Module) LocalFilesystemReplaces() []ModuleReplace {
+	var out []ModuleReplace
+	for _, repl := range m.Replaces {
+		p := repl.NewPath
+		if p == "" || repl.NewVersion != "" {
+			continue
+		}
+		if strings.HasPrefix(p, "./") || strings.HasPrefix(p, "../") || filepath.IsAbs(p) {
+			out = append(out, repl)
+		}
+	}
+	return out
+}
+
 // Options configures Scan / ScanStream. The zero value applies all skip rules
 // (name-based, gitignored, nested-separate-repo). When the root is not a git
 // repo the git-based skips are disabled automatically.

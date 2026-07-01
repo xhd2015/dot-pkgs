@@ -43,6 +43,7 @@ func run(origWd string, args []string) error {
 	var done bool
 	var list bool
 	var confirmFromStdin bool
+	var noInModuleReplace bool
 	var depPath string
 	var allDeps bool
 	var dryRun bool
@@ -50,6 +51,7 @@ func run(origWd string, args []string) error {
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("--list", &list).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
+		Bool("--no-in-module-replace", &noInModuleReplace).
 		Bool("--all-deps", &allDeps).
 		Bool("--dry-run", &dryRun).
 		String("--dep", &depPath).
@@ -82,6 +84,9 @@ func run(origWd string, args []string) error {
 	if confirmFromStdin && !done {
 		return fmt.Errorf("wrk: --confirm-from-stdin is only valid with --done")
 	}
+	if noInModuleReplace && !done {
+		return fmt.Errorf("wrk: --no-in-module-replace is only valid with --done")
+	}
 	if depPath != "" && (done || list) {
 		return fmt.Errorf("wrk: --dep is mutually exclusive with --done and --list")
 	}
@@ -107,7 +112,7 @@ func run(origWd string, args []string) error {
 		return runList()
 	}
 	if done {
-		return runDone(confirmFromStdin)
+		return runDone(confirmFromStdin, noInModuleReplace)
 	}
 	return runCreate(origWd, targetDir)
 }
@@ -133,6 +138,7 @@ Positional arguments:
 
 Flags:
   --done [--confirm-from-stdin]   merge worktree branch back and remove it
+  --done --no-in-module-replace   block --done on ANY local replace (strict)
   --list                          list worktrees (git worktree list)
   --dep <path>                    spawn a dependency worktree under ./external
   --help, -h                      show this help and exit
@@ -169,7 +175,7 @@ func runList() error {
 	return nil
 }
 
-func runDone(confirmFromStdin bool) error {
+func runDone(confirmFromStdin, noInModuleReplace bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get cwd: %w", err)
@@ -196,14 +202,18 @@ func runDone(confirmFromStdin bool) error {
 		return err
 	}
 
-	// Guard: block --done if any Go module under the checkout (main or
-	// sub-module) carries a local filesystem replace. wrk --dep/--all-deps write
-	// replace => ./external/... and --done's cascade removes those external
-	// worktrees, so a remaining local replace would dangle. Scanning every
-	// module (not just the nearest go.mod) also catches sub-module replaces a
-	// single upward lookup would miss. A checkout with no go.mod yields zero
-	// modules → guard is a no-op → MergeBack proceeds (it is pure git).
-	if err := blockIfLocalReplace(consumerTop); err != nil {
+	// Guard: classify every local filesystem replace under the checkout (main
+	// or sub-module). wrk --dep/--all-deps write replace => ./external/... and
+	// --done's cascade removes those external worktrees, so a remaining local
+	// replace would dangle — those (extra-repo) block. An intra-repo replace
+	// (target exists and shares the consumer's toplevel, e.g. ../../ or ./sub
+	// pointing back into the same repo) is stable, so under the default lenient
+	// guard it only warns and --done proceeds; --no-in-module-replace makes
+	// every local replace block. Scanning every module (not just the nearest
+	// go.mod) also catches sub-module replaces a single upward lookup would
+	// miss. A checkout with no go.mod yields zero modules → guard is a no-op →
+	// MergeBack proceeds (it is pure git).
+	if err := blockIfLocalReplace(consumerTop, noInModuleReplace); err != nil {
 		return err
 	}
 
@@ -782,24 +792,79 @@ func ensureGitignoreExternal(top string) error {
 }
 
 // blockIfLocalReplace scans every Go module under top (main + sub-modules) and
-// returns an error if any carries a local filesystem replace directive. A
-// checkout with no go.mod yields zero modules and is allowed: no go.mod means no
-// replace can exist, and MergeBack itself is pure git.
-func blockIfLocalReplace(top string) error {
+// classifies each filesystem/local replace directive. A checkout with no go.mod
+// yields zero modules and is allowed: no go.mod means no replace can exist, and
+// MergeBack itself is pure git.
+//
+// A replace is intra-repo when its target resolves to an existing directory
+// that shares the consumer's git toplevel (a ../../ or ./sub reference back
+// into the same repo); otherwise it is extra-repo (./external dep worktree,
+// non-existent target, absolute or sibling-repo path).
+//
+// Under the default lenient guard, intra-repo replaces only warn (printed to
+// stderr) and --done proceeds; extra-repo replaces block. When noInModuleReplace
+// is set, every local replace blocks (fully strict).
+func blockIfLocalReplace(top string, noInModuleReplace bool) error {
 	modules, err := scan.Scan(top, scan.Options{})
 	if err != nil {
 		return fmt.Errorf("scan modules under %s: %w", top, err)
 	}
 	for _, m := range modules {
-		if m.HasLocalFilesystemReplace() {
-			path := m.Path
-			if path == "" {
-				path = m.Dir
-			}
-			return fmt.Errorf("module %s has a local filesystem replace; resolve replace directives manually before running wrk --done", path)
+		offenders := m.LocalFilesystemReplaces()
+		if len(offenders) == 0 {
+			continue
 		}
+		modDir := filepath.Join(top, m.Dir)
+		goModPath := filepath.Join(modDir, "go.mod")
+
+		hasExtra := false
+		for _, r := range offenders {
+			if !isIntraRepoReplace(modDir, r.NewPath, top) {
+				hasExtra = true
+				break
+			}
+		}
+
+		if hasExtra || noInModuleReplace {
+			var b strings.Builder
+			fmt.Fprintf(&b, "%s: local filesystem replace blocks wrk --done:", goModPath)
+			for _, r := range offenders {
+				fmt.Fprintf(&b, "\n  replace %s => %s", r.OldPath, r.NewPath)
+			}
+			b.WriteString("\nresolve replace directives manually before running wrk --done")
+			return errors.New(b.String())
+		}
+
+		// Only intra-repo offenders, default lenient mode: warn and proceed.
+		var b strings.Builder
+		fmt.Fprintf(&b, "%s: local filesystem replace (intra-repo) - tolerated, remove before pushing:", goModPath)
+		for _, r := range offenders {
+			fmt.Fprintf(&b, "\n  replace %s => %s", r.OldPath, r.NewPath)
+		}
+		b.WriteString("\n")
+		fmt.Fprint(os.Stderr, b.String())
 	}
 	return nil
+}
+
+// isIntraRepoReplace reports whether the replace target at replacePath (relative
+// to modDir, or absolute) resolves to an existing directory that lives in the
+// same git repo as consumerTop.
+func isIntraRepoReplace(modDir, replacePath, consumerTop string) bool {
+	target := replacePath
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(modDir, target)
+	}
+	target = filepath.Clean(target)
+	info, err := os.Stat(target)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	top, err := worktree.ShowToplevel(target)
+	if err != nil {
+		return false
+	}
+	return top == consumerTop
 }
 
 func findGoModDir(cwd, top string) (string, error) {

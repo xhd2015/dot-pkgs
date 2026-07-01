@@ -18,9 +18,10 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **token** — `sanitize(base-branch)` for normal branches (`/` → `-` in path only); for detached HEAD, 7-char short commit hash from `git rev-parse --short=7 HEAD` (not literal `HEAD`).
 - **Git source** — cwd must be inside a git checkout (main repo, linked worktree, or nested subdirectory); basename resolves from the checkout root when cwd is a linked worktree or nested subpath.
 - **wrk --dep** — spawns a dependency worktree under `{consumerTop}/external/` as a worktree of the DEP repo (`git -C <depMain> worktree add`), so it is registered under `<depMain>/.git/worktrees/` (NOT the consumer's); the dep already holds its own objects, so no remote/fetch into the consumer is needed. Appends `/external` to `.gitignore` when missing, runs `gotool.Replace` + `gotool.Tidy`, prints external worktree abs path on stdout. Naming: `{basename}-{token}-{WRK_DATE}[-N]` (same rules as create; basename from dep main repo); the branch lives in the dep repo, so the `-N` collision check runs against `depMain` (path under `consumerTop/external/` + branch in dep repo).
-- **wrk --done** — resolves checkout root via `ShowToplevel(cwd)`; requires a linked worktree (not main repo); clean worktree; implicit `--rm`. **Cascade**: merge-back each linked worktree under `{toplevel}/external/*` first — these are dep-repo worktrees (registered under `<depMain>/.git/worktrees/`), so `MergeBack` resolves their main repo from the worktree's `.git` gitdir (the dep main) and merges the dep branch back into the dep repo (the branch shares the dep's history, so merge-base resolves); this ensures dep work committed on an external worktree is merged back before removal. Relation to dep main: already-included → remove only; ahead/diverged → prompt (`--confirm-from-stdin`), non-interactive ahead/diverged falls back to force-removal. **Guard**: scan **every** Go module under the checkout (`gotool/mod/scan.Scan`) — main + all sub-modules — and error if **any** module has a filesystem/local `replace` (`./`, `../`, or absolute path without version). A checkout with no `go.mod` at all yields zero modules → guard is a no-op → `--done` proceeds (and the linked-worktree check inside `MergeBack` still runs for a main-repo cwd, producing `not a linked worktree`). Branch relation to main: already-included → remove only; ahead/diverged → prompt then merge/rebase.
+- **wrk --done** — resolves checkout root via `ShowToplevel(cwd)`; requires a linked worktree (not main repo); clean worktree; implicit `--rm`. **Cascade**: merge-back each linked worktree under `{toplevel}/external/*` first — these are dep-repo worktrees (registered under `<depMain>/.git/worktrees/`), so `MergeBack` resolves their main repo from the worktree's `.git` gitdir (the dep main) and merges the dep branch back into the dep repo (the branch shares the dep's history, so merge-base resolves); this ensures dep work committed on an external worktree is merged back before removal. Relation to dep main: already-included → remove only; ahead/diverged → prompt (`--confirm-from-stdin`), non-interactive ahead/diverged falls back to force-removal. **Guard**: scan **every** Go module under the checkout (`gotool/mod/scan.Scan`) — main + all sub-modules — and classify each filesystem/local `replace` (`./`, `../`, or absolute path without version) by resolving its target relative to the module's `go.mod` dir: **intra-repo** = target dir exists AND `git -C <target> rev-parse --show-toplevel` equals the consumer's toplevel (a `../../`/`./sub` nested-module reference back into the same repo); **extra-repo** = everything else (`./external/foo` dep worktree, non-existent target, absolute/sibling outside). The guard names the offending `<top>/<m.Dir>/go.mod` file and each `replace <Old> => <New>` directive in its message. Default (no flag): intra-repo → **WARN to stderr and proceed** (exit 0, merge-back runs); extra-repo → **error, block**. `--no-in-module-replace` (opt-in, valid only with `--done`) → **all** local replaces block (fully-strict). A checkout with no `go.mod` at all yields zero modules → guard is a no-op → `--done` proceeds (and the linked-worktree check inside `MergeBack` still runs for a main-repo cwd, producing `not a linked worktree`). Branch relation to main: already-included → remove only; ahead/diverged → prompt then merge/rebase.
 - **wrk --list** — runs `git -C <cwd> worktree list`; prints stdout unchanged; cwd must be inside a git work tree (main repo, linked worktree, or nested subpath). Mutually exclusive with no-args create and `--done`.
 - **--confirm-from-stdin** — when set with piped `StdinInput`, reads Y/n from stdin for merge-back confirmation (required for non-TTY ahead/diverged cases).
+- **--no-in-module-replace** — bool flag (no value); valid ONLY with `--done`. Restores the fully-strict local-replace guard: every filesystem/local `replace` (intra-repo or extra-repo) blocks `--done`. Without it (default), intra-repo replaces — whose target dir exists and shares the consumer's `git rev-parse --show-toplevel` (`../../`/`./sub` nested-module reference) — only WARN and `--done` proceeds; extra-repo replaces (`./external/foo` dep worktree, non-existent/absolute/sibling) still block. Bare `wrk --no-in-module-replace`, or with any other mode (`--dep`/`--list`/no-args create/`--all-deps`) → non-zero exit, stderr `wrk: --no-in-module-replace is only valid with --done`.
 - **Request.Args** — CLI arguments passed to `wrk` after optional `<dir>` (empty → no-args create; `["--dep", depPath]` for dep tests; `["--done"]` or `["--done", "--confirm-from-stdin"]` for done tests; `["--list"]` for list tests).
 - **Request.TargetDir** — when set, prepended as the first positional argument to `wrk` (`wrk <dir> ...`); used by `dir-arg/` tests to run from `WorkRoot` while targeting a repo elsewhere.
 - **Request.SpawnDir** — optional second positional `<target-dir>` (`wrk <dir> <target-dir>`); appended after `TargetDir` when set. Overrides the worktree spawn location: missing target with existing parent → spawn exactly at `<target-dir>` (no naming suffix on the path); existing target dir → spawn a default-named sub-dir under it; missing parent → error. Resolved relative to the process (shell) cwd, not `<dir>`. Create-only — errors with `wrk: unexpected arguments` when combined with `--list`/`--done`/`--dep`. `WRK_HOME` is ignored when set.
@@ -78,13 +79,16 @@ wrk tests
 │   ├── dirty/                    # uncommitted changes in worktree
 │   ├── not-linked/               # cwd is main repo (not linked worktree)
 │   ├── from-subpath/             # cwd nested inside linked wt; uses checkout root
-│   ├── external-cascade/         # cascade removes external/* wt; guard blocks parent
+│   ├── external-cascade/         # cascade removes external/* wt; guard blocks parent (names go.mod + directive)
 │   ├── cascade-merge-base/       # cascade must remove dep wt, not crash "failed to find merge base" (dep branch shares no history with consumer main)
 │   ├── cascade-dep-merge-back/   # ahead dep wt → cascade ff-merges dep branch into dep repo, then removes wt (merge-back, not discard)
-│   ├── local-replace-blocks/     # filesystem replace in go.mod → error at guard
+│   ├── local-replace-blocks/     # extra-repo fs replace (non-existent ./external/foo) → guard blocks + names go.mod + directive
+│   ├── intra-replace-warns/      # intra-repo fs replace (./submod, same toplevel) → WARN + proceed (default, exit 0)
+│   ├── intra-replace-strict-blocks/ # intra-repo replace + --no-in-module-replace → block + names go.mod + directive
+│   ├── no-in-module-replace-without-done/ # --no-in-module-replace without --done → error
 │   ├── no-go-mod/                # linked wt whose checkout has no go.mod → --done merge-back succeeds (guard is no-op)
 │   ├── not-linked-no-go-mod/     # main repo without go.mod → "not a linked worktree" (go.mod check must not mask it)
-│   └── sub-module-replace-blocks/ # main go.mod clean but sub/go.mod has local replace → guard blocks
+│   └── sub-module-replace-blocks/ # main go.mod clean but sub/go.mod has local replace → guard blocks + names go.mod + directive
 ├── list/                         # wrk --list (git worktree list wrapper)
 │   ├── main-only/                # single main checkout, no linked worktrees
 │   ├── with-linked/              # main + one linked worktree
@@ -154,8 +158,8 @@ wrk tests
 | 37 | all-deps/dry-run/basic | dep1+dep2 in scan-root → `would:` lines for both, `would: wrk 2 deps`, NO `external/`, NO replaces, NO `.gitignore` change |
 | 38 | all-deps/dry-run/no-matches | scan-root empty → `would: wrk 0 deps`, NO `external/`, NO replaces, NO `.gitignore` change |
 | 39 | all-deps/dry-run/without-all-deps | `wrk --dry-run` (no `--all-deps`) → non-zero, stderr `--dry-run is only valid with --all-deps` |
-| 40 | done/external-cascade | `--done` cascades to `external/*` dep wt first; parent errors on local replace |
-| 41 | done/local-replace-blocks | `replace => ./external/foo` blocks `--done` at guard |
+| 40 | done/external-cascade | `--done` cascades to `external/*` dep wt first; parent errors on local replace (names go.mod + directive) |
+| 41 | done/local-replace-blocks | extra-repo `replace => ./external/foo` (non-existent) blocks `--done` at guard (names go.mod + directive) |
 | 42 | dir-arg/create/basic | `wrk <repoDir>` from WorkRoot creates worktree |
 | 43 | dir-arg/list/from-dir | `wrk <repoDir> --list` matches `git worktree list` |
 | 44 | dir-arg/missing-dir | `wrk <nonexistent>` → does not exist |
@@ -169,9 +173,12 @@ wrk tests
 | 52 | target-dir/with-other-mode/with-dep | `wrk <dir> <target> --dep <dep>` → unexpected arguments |
 | 53 | done/no-go-mod | linked wt whose checkout has no go.mod; `--done` merge-back succeeds (guard no-op) |
 | 54 | done/not-linked-no-go-mod | main repo without go.mod; `--done` → `not a linked worktree` (not `no go.mod found`) |
-| 55 | done/sub-module-replace-blocks | main go.mod clean but `sub/go.mod` has local replace → guard blocks `--done` |
+| 55 | done/sub-module-replace-blocks | main go.mod clean but `sub/go.mod` has local replace → guard blocks `--done` (names go.mod + directive) |
 | 56 | done/cascade-merge-base | cascade must remove dep wt, not crash `failed to find merge base` (dep branch vs consumer main share no history) |
 | 57 | done/cascade-dep-merge-back | ahead dep wt + `--confirm-from-stdin` → cascade ff-merges dep branch into dep repo, removes wt (merge-back, not discard) |
+| 58 | done/intra-replace-warns | intra-repo `replace example.com/foo => ./submod` (existing, same toplevel) → WARN, exit 0, merge-back proceeds |
+| 59 | done/intra-replace-strict-blocks | intra-repo replace + `--no-in-module-replace` → block, names go.mod + directive |
+| 60 | done/no-in-module-replace-without-done | `wrk --list --no-in-module-replace` → non-zero, `--no-in-module-replace is only valid with --done` |
 
 ## How to Run
 
@@ -202,6 +209,17 @@ doctest test ./tests/all-deps/dry-run/basic
 
 # Run a done cascade leaf
 doctest test ./tests/done/external-cascade
+
+# Run a local-replace guard leaf
+doctest test ./tests/done/local-replace-blocks
+doctest test ./tests/done/sub-module-replace-blocks
+
+# Run an intra-replace (lenient/strict) leaf
+doctest test ./tests/done/intra-replace-warns
+doctest test ./tests/done/intra-replace-strict-blocks
+
+# Run the --no-in-module-replace validation leaf
+doctest test ./tests/done/no-in-module-replace-without-done
 
 # Run a dir-arg leaf
 doctest test ./tests/dir-arg/create/basic

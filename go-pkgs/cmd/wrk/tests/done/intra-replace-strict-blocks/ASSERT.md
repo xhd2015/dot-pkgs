@@ -1,8 +1,8 @@
 ## Expected
 
-- Non-zero exit code (extra-repo filesystem replace blocks `--done`).
+- Non-zero exit code (`--no-in-module-replace` blocks even intra-repo replaces).
 - Stderr names the offending go.mod file: `<wtDir>/go.mod`.
-- Stderr names the offending directive: `replace example.com/foo => ./external/foo`.
+- Stderr names the offending directive: `replace example.com/foo => ./submod`.
 - Stderr mentions the block (`blocks wrk --done`).
 - Consumer linked worktree still exists (merge-back did not run).
 
@@ -18,11 +18,11 @@ import (
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
 	if resp.ExitCode == 0 {
-		t.Fatalf("expected non-zero exit, got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
+		t.Fatalf("expected non-zero exit (--no-in-module-replace blocks intra-repo), got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
 	}
 
 	assertContains(t, resp.Stderr, filepath.Join(req.WtDir, "go.mod"))
-	assertContains(t, resp.Stderr, "replace example.com/foo => ./external/foo")
+	assertContains(t, resp.Stderr, "replace example.com/foo => ./submod")
 	assertContains(t, resp.Stderr, "blocks wrk --done")
 	assertFileExists(t, req.WtDir)
 	assertWorktreeListContains(t, req.MainRepo, req.WtDir)
