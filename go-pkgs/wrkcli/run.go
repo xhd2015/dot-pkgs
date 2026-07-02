@@ -380,11 +380,6 @@ func runDep(depArg string) error {
 	if err != nil {
 		return err
 	}
-	consumerModDir, err := findGoModDir(cwd, consumerTop)
-	if err != nil {
-		return err
-	}
-
 	depPath, err := filepath.Abs(depArg)
 	if err != nil {
 		return fmt.Errorf("resolve dep path: %w", err)
@@ -402,14 +397,52 @@ func runDep(depArg string) error {
 		return err
 	}
 
-	// Resolve the dep module the consumer requires. The dep repo may have no
-	// go.mod at its root (e.g. dot-pkgs, whose module lives in go-pkgs/), so
-	// scan the whole repo and match a discovered module against the consumer's
-	// require/replace paths. depModDir is the module dir relative to the dep
-	// repo root ("." for a root go.mod).
-	depModDir, _, err := resolveDepModule(consumerModDir, depPath)
+	// Scan both dep and consumer repos for Go modules. The consumer may have
+	// no root go.mod (e.g. dot-pkgs, whose module lives in go-pkgs/), so we
+	// scan the whole tree and replace+tidy in every matching consumer module.
+	depModules, err := scan.Scan(depPath, scan.Options{})
 	if err != nil {
-		return err
+		return fmt.Errorf("scan dep modules: %w", err)
+	}
+	if len(depModules) == 0 {
+		return fmt.Errorf("not a go module: %s", depPath)
+	}
+
+	consumerModules, err := scan.Scan(consumerTop, scan.Options{})
+	if err != nil {
+		return fmt.Errorf("scan consumer modules: %w", err)
+	}
+
+	// depModDir is the dep module's directory relative to the dep repo root
+	// (e.g. "." for a root go.mod, "go-pkgs" for a sub-module). It's resolved
+	// from the first consumer module that depends on the dep.
+	type consumerMatch struct{ dir string }
+	var matchingConsumerDirs []consumerMatch
+	var depModDir string
+	for _, cm := range consumerModules {
+		wanted := make(map[string]struct{})
+		for _, req := range cm.Requires {
+			wanted[req.Path] = struct{}{}
+		}
+		for _, repl := range cm.Replaces {
+			wanted[repl.OldPath] = struct{}{}
+		}
+		for _, dm := range depModules {
+			if dm.Path == "" {
+				continue
+			}
+			if _, ok := wanted[dm.Path]; ok {
+				matchingConsumerDirs = append(matchingConsumerDirs, consumerMatch{
+					dir: filepath.Join(consumerTop, cm.Dir),
+				})
+				if depModDir == "" {
+					depModDir = dm.Dir
+				}
+			}
+		}
+	}
+	if len(matchingConsumerDirs) == 0 {
+		return fmt.Errorf("%s is not a dependency of any consumer module", depPath)
 	}
 
 	externalDir := filepath.Join(consumerTop, "external")
@@ -455,11 +488,13 @@ func runDep(depArg string) error {
 	if depModDir != "." {
 		replaceDir = filepath.Join(externalPath, depModDir)
 	}
-	if _, _, err := replace.ReplaceIn(consumerModDir, replaceDir); err != nil {
-		return err
-	}
-	if err := commands.GoModTidy(&commands.GoModEditOptions{Dir: consumerModDir, Stderr: false, Stdout: false}); err != nil {
-		return err
+	for _, m := range matchingConsumerDirs {
+		if _, _, err := replace.ReplaceIn(m.dir, replaceDir); err != nil {
+			return err
+		}
+		if err := commands.GoModTidy(&commands.GoModEditOptions{Dir: m.dir, Stderr: false, Stdout: false}); err != nil {
+			return err
+		}
 	}
 
 	absPath, err := filepath.Abs(externalPath)
@@ -625,24 +660,45 @@ func runAllDeps(scanRootFlag string, dryRun bool) error {
 	if err != nil {
 		return err
 	}
-	consumerModDir, err := findGoModDir(cwd, consumerTop)
+
+	// Scan the consumer tree for all Go modules (supports repos like dot-pkgs
+	// whose module lives in a subdirectory with no root go.mod).
+	consumerModules, err := scan.Scan(consumerTop, scan.Options{})
 	if err != nil {
-		return err
+		return fmt.Errorf("scan consumer modules: %w", err)
 	}
 
-	consumerModInfo, err := resolve.GetModuleInfo(consumerModDir)
-	if err != nil {
-		return fmt.Errorf("read consumer go.mod: %w", err)
+	type consumerModInfo struct {
+		dir             string // abs path to the module's go.mod directory
+		modulePath      string
+		required        map[string]bool // dep paths this module requires
+		alreadyReplaced map[string]bool // dep paths already replaced in this module
 	}
-	consumerModule := consumerModInfo.Module.Path
+	var consumerMods []consumerModInfo
+	allRequired := make(map[string]bool)
+	allAlreadyReplaced := make(map[string]bool)
+	allConsumerModules := make(map[string]bool)
 
-	required := make(map[string]bool, len(consumerModInfo.Require))
-	for _, r := range consumerModInfo.Require {
-		required[r.Path] = true
-	}
-	alreadyReplaced := make(map[string]bool, len(consumerModInfo.Replace))
-	for _, r := range consumerModInfo.Replace {
-		alreadyReplaced[r.Old.Path] = true
+	for _, cm := range consumerModules {
+		dir := filepath.Join(consumerTop, cm.Dir)
+		info := consumerModInfo{
+			dir:             dir,
+			modulePath:      cm.Path,
+			required:        make(map[string]bool),
+			alreadyReplaced: make(map[string]bool),
+		}
+		if cm.Path != "" {
+			allConsumerModules[cm.Path] = true
+		}
+		for _, req := range cm.Requires {
+			info.required[req.Path] = true
+			allRequired[req.Path] = true
+		}
+		for _, repl := range cm.Replaces {
+			info.alreadyReplaced[repl.OldPath] = true
+			allAlreadyReplaced[repl.OldPath] = true
+		}
+		consumerMods = append(consumerMods, info)
 	}
 
 	scanRoot, err := resolveScanRoot(scanRootFlag)
@@ -669,6 +725,7 @@ func runAllDeps(scanRootFlag string, dryRun bool) error {
 	}
 	seen := make(map[string]bool)
 	var linked []linkedDep
+	tidied := make(map[string]bool)
 	for _, repo := range repos {
 		if repo.RepoType != scan_repo.RepoTypeMain {
 			continue
@@ -684,10 +741,10 @@ func runAllDeps(scanRootFlag string, dryRun bool) error {
 		// when at least one module matches (and shared across all of them).
 		var matched []scan.Module
 		for _, m := range modules {
-			if m.Path == "" || m.Path == consumerModule {
+			if m.Path == "" || allConsumerModules[m.Path] {
 				continue
 			}
-			if !required[m.Path] || alreadyReplaced[m.Path] || seen[m.Path] {
+			if !allRequired[m.Path] || allAlreadyReplaced[m.Path] || seen[m.Path] {
 				continue
 			}
 			matched = append(matched, m)
@@ -720,7 +777,6 @@ func runAllDeps(scanRootFlag string, dryRun bool) error {
 		if err != nil {
 			return err
 		}
-		opts := &commands.GoModEditOptions{Dir: consumerModDir, Stderr: false, Stdout: false}
 		for _, m := range matched {
 			// m.Dir is "." for the repo root module, or a slash-joined sub-dir
 			// (e.g. "services/dep") for a nested sub-module. The replace target
@@ -729,17 +785,27 @@ func runAllDeps(scanRootFlag string, dryRun bool) error {
 			if m.Dir != "." {
 				target = filepath.Join(externalPath, filepath.FromSlash(m.Dir))
 			}
-			if err := commands.GoModEditReplace(m.Path, target, opts); err != nil {
-				return err
+			// Replace in every consumer module that requires this dep.
+			for _, cm := range consumerMods {
+				if !cm.required[m.Path] || cm.alreadyReplaced[m.Path] {
+					continue
+				}
+				opts := &commands.GoModEditOptions{Dir: cm.dir, Stderr: false, Stdout: false}
+				if err := commands.GoModEditReplace(m.Path, target, opts); err != nil {
+					return err
+				}
+				tidied[cm.dir] = true
 			}
 			seen[m.Path] = true
 			linked = append(linked, linkedDep{modulePath: m.Path, externalPath: target})
 		}
 	}
 
-	if !dryRun && len(linked) > 0 {
-		if err := commands.GoModTidy(&commands.GoModEditOptions{Dir: consumerModDir, Stderr: false, Stdout: false}); err != nil {
-			return err
+	if !dryRun {
+		for dir := range tidied {
+			if err := commands.GoModTidy(&commands.GoModEditOptions{Dir: dir, Stderr: false, Stdout: false}); err != nil {
+				return err
+			}
 		}
 	}
 
