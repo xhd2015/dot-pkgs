@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1446,6 +1447,41 @@ func runSetTask(taskDesc string) error {
 		return fmt.Errorf("wrk: target path %s already exists", newPath)
 	}
 
+	// Before renaming: discover nested linked worktrees under cwd so we can
+	// update their gitdir metadata after the move. scan_repo.Scan stops at
+	// repo boundaries, so we do a manual walk similar to discoverStatusRepos
+	// to find nested repos that the root scan would miss.
+	type nestedWT struct {
+		oldPath string
+		relPath string // relative to cwd
+	}
+	var nested []nestedWT
+	_ = filepath.WalkDir(cwd, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		if d.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		if path == cwd {
+			return nil
+		}
+		gitFile := filepath.Join(path, ".git")
+		info, err := os.Stat(gitFile)
+		if err != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(cwd, path)
+		if err != nil {
+			return nil
+		}
+		nested = append(nested, nestedWT{oldPath: path, relPath: rel})
+		return filepath.SkipDir // nested repo found, don't recurse deeper
+	})
+
 	// TTY check (escape hatch for testing via WRK_SET_TASK_CONFIRM=1)
 	if os.Getenv("WRK_SET_TASK_CONFIRM") != "1" {
 		if !term.IsTerminal(int(os.Stdout.Fd())) {
@@ -1473,6 +1509,28 @@ func runSetTask(taskDesc string) error {
 	out, err = branchCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git branch rename: %w\n%s", err, out)
+	}
+
+	// Update gitdir metadata for nested worktrees that moved with the parent.
+	// Each nested worktree's .git file says "gitdir: <mainRepo>/.git/worktrees/<name>",
+	// and <mainRepo>/.git/worktrees/<name>/gitdir contains the old absolute path
+	// back to the worktree. We rewrite it to the new path.
+	for _, nw := range nested {
+		newWtPath := filepath.Join(newPath, nw.relPath)
+		gitFile := filepath.Join(newWtPath, ".git")
+		data, err := os.ReadFile(gitFile)
+		if err != nil {
+			continue
+		}
+		s := strings.TrimSpace(string(data))
+		const gitdirPrefix = "gitdir: "
+		if !strings.HasPrefix(s, gitdirPrefix) {
+			continue
+		}
+		gitdirBase := strings.TrimSpace(s[len(gitdirPrefix):])
+		gitdirFile := filepath.Join(gitdirBase, "gitdir")
+		newGitdirContent := filepath.Join(newWtPath, ".git") + "\n"
+		_ = os.WriteFile(gitdirFile, []byte(newGitdirContent), 0644)
 	}
 
 	fmt.Println(newPath)

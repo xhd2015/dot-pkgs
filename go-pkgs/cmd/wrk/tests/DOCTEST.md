@@ -153,7 +153,11 @@ wrk tests
             ├── empty-desc/            # --set-task "" → error
             ├── empty-slug/            # --set-task "!!!" → error
             ├── not-linked/            # from main repo → error
-            └── not-wrk-worktree/      # custom branch → cannot parse → error
+            ├── not-wrk-worktree/      # custom branch → cannot parse → error
+            ├── rename-succeeds/       # TTY-confirmed rename via WRK_SET_TASK_CONFIRM=1
+            ├── slug-unchanged/        # same slug → no-op "task unchanged"
+            └── propagate/             # --set-task updates gitdir for nested repos
+                └── single-external-dep/ # external dep's gitdir updated to new path
 ```
 
 ## Test Case Index
@@ -242,6 +246,9 @@ wrk tests
 | 80 | task/set-task/empty-slug | `--set-task "!!!"` → error |
 | 81 | task/set-task/not-linked | `--set-task` from main repo → error |
 | 82 | task/set-task/not-wrk-worktree | `--set-task` on custom-branch worktree → cannot parse → error |
+| 83 | task/set-task/rename-succeeds | `--set-task "new task"` with WRK_SET_TASK_CONFIRM=1 → worktree renamed, branch renamed |
+| 84 | task/set-task/slug-unchanged | `--set-task` with same slug → no-op, prints "task unchanged" |
+| 85 | task/set-task/propagate/single-external-dep | `--set-task` with external dep → consumer renamed, dep gitdir updated to new path |
 | 83 | status/valid-git-cwd/root-clean | `wrk --status` from repo root shows `Dir: .` and clean status |
 | 84 | status/valid-git-cwd/subdir-clean | `wrk --status` from nested subdir still shows `Dir: .` |
 | 85 | status/valid-git-cwd/multiple-git-dirs | root + nested independent git repo produce two status blocks |
@@ -343,9 +350,11 @@ type Request struct {
 	ConsumerModDir2  string // dep tests: second consumer go.mod directory for multi-module tests
 	ExternalWtDir    string // dep/done tests: external worktree path
 	DepModulePath    string // dep tests: module path from dep go.mod
-	TaskDesc      string // task tests: task description passed to --task
-	SetTaskDesc   string // task tests: new task description for --set-task
-	SetTaskEnv    string // task tests: extra env vars for --set-task (e.g., WRK_SET_TASK_CONFIRM=1)
+	TaskDesc           string // task tests: task description passed to --task
+	SetTaskDesc        string // task tests: new task description for --set-task
+	SetTaskEnv         string // task tests: extra env vars for --set-task (e.g., WRK_SET_TASK_CONFIRM=1)
+	OldExternalGitdir  string // propagate tests: old gitdir content before rename
+	ExternalWtDir2    string // propagate tests: second external worktree path
 }
 
 type Response struct {
