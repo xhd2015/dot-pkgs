@@ -34,6 +34,11 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **--all-deps mutual exclusion** — `--all-deps` is mutually exclusive with `--dep`, `--done`, `--list`, and no-args create; `--all-deps --dep <x>` → non-zero exit, stderr mentions "mutually exclusive"; no positional args allowed.
 - **wrk --all-deps --dry-run** — runs the full read-only discovery/planning of `--all-deps` but writes nothing. Same cwd/git/go.mod validation, same `required`/`alreadyReplaced`/`consumerModule` sets, same scan-root resolution (`--scan-root` > `WRK_SCAN_ROOT` > home), same `scan_repo.Scan` + `modscan.Scan`, same self / not-required / already-replaced / seen skips, and the SAME external-path naming + collision logic as the real run — but it does NOT `MkdirAll(external/)`, does NOT `ensureGitignoreExternal`, does NOT `createExternalWorktree` (no `git worktree add`/branch/remote/fetch), does NOT `GoModEditReplace`, and does NOT `GoModTidy`. stdout: one line per planned module in scan order `would: wrk <module-path> at ./external/<name>[/<subdir>]`, then a final `would: wrk <N> deps` (zero → single `would: wrk 0 deps`). Core guarantee: after a dry run `{consumerTop}/external/` does NOT exist, consumer `go.mod` is unchanged (no new replaces), and `.gitignore` is unchanged (no `/external` line). Errors that occur during planning (non-git cwd, unreadable go.mod) still surface as errors — the process "actually runs".
 - **--dry-run** — bool flag (no value); valid ONLY with `--all-deps` (and `--scan-root`). Bare `wrk --dry-run`, or `--dry-run` with any other mode (`--dep`/`--done`/`--list`/no-args create) → non-zero exit, stderr `wrk: --dry-run is only valid with --all-deps`. It does NOT relax `--all-deps`'s mutual exclusion with `--dep`/`--done`/`--list` — `--dry-run --all-deps --dep <x>` still errors as mutually exclusive (the `--all-deps` mutual-exclusion check runs first). `extractDir` in `cmd/wrk/main.go` needs no change (its `strings.HasPrefix(arg, "-")` branch already treats `--dry-run` as a flag).
+- **wrk --task <desc>** — flag valid only in create mode (no `--done`/`--list`/`--dep`/`--all-deps`). Derives a sanitized slug from `<desc>` (lowercase, non-letter-digit → `-`, collapse, trim, truncate 64 runes). Appends slug after the date in both dir and branch names: `{basename}-{token}-{date}-{slug}[-N]` for dir, `{branchBase}-{date}-{slug}[-N]` for branch. Empty `<desc>` or slug → non-zero exit. No metadata file stored — the slug is embedded in the name.
+- **wrk --set-task <desc>** — flag valid alone (mutually exclusive with all other flags and positional args). Must be run inside a linked worktree. Parses the current branch name to extract `branchBase` and `date` (branch must match `{branchBase}-{YYYY-MM-DD}[-slug][-N]`; non-wrk worktrees → error). Computes new dir and branch names with the new slug. If slug is unchanged → no-op. Before `git worktree move`, checks stdout: TTY → warns (old→new path + branch) and prompts `Proceed? [Y/n]`; confirmation executes the move. Non-TTY → non-zero exit `wrk: --set-task requires a terminal (tty)`. When run with `WRK_SET_TASK_CONFIRM=1` env → auto-confirms without TTY (test escape hatch).
+- **Request.TaskDesc** — when set, used by test assertions to compute expected dir/branch names with task slug.
+- **Request.SetTaskDesc** — when set, tests pass `--set-task <desc>` to wrk; test assertions verify rename side effects.
+- **Request.SetTaskEnv** — when set, appended to wrk's environment (e.g., `WRK_SET_TASK_CONFIRM=1` to auto-confirm rename in tests).
 
 ## Tree Overview
 
@@ -113,6 +118,23 @@ wrk tests
     └── with-other-mode/          # target-dir + other mode → error
         ├── with-list/            # wrk <dir> <target-dir> --list
         └── with-dep/             # wrk <dir> <target-dir> --dep <dep>
+    └── task/                          # wrk --task and wrk --set-task
+        ├── spawn/                     # --task when creating worktree
+        │   ├── basic/                 # wrk --task "fix login bug" → slug in name
+        │   ├── special-chars/         # capitals, symbols → sanitized slug
+        │   ├── long-task/             # >64 runes → truncated
+        │   ├── empty-task/            # --task "" → error
+        │   ├── empty-slug/            # --task "!!!" → error (slug empty)
+        │   ├── with-done/             # --task + --done → mutually exclusive
+        │   ├── sequence/              # two --task "same" calls → -N suffix
+        │   ├── branch-collision/      # pre-existing branch blocks → suffix
+        │   └── target-dir/            # wrk <dir> <target> --task → branch has slug
+        └── set-task/                  # --set-task inside linked worktree
+            ├── non-tty/               # non-TTY → "requires terminal" error
+            ├── empty-desc/            # --set-task "" → error
+            ├── empty-slug/            # --set-task "!!!" → error
+            ├── not-linked/            # from main repo → error
+            └── not-wrk-worktree/      # custom branch → cannot parse → error
 ```
 
 ## Test Case Index
@@ -179,6 +201,20 @@ wrk tests
 | 58 | done/intra-replace-warns | intra-repo `replace example.com/foo => ./submod` (existing, same toplevel) → WARN, exit 0, merge-back proceeds |
 | 59 | done/intra-replace-strict-blocks | intra-repo replace + `--no-in-module-replace` → block, names go.mod + directive |
 | 60 | done/no-in-module-replace-without-done | `wrk --list --no-in-module-replace` → non-zero, `--no-in-module-replace is only valid with --done` |
+| 61 | task/spawn/basic | `wrk --task "fix login bug"` → dir/branch include `-fix-login-bug` |
+| 62 | task/spawn/special-chars | Task with capitals, symbols, unicode → sanitized slug |
+| 63 | task/spawn/long-task | >64 runes → truncated to 64 |
+| 64 | task/spawn/empty-task | `--task ""` → error |
+| 65 | task/spawn/empty-slug | `--task "!!!"` → error (slug empty after sanitization) |
+| 66 | task/spawn/with-done | `--task` + `--done` → mutually exclusive |
+| 67 | task/spawn/sequence | Two `wrk --task "same"` calls → `-N` suffix on second |
+| 68 | task/spawn/branch-collision | Pre-existing branch with task-slug name → suffix increment |
+| 69 | task/spawn/target-dir | `wrk <dir> <target> --task "desc"` → branch has slug, dir is user-specified |
+| 70 | task/set-task/non-tty | `--set-task` in non-TTY → error "requires terminal" |
+| 71 | task/set-task/empty-desc | `--set-task ""` → error |
+| 72 | task/set-task/empty-slug | `--set-task "!!!"` → error |
+| 73 | task/set-task/not-linked | `--set-task` from main repo → error |
+| 74 | task/set-task/not-wrk-worktree | `--set-task` on custom-branch worktree → cannot parse → error |
 
 ## How to Run
 
@@ -231,6 +267,16 @@ doctest vet ./tests/target-dir
 doctest test ./tests/target-dir/target-missing/parent-exists
 doctest test ./tests/target-dir/target-exists/collision-suffix
 doctest test ./tests/target-dir/relative-path
+
+# Run a task spawn leaf
+doctest test ./tests/task/spawn/basic
+doctest test ./tests/task/spawn/empty-task
+doctest test ./tests/task/spawn/sequence
+
+# Run a task set-task leaf (non-TTY, expects error)
+doctest test ./tests/task/set-task/non-tty
+doctest test ./tests/task/set-task/empty-desc
+doctest test ./tests/task/set-task/not-linked
 ```
 
 ```go
@@ -258,6 +304,9 @@ type Request struct {
 	ConsumerTop   string // dep tests: consumer git toplevel
 	ExternalWtDir string // dep/done tests: external worktree path
 	DepModulePath string // dep tests: module path from dep go.mod
+	TaskDesc      string // task tests: task description passed to --task
+	SetTaskDesc   string // task tests: new task description for --set-task
+	SetTaskEnv    string // task tests: extra env vars for --set-task (e.g., WRK_SET_TASK_CONFIRM=1)
 }
 
 type Response struct {
@@ -276,11 +325,21 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.SpawnDir != "" {
 		args = append(args, req.SpawnDir)
 	}
+	if req.TaskDesc != "" {
+		args = append(args, "--task", req.TaskDesc)
+	}
+	if req.SetTaskDesc != "" {
+		args = append(args, "--set-task", req.SetTaskDesc)
+	}
 	args = append(args, req.Args...)
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = req.RepoDir
-	cmd.Env = append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
+	env := append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
+	if req.SetTaskEnv != "" {
+		env = append(env, req.SetTaskEnv)
+	}
+	cmd.Env = env
 
 	if req.StdinInput != "" {
 		stdin, err := cmd.StdinPipe()

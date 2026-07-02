@@ -45,7 +45,7 @@ func extractDir(args []string) (dir string, remaining []string, ok bool) {
 	var flags []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--dep" || arg == "--scan-root" {
+		if arg == "--dep" || arg == "--scan-root" || arg == "--task" || arg == "--set-task" {
 			flags = append(flags, arg)
 			if i+1 < len(args) {
 				i++

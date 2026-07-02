@@ -28,6 +28,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode"
 )
 
 var buildOnce sync.Once
@@ -60,7 +61,7 @@ func getWrkBin(t *testing.T) string {
 			return
 		}
 		bin := filepath.Join(tmpDir, "wrk")
-		cmd := exec.Command("go", "build", "-o", bin, "./wrk")
+		cmd := exec.Command("go", "build", "-a", "-o", bin, "./wrk")
 		cmd.Dir = modRoot
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -335,6 +336,72 @@ func commitAheadOnWorktree(t *testing.T, wtDir, filename, content string) {
 	runGit(t, wtDir, "commit", "-m", "worktree commit")
 }
 
+// slugify converts a task description into a path-safe slug.
+// Rules: lowercase, non-letter-non-digit → "-", collapse runs of "-",
+// trim leading/trailing "-", truncate to 64 runes.
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	s = b.String()
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	s = strings.Trim(s, "-")
+	runes := []rune(s)
+	if len(runes) > 64 {
+		s = string(runes[:64])
+	}
+	s = strings.Trim(s, "-")
+	return s
+}
+
+func worktreePathWithTask(wrkHome, basename, token, date, slug string, suffix int) string {
+	name := fmt.Sprintf("%s-%s-%s", basename, token, date)
+	if slug != "" {
+		name = fmt.Sprintf("%s-%s", name, slug)
+	}
+	if suffix > 0 {
+		name = fmt.Sprintf("%s-%d", name, suffix)
+	}
+	return filepath.Join(wrkHome, "worktrees", name)
+}
+
+func branchNameWithTask(baseBranch, date, slug string, suffix int) string {
+	name := baseBranch + "-" + date
+	if slug != "" {
+		name = name + "-" + slug
+	}
+	if suffix > 0 {
+		name = fmt.Sprintf("%s-%d", name, suffix)
+	}
+	return name
+}
+
+// createWorktreeWithTask is like setupWrkWorktreeFromMain but with a task description.
+func createWorktreeWithTask(t *testing.T, req *Request, taskDesc string) (mainRepo, wtDir, branch string) {
+	t.Helper()
+	mainRepo = filepath.Join(req.WorkRoot, "myrepo")
+	req.MainRepo = mainRepo
+	initGitRepoOnMain(t, mainRepo)
+	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/myrepo\ngo 1.21\n")
+	runGit(t, mainRepo, "add", "go.mod")
+	runGit(t, mainRepo, "commit", "-m", "add go.mod")
+	slug := slugify(taskDesc)
+	wtDir = runWrkWithArgs(t, req, mainRepo, "--task", taskDesc)
+	req.WtDir = wtDir
+	branch = branchNameWithTask("main", wrkDate, slug, 0)
+	req.WtBranch = branch
+	req.TaskDesc = taskDesc
+	return mainRepo, wtDir, branch
+}
+
 func ensureHelpersUsed() {
 	_ = mkdirAll
 	_ = writeFile
@@ -362,5 +429,9 @@ func ensureHelpersUsed() {
 	_ = assertWorktreeListNotContains
 	_ = setupWrkWorktreeFromMain
 	_ = commitAheadOnWorktree
+	_ = slugify
+	_ = worktreePathWithTask
+	_ = branchNameWithTask
+	_ = createWorktreeWithTask
 }
 ```
