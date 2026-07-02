@@ -205,17 +205,13 @@ func (s *skipper) shouldSkip(absRoot, path string) (bool, error) {
 	}
 	relSlash := filepath.ToSlash(filepath.Clean(rel))
 
-	// gitignored (root's .gitignore / exclude rules, including nested .gitignore
-	// files that git honors). Check the ignored-dir batch first, then fall back to
-	// a per-path check-ignore so nested .gitignore patterns are respected.
+	// gitignored: the upfront ListIgnoredDirs batch call (git ls-files --others
+	// --ignored --exclude-standard --directory) at the root already respects all
+	// .gitignore files including nested ones, so the isIgnoredDir check below is
+	// sufficient. We avoid a per-directory git check-ignore subprocess call here
+	// because it would add ~15ms per directory — a ~9.6s overhead on a ~650-dir
+	// repo like dot-pkgs.
 	if s.isIgnoredDir(relSlash) {
-		return true, nil
-	}
-	ignored, err := git.CheckIgnore(absRoot, relSlash)
-	if err != nil {
-		return false, err
-	}
-	if ignored {
 		return true, nil
 	}
 

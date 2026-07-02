@@ -50,8 +50,10 @@ scan tests
 │   ├── testdata-dir/                 # name skip: testdata/ pruned
 │   ├── vendor-dir/                   # name skip: vendor/ pruned
 │   ├── gitignored-dir/               # git skip: .gitignore'd dir pruned
+│   ├── nested-gitignore/              # git skip: dir ignored by nested .gitignore pruned
 │   ├── nested-separate-repo/         # git skip: own .git, not a submodule → pruned
-│   └── keeps-untracked-no-git/       # no git → untracked dir with go.mod IS scanned
+│   ├── keeps-untracked-no-git/       # no git → untracked dir with go.mod IS scanned
+│   └── many-dirs-perf/               # perf: Scan on ~100 dirs must complete <500ms (RED until CheckIgnore fixed)
 └── stream/
     └── walk-order/                   # ScanStream emits walk order (unsorted) vs Scan sorts
 ```
@@ -64,9 +66,11 @@ scan tests
 | 2 | `skips/testdata-dir` | `testdata/` subtree skipped, not in results |
 | 3 | `skips/vendor-dir` | `vendor/` subtree skipped, not in results |
 | 4 | `skips/gitignored-dir` | `.gitignore`'d dir skipped, not in results |
-| 5 | `skips/nested-separate-repo` | dir with own `.git`, untracked by root → skipped |
-| 6 | `skips/keeps-untracked-no-git` | no git at root → untracked dir with go.mod IS scanned |
-| 7 | `stream/walk-order` | `ScanStream` emits walk order; `Scan` sorts — contrast proves stream unsorted |
+| 5 | `skips/nested-gitignore` | dir ignored by nested `.gitignore` skipped, not in results |
+| 6 | `skips/nested-separate-repo` | dir with own `.git`, untracked by root → skipped |
+| 7 | `skips/keeps-untracked-no-git` | no git at root → untracked dir with go.mod IS scanned |
+| 8 | `stream/walk-order` | `ScanStream` emits walk order; `Scan` sorts — contrast proves stream unsorted |
+| 9 | `skips/many-dirs-perf` | performance: Scan on ~100 dirs completes <500ms (RED — `CheckIgnore` per-directory subprocess overhead) |
 
 ## How to Run
 
@@ -80,6 +84,7 @@ import (
 	"fmt"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/mod/scan"
 )
@@ -93,6 +98,7 @@ type Response struct {
 	Err      error
 	Modules  []scan.Module // Scan result, sorted by Dir
 	Streamed []scan.Module // ScanStream result, in walk (emission) order
+	Elapsed  time.Duration // wall-clock time of the scan.Scan call
 }
 
 // Run dispatches on req.Operation. For "scan" it calls scan.Scan and returns the
@@ -105,7 +111,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	switch req.Operation {
 	case "scan":
+		start := time.Now()
 		modules, err := scan.Scan(req.RootDir, scan.Options{})
+		resp.Elapsed = time.Since(start)
 		resp.Err = err
 		resp.Modules = modules
 		if err != nil {
