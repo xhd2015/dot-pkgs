@@ -38,11 +38,15 @@ func (m *Manager) createShell(name, cwd string) (*session, error) {
 }
 
 func (m *Manager) createCommand(name, cwd string, command []string) (*session, error) {
+	return m.createCommandWithID("", name, cwd, command)
+}
+
+func (m *Manager) createCommandWithID(id, name, cwd string, command []string) (*session, error) {
 	cmd, ptmx, resolved, err := startPTY(command, cwd, m.Spawn)
 	if err != nil {
 		return nil, err
 	}
-	return m.registerSession(name, cwd, resolved, cmd, ptmx)
+	return m.registerSessionWithID(id, name, cwd, resolved, cmd, ptmx)
 }
 
 // CreateCommand starts a new PTY session running command in cwd.
@@ -54,10 +58,35 @@ func (m *Manager) CreateCommand(name, cwd string, command []string) (SessionInfo
 	return s.info(false), nil
 }
 
+// CreateCommandWithID starts a new PTY session using a caller-supplied session id.
+func (m *Manager) CreateCommandWithID(id, name, cwd string, command []string) (SessionInfo, error) {
+	s, err := m.createCommandWithID(id, name, cwd, command)
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	return s.info(false), nil
+}
+
 func (m *Manager) registerSession(name, cwd string, command []string, cmd *exec.Cmd, ptmx *os.File) (*session, error) {
+	return m.registerSessionWithID("", name, cwd, command, cmd, ptmx)
+}
+
+func (m *Manager) registerSessionWithID(id, name, cwd string, command []string, cmd *exec.Cmd, ptmx *os.File) (*session, error) {
 	m.mu.Lock()
-	m.counter++
-	id := fmt.Sprintf("session-%d", m.counter)
+	if id == "" {
+		m.counter++
+		id = fmt.Sprintf("session-%d", m.counter)
+	} else {
+		if m.sessions != nil {
+			if _, ok := m.sessions[id]; ok {
+				m.mu.Unlock()
+				return nil, fmt.Errorf("session already exists: %s", id)
+			}
+		}
+		if n, ok := parseSessionCounter(id); ok && n > m.counter {
+			m.counter = n
+		}
+	}
 	m.mu.Unlock()
 
 	if name == "" {
@@ -83,6 +112,11 @@ func (m *Manager) registerSession(name, cwd string, command []string, cmd *exec.
 	m.mu.Lock()
 	if m.sessions == nil {
 		m.sessions = make(map[string]*session)
+	}
+	if _, ok := m.sessions[id]; ok {
+		m.mu.Unlock()
+		s.close()
+		return nil, fmt.Errorf("session already exists: %s", id)
 	}
 	m.sessions[id] = s
 	m.mu.Unlock()
@@ -135,8 +169,6 @@ func (m *Manager) Wait(id string) error {
 	}
 	return nil
 }
-
-
 
 func (m *Manager) rename(id, name string) error {
 	m.mu.Lock()
