@@ -59,7 +59,7 @@ func run(origWd string, args []string) error {
 	taskFlagSet := hasArg(args, "--task")
 	setTaskFlagSet := hasArg(args, "--set-task")
 	remaining, err := lessflags.Bool("--done", &done).
-		Bool("--list", &list).
+		Bool("-l,--list", &list).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
 		Bool("--no-in-module-replace", &noInModuleReplace).
 		Bool("--all-deps", &allDeps).
