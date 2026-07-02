@@ -56,10 +56,14 @@ func (w *wsWriter) close(code int) error {
 	return w.conn.WriteControl(websocket.CloseMessage, msg, time.Time{})
 }
 
-// Attach requires an interactive terminal on stdin and stdout.
+// Attach connects to a terminal session. When Wait is true, requires an
+// interactive terminal on stdin and stdout and blocks until disconnect.
 func Attach(c *Client, opts ConnectOptions) (AttachResult, error) {
-	opts.Wait = true
-	return AttachWithIO(c, opts, os.Stdin, os.Stdout, os.Stderr)
+	if opts.Wait {
+		return AttachWithIO(c, opts, os.Stdin, os.Stdout, os.Stderr)
+	}
+	opts.SkipTTYCheck = true
+	return AttachWithIO(c, opts, strings.NewReader(""), io.Discard, io.Discard)
 }
 
 // AttachWithIO bridges local IO to the daemon WebSocket.

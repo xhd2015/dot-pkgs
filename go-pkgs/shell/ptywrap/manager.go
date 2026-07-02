@@ -45,6 +45,15 @@ func (m *Manager) createCommand(name, cwd string, command []string) (*session, e
 	return m.registerSession(name, cwd, resolved, cmd, ptmx)
 }
 
+// CreateCommand starts a new PTY session running command in cwd.
+func (m *Manager) CreateCommand(name, cwd string, command []string) (SessionInfo, error) {
+	s, err := m.createCommand(name, cwd, command)
+	if err != nil {
+		return SessionInfo{}, err
+	}
+	return s.info(false), nil
+}
+
 func (m *Manager) registerSession(name, cwd string, command []string, cmd *exec.Cmd, ptmx *os.File) (*session, error) {
 	m.mu.Lock()
 	m.counter++
@@ -86,6 +95,45 @@ func (m *Manager) get(id string) *session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.sessions[id]
+}
+
+// Scrollback returns a readonly copy of the session scrollback buffer.
+func (m *Manager) Scrollback(id string) []byte {
+	s := m.get(id)
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]byte, len(s.scrollback))
+	copy(out, s.scrollback)
+	return out
+}
+
+// WriteInput writes bytes to the session PTY master (e.g. prompt injection).
+func (m *Manager) WriteInput(id string, data []byte) error {
+	s := m.get(id)
+	if s == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	if s.exited {
+		return fmt.Errorf("session exited: %s", id)
+	}
+	_, err := s.ptmx.Write(data)
+	return err
+}
+
+// Wait blocks until the session process exits.
+func (m *Manager) Wait(id string) error {
+	s := m.get(id)
+	if s == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	<-s.done
+	if s.cmd != nil && s.cmd.ProcessState != nil && !s.cmd.ProcessState.Success() {
+		return fmt.Errorf("session exited with code %d", s.cmd.ProcessState.ExitCode())
+	}
+	return nil
 }
 
 
@@ -158,6 +206,11 @@ func (m *Manager) RegisterExternal(name, cwd string, command []string, cmd *exec
 		return "", err
 	}
 	return s.id, nil
+}
+
+// Remove stops and deletes a session by id.
+func (m *Manager) Remove(id string) {
+	m.remove(id)
 }
 
 func (m *Manager) remove(id string) {
