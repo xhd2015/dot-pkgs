@@ -61,6 +61,8 @@ const (
 	ModeSmart OpenMode = iota
 	// ModeReuseCurrent focuses a session at targetDir when found, else new window + cd (kool -r).
 	ModeReuseCurrent
+	// ModeForceNew always opens a new window, skipping session scan (kool -n).
+	ModeForceNew
 )
 
 // Config customizes Open for tests or alternate runners.
@@ -254,6 +256,29 @@ func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string 
 	return strings.Join(lines, "\n")
 }
 
+// BuildForceNewWindowScript returns AppleScript that opens a new iTerm2 window,
+// cds to dirPath, runs follow-up commands, and sets the koolTargetDir variable.
+// Unlike BuildScript and BuildReuseCurrentSessionScript, it skips session scanning
+// entirely — always creating a new window.
+func BuildForceNewWindowScript(dirPath string, followUps ...string) string {
+	escaped := EscapePathForAppleScript(dirPath)
+	sessionCommandLines := buildSessionCommandLines(followUps)
+	lines := []string{
+		`tell application "iTerm2"`,
+		`  activate`,
+		`  set targetDir to "` + escaped + `"`,
+		`  set newWindow to (create window with default profile)`,
+		`  tell current session of newWindow`,
+	}
+	lines = append(lines, sessionCommandLines...)
+	lines = append(lines,
+		`      set variable named "`+KoolTargetDirVar+`" to targetDir`,
+		`  end tell`,
+		`end tell`,
+	)
+	return strings.Join(lines, "\n")
+}
+
 func normalizeTargetDirectory(dirPath string) (string, error) {
 	abs, err := filepath.Abs(dirPath)
 	if err != nil {
@@ -309,6 +334,8 @@ func OpenConfig(dir string, cfg *Config) error {
 	var script string
 	if mode == ModeReuseCurrent {
 		script = BuildReuseCurrentSessionScript(target, followUps...)
+	} else if mode == ModeForceNew {
+		script = BuildForceNewWindowScript(target, followUps...)
 	} else {
 		script = BuildScript(target, followUps...)
 	}
