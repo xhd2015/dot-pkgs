@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.32
+	github.com/xhd2015/gitops v0.0.22
 	github.com/xhd2015/less-flags v1.0.0
 	github.com/xhd2015/lls v0.0.9
 	golang.design/x/clipboard v0.8.0
@@ -12,7 +13,6 @@ require (
 
 require (
 	github.com/ebitengine/purego v0.10.1 // indirect
-	github.com/xhd2015/gitops v0.0.21 // indirect
 	github.com/xhd2015/go-coverage v1.0.41 // indirect
 	github.com/xhd2015/go-inspect v0.0.49 // indirect
 	github.com/xhd2015/less-gen v0.0.16 // indirect

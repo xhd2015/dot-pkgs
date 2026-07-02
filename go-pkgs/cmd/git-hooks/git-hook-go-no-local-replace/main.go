@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
-	scan "github.com/xhd2015/dot-pkgs/go-pkgs/gotool/mod/scan"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/replace"
 )
 
 const help = `
@@ -19,6 +19,7 @@ Reject local path replace directives in go.mod files.
 Options:
   --origin-domain DOMAIN            only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
+  --strict                          block all local replaces (including intra-repo)
   -h, --help                        show help message
 `
 
@@ -27,6 +28,7 @@ var errLocalReplaceFound = errors.New("local replace found")
 type config struct {
 	domainFilter githook.DomainFilter
 	showHelp     bool
+	strict       bool
 }
 
 func main() {
@@ -61,19 +63,19 @@ func runWithOutput(args []string, out io.Writer) error {
 		return nil
 	}
 
-	modules, err := scan.Scan(".", scan.Options{})
+	issues, err := replace.CheckLocalReplaces(".")
 	if err != nil {
 		return err
 	}
 
 	found := false
-	for _, module := range modules {
-		for _, replace := range module.Replaces {
-			if replace.NewVersion == "" {
-				fmt.Fprintln(out, replace.NewPath)
-				found = true
-			}
+	for _, issue := range issues {
+		// Lenient default: skip intra-repo replaces.
+		if issue.IsIntraRepo && !cfg.strict {
+			continue
 		}
+		fmt.Fprintln(out, issue.NewPath)
+		found = true
 	}
 	if found {
 		return errLocalReplaceFound
@@ -96,6 +98,8 @@ func parseArgs(args []string) (config, error) {
 		case arg == "-h" || arg == "--help":
 			cfg.showHelp = true
 			return cfg, nil
+		case arg == "--strict":
+			cfg.strict = true
 		case strings.HasPrefix(arg, "-"):
 			return cfg, fmt.Errorf("unknown flag: %s", arg)
 		default:

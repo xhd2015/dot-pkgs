@@ -1,24 +1,22 @@
 ## Expected
 
-- The command exits with an error.
-- The output references the subdirectory's local replace.
+- The command succeeds because the subdirectory replace points inside the same git repo.
+- The command emits no output.
 
 ## Exit Code
 
-- Exit code is non-zero.
+- Exit code is 0.
 
 ```go
-import "strings"
-
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.ExitCode == 0 {
-		t.Fatalf("expected non-zero exit for multi-module with local replace, got 0\n%s", resp.Output)
+	if resp.ExitCode != 0 {
+		t.Fatalf("expected exit 0 for multi-module intra-repo replace, got %d\n%s", resp.ExitCode, resp.Output)
 	}
-	if !strings.Contains(resp.Output, "./local") {
-		t.Fatalf("expected output to contain the local replace path, got:\n%s", resp.Output)
+	if resp.Output != "" {
+		t.Fatalf("expected no output for allowed intra-repo replace, got:\n%s", resp.Output)
 	}
 }
 

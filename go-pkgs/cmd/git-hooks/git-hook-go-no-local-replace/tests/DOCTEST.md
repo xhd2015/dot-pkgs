@@ -33,6 +33,9 @@ doctest test -v ./
 - `scan/local-replace/dot-dot-slash`: go.mod with `../xxx` local replace, prints path, exit 1.
 - `scan/local-replace/abs-path`: go.mod with absolute-path local replace, prints path, exit 1.
 - `scan/local-replace/multi-module`: multiple go.mod files, some with local replaces, streams each, exit 1.
+- `scan/local-replace/intra-repo-allowed`: go.mod with `./xxx` intra-repo replace, exit 0 (lenient default).
+- `scan/local-replace/strict-blocks`: go.mod with `./xxx` intra-repo replace + `--strict`, exit 1.
+- `scan/local-replace/strict-intra-repo`: multi-module with intra-repo replace + `--strict`, exit 1.
 
 ```go
 import (

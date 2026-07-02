@@ -1,15 +1,16 @@
 # Scenario
 
-**Feature**: go.mod with `./` local replace
+**Feature**: go.mod with intra-repo `./` local replace
 
 ```
-# replace old => ./local -> local path (NewVersion == "") -> print -> exit 1
-go.mod -> scan -> replace old => ./local -> local -> print "./local" -> exit 1
+# replace old => ./local -> local path inside repo -> allowed by default -> exit 0
+go.mod -> scan -> replace old => ./local -> intra-repo -> no output -> exit 0
 ```
 
 ## Preconditions
 
 - A root go.mod exists with `replace example.com/old => ./local`.
+- The `./local` target exists inside the same git repo.
 
 ## Steps
 

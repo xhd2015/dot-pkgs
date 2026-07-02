@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
+	gitops "github.com/xhd2015/gitops/git"
 )
 
 const help = `
@@ -182,7 +183,7 @@ func originHost() (string, error) {
 }
 
 func repoRoot() (string, error) {
-	root, err := githook.GitOutput("rev-parse", "--show-toplevel")
+	root, err := gitops.ShowToplevel(".")
 	if err != nil {
 		return "", err
 	}
