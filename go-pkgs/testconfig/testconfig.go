@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	gitops "github.com/xhd2015/gitops/git"
 )
 
 const configFileName = ".test-config.json"
@@ -104,9 +105,13 @@ func RequireWebSearch(t *testing.T) *Config {
 
 func findModuleRoot() (string, error) {
 	// Try git rev-parse first to find the repo root, then look for go-pkgs
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	out, err := gitops.ShowToplevel(cwd)
 	if err == nil {
-		repoRoot := strings.TrimSpace(string(out))
+		repoRoot := strings.TrimSpace(out)
 		goPkgsRoot := filepath.Join(repoRoot, "dot-pkgs", "go-pkgs")
 		if _, err := os.Stat(filepath.Join(goPkgsRoot, "go.mod")); err == nil {
 			return goPkgsRoot, nil
@@ -114,10 +119,7 @@ func findModuleRoot() (string, error) {
 	}
 
 	// Fallback: walk up from current directory looking for go.mod with our module name
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
+	dir := cwd
 	for {
 		modFile := filepath.Join(dir, "go.mod")
 		data, err := os.ReadFile(modFile)

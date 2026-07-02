@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	gitops "github.com/xhd2015/gitops/git"
 )
 
 // ModuleInfo is the JSON shape returned by "go mod edit -json".
@@ -173,10 +175,9 @@ func resolveLocalModule(localModDir string, currentModInfo *ModuleInfo) (*LocalM
 }
 
 func showTopLevel(path string) (string, error) {
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
-	out, err := cmd.Output()
+	out, err := gitops.ShowToplevel(path)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(out), nil
 }

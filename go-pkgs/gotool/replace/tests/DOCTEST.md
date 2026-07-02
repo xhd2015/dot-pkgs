@@ -34,7 +34,8 @@ has-go-mod/
 │   ├── intra-repo/
 │   │   ├── dot-slash/      — ./sub inside same repo → intra-repo issue
 │   │   ├── dot-dot-slash/  — ../sibling inside same repo → intra-repo issue
-│   │   └── abs-path/       — absolute path inside same repo → intra-repo issue
+│   │   ├── abs-path/       — absolute path inside same repo → intra-repo issue
+│   │   └── git-dir-env/    — inherited GIT_DIR from hook env must not change intra-repo classification
 │   ├── extra-repo/
 │   │   ├── dot-slash/      — ./external/dep outside repo → extra-repo issue
 │   │   └── abs-path/       — absolute path outside repo → extra-repo issue
@@ -53,6 +54,7 @@ has-go-mod/
 | `has-go-mod/local-replace/intra-repo/dot-slash` | `./sub` inside same repo | 1 issue, IsIntraRepo=true |
 | `has-go-mod/local-replace/intra-repo/dot-dot-slash` | `../sibling` inside same repo | 1 issue, IsIntraRepo=true |
 | `has-go-mod/local-replace/intra-repo/abs-path` | absolute path inside same repo | 1 issue, IsIntraRepo=true |
+| `has-go-mod/local-replace/intra-repo/git-dir-env` | `../` replace from nested module while `GIT_DIR` is inherited from hook env | 1 issue, IsIntraRepo=true |
 | `has-go-mod/local-replace/extra-repo/dot-slash` | `./external/dep` outside repo | 1 issue, IsIntraRepo=false |
 | `has-go-mod/local-replace/extra-repo/abs-path` | absolute path outside repo | 1 issue, IsIntraRepo=false |
 | `has-go-mod/local-replace/multi-module/single-issue` | root clean, sub has local replace | 1 issue in sub |

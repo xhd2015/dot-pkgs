@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	gitops "github.com/xhd2015/gitops/git"
 )
 
 // Entry represents one row from `git worktree list --porcelain`.
@@ -14,7 +16,7 @@ type Entry struct {
 	Path   string
 	Branch string // empty when detached
 	HEAD   string
-	IsMain bool   // true when .git is a directory (main checkout)
+	IsMain bool // true when .git is a directory (main checkout)
 }
 
 // IsDead reports whether the worktree directory no longer exists on disk.
@@ -56,12 +58,11 @@ func IsInsideWorkTree(path string) bool {
 
 // ShowToplevel returns the root of the git work tree containing path.
 func ShowToplevel(path string) (string, error) {
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
-	out, err := cmd.Output()
+	out, err := gitops.ShowToplevel(path)
 	if err != nil {
-		return "", fmt.Errorf("git rev-parse --show-toplevel: %w", err)
+		return "", err
 	}
-	top := strings.TrimSpace(string(out))
+	top := strings.TrimSpace(out)
 	abs, err := filepath.Abs(top)
 	if err != nil {
 		return "", fmt.Errorf("resolve work tree root: %w", err)

@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	gitops "github.com/xhd2015/gitops/git"
 )
 
 var (
-	errNoTag               = fmt.Errorf("no tag found")
-	numericVersionPattern  = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+	errNoTag              = fmt.Errorf("no tag found")
+	numericVersionPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 )
 
 func getVersionPrefix(dir string) (string, error) {
@@ -126,10 +128,9 @@ func GetLatestVersionTag(dir, versionPrefix string) (string, error) {
 }
 
 func showTopLevel(path string) (string, error) {
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
-	out, err := cmd.Output()
+	out, err := gitops.ShowToplevel(path)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(out), nil
 }
