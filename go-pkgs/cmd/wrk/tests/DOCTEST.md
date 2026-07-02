@@ -6,11 +6,11 @@
 Decision tree covering the `wrk` CLI: no-args worktree creation, optional `wrk <dir>`
 first positional, `wrk <dir> <target-dir>` second positional spawn-location override,
 `wrk --dep` external dependency worktrees, `wrk --done` merge-back
-(including external cascade), and `wrk --list`.
+(including external cascade), `wrk --list`, and `wrk --status`.
 
 # DSN (Domain Specific Notion)
 
-- **wrk CLI** — standalone binary; invocation form `wrk [dir] [flags...]`; first non-flag positional argument is optional `<dir>` — when present, effective cwd is the resolved absolute path of `<dir>` (process cwd unchanged); when absent, effective cwd is process cwd; no-args invocation creates a git worktree from the effective checkout and prints the target path on stdout; `wrk --done` merges the linked worktree branch back into main and removes the worktree + branch (`worktree.MergeBack` with `Remove: true`); `wrk --list` runs `git -C <effective-cwd> worktree list` and prints stdout unchanged; missing `<dir>` → `wrk: <path> does not exist`.
+- **wrk CLI** — standalone binary; invocation form `wrk [dir] [flags...]`; first non-flag positional argument is optional `<dir>` — when present, effective cwd is the resolved absolute path of `<dir>` (process cwd unchanged); when absent, effective cwd is process cwd; no-args invocation creates a git worktree from the effective checkout and prints the target path on stdout; `wrk --done` merges the linked worktree branch back into main and removes the worktree + branch (`worktree.MergeBack` with `Remove: true`); `wrk --list` runs `git -C <effective-cwd> worktree list` and prints stdout unchanged; `wrk --status` resolves the effective cwd's git toplevel, scans it with `scan_repo.Scan`, and prints one status block per discovered git directory; missing `<dir>` → `wrk: <path> does not exist`.
 - **WRK_HOME** — storage root env var (default `~/.wrk`); tests isolate per run at `{WorkRoot}/.wrk`.
 - **WRK_DATE** — optional env var (`YYYY-MM-DD`) overriding the run date for deterministic naming; all tests set `WRK_DATE=2026-06-30`.
 - **Work root** — temp directory holding source repos and move targets.
@@ -20,6 +20,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **wrk --dep** — spawns a dependency worktree under `{consumerTop}/external/` as a worktree of the DEP repo (`git -C <depMain> worktree add`), so it is registered under `<depMain>/.git/worktrees/` (NOT the consumer's); the dep already holds its own objects, so no remote/fetch into the consumer is needed. Appends `/external` to `.gitignore` when missing, runs `gotool.Replace` + `gotool.Tidy`, prints external worktree abs path on stdout. Naming: `{basename}-{token}-{WRK_DATE}[-N]` (same rules as create; basename from dep main repo); the branch lives in the dep repo, so the `-N` collision check runs against `depMain` (path under `consumerTop/external/` + branch in dep repo).
 - **wrk --done** — resolves checkout root via `ShowToplevel(cwd)`; requires a linked worktree (not main repo); clean worktree; implicit `--rm`. **Cascade**: merge-back each linked worktree under `{toplevel}/external/*` first — these are dep-repo worktrees (registered under `<depMain>/.git/worktrees/`), so `MergeBack` resolves their main repo from the worktree's `.git` gitdir (the dep main) and merges the dep branch back into the dep repo (the branch shares the dep's history, so merge-base resolves); this ensures dep work committed on an external worktree is merged back before removal. Relation to dep main: already-included → remove only; ahead/diverged → prompt (`--confirm-from-stdin`), non-interactive ahead/diverged falls back to force-removal. **Guard**: scan **every** Go module under the checkout (`gotool/mod/scan.Scan`) — main + all sub-modules — and classify each filesystem/local `replace` (`./`, `../`, or absolute path without version) by resolving its target relative to the module's `go.mod` dir: **intra-repo** = target dir exists AND `git -C <target> rev-parse --show-toplevel` equals the consumer's toplevel (a `../../`/`./sub` nested-module reference back into the same repo); **extra-repo** = everything else (`./external/foo` dep worktree, non-existent target, absolute/sibling outside). The guard names the offending `<top>/<m.Dir>/go.mod` file and each `replace <Old> => <New>` directive in its message. Default (no flag): intra-repo → **WARN to stderr and proceed** (exit 0, merge-back runs); extra-repo → **error, block**. `--no-in-module-replace` (opt-in, valid only with `--done`) → **all** local replaces block (fully-strict). A checkout with no `go.mod` at all yields zero modules → guard is a no-op → `--done` proceeds (and the linked-worktree check inside `MergeBack` still runs for a main-repo cwd, producing `not a linked worktree`). Branch relation to main: already-included → remove only; ahead/diverged → prompt then merge/rebase.
 - **wrk --list** — runs `git -C <cwd> worktree list`; prints stdout unchanged; cwd must be inside a git work tree (main repo, linked worktree, or nested subpath). Mutually exclusive with no-args create and `--done`.
+- **wrk --status** — standalone reporting mode; cwd must be inside a git work tree. Resolves the effective cwd's checkout root with git toplevel discovery, calls `scan_repo.Scan(context.Background(), scan_repo.Options{Roots: []string{Root}})`, and prints every discovered git directory in scan path order. Each block includes `Dir` relative to the initial toplevel (`.` for the root), current branch, short commit hash plus subject, and `Status` as either `clean` or `dirty (<added> added, <changed> changed, <renamed> renamed, <deleted> deleted)`. Mutually exclusive with `--done`, `--list`, `--dep`, `--all-deps`, create target arguments, and other modes.
 - **--confirm-from-stdin** — when set with piped `StdinInput`, reads Y/n from stdin for merge-back confirmation (required for non-TTY ahead/diverged cases).
 - **--no-in-module-replace** — bool flag (no value); valid ONLY with `--done`. Restores the fully-strict local-replace guard: every filesystem/local `replace` (intra-repo or extra-repo) blocks `--done`. Without it (default), intra-repo replaces — whose target dir exists and shares the consumer's `git rev-parse --show-toplevel` (`../../`/`./sub` nested-module reference) — only WARN and `--done` proceeds; extra-repo replaces (`./external/foo` dep worktree, non-existent/absolute/sibling) still block. Bare `wrk --no-in-module-replace`, or with any other mode (`--dep`/`--list`/no-args create/`--all-deps`) → non-zero exit, stderr `wrk: --no-in-module-replace is only valid with --done`.
 - **Request.Args** — CLI arguments passed to `wrk` after optional `<dir>` (empty → no-args create; `["--dep", depPath]` for dep tests; `["--done"]` or `["--done", "--confirm-from-stdin"]` for done tests; `["--list"]` for list tests).
@@ -99,6 +100,16 @@ wrk tests
 │   ├── with-linked/              # main + one linked worktree
 │   ├── from-subpath/             # cwd nested inside main repo
 │   └── non-git/                  # cwd is not a git repo (error)
+├── status/                       # wrk --status status-block display
+│   ├── valid-git-cwd/            # cwd resolves to a git checkout
+│   │   ├── root-clean/           # root checkout shown as "." and clean
+│   │   ├── subdir-clean/         # nested cwd still reports root-relative "."
+│   │   ├── multiple-git-dirs/    # root + nested independent repo blocks
+│   │   └── dirty-counts/         # added/changed/renamed/deleted counts
+│   ├── invalid-git-cwd/
+│   │   └── non-git/              # cwd is not a git repo (error)
+│   └── invalid-mode/
+│       └── with-list/            # --status with --list is mutually exclusive
 ├── non-git-cwd/                  # cwd is not a git repo (error, no-args create)
 ├── dir-arg/                      # wrk <dir> optional first positional
 │   ├── create/
@@ -215,6 +226,12 @@ wrk tests
 | 72 | task/set-task/empty-slug | `--set-task "!!!"` → error |
 | 73 | task/set-task/not-linked | `--set-task` from main repo → error |
 | 74 | task/set-task/not-wrk-worktree | `--set-task` on custom-branch worktree → cannot parse → error |
+| 75 | status/valid-git-cwd/root-clean | `wrk --status` from repo root shows `Dir: .` and clean status |
+| 76 | status/valid-git-cwd/subdir-clean | `wrk --status` from nested subdir still shows `Dir: .` |
+| 77 | status/valid-git-cwd/multiple-git-dirs | root + nested independent git repo produce two status blocks |
+| 78 | status/valid-git-cwd/dirty-counts | status counts one added, changed, renamed, and deleted entry |
+| 79 | status/invalid-git-cwd/non-git | `wrk --status` outside git fails with `is not a git repository` |
+| 80 | status/invalid-mode/with-list | `wrk --status --list` fails as mutually exclusive |
 
 ## How to Run
 
@@ -233,6 +250,10 @@ doctest test ./tests/done/ahead-confirm
 
 # Run a list leaf
 doctest test ./tests/list/main-only
+
+# Run status leaves
+doctest test ./tests/status
+doctest test ./tests/status/valid-git-cwd/dirty-counts
 
 # Run a dep leaf
 doctest test ./tests/dep/basic

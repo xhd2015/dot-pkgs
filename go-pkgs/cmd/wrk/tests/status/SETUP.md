@@ -1,0 +1,78 @@
+# Scenario
+
+**Feature**: wrk --status displays discovered git repository status blocks
+
+```
+# cwd resolves to an effective git toplevel; status mode scans that root
+wrk --status from cwd -> scan_repo.Scan(root) -> status blocks
+
+# status is standalone; combining with another mode is rejected
+wrk --status + other mode -> error (mutually exclusive)
+```
+
+## Preconditions
+
+- Git must be available.
+- `wrk --status` is a standalone mode.
+
+## Steps
+
+- Tests invoke `wrk --status` by default with `req.Args = []string{"--status"}`.
+- Descendant scenarios choose whether cwd is inside a git checkout and whether another mode is also present.
+
+## Context
+
+- Successful status output is a sequence of blocks containing `Dir`, `Branch`, `Commit`, and `Status` lines.
+- The `Dir` line is relative to the current checkout toplevel; the checkout itself is `.`.
+
+```go
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+)
+
+func Setup(t *testing.T, req *Request) error {
+	skipIfNoGit(t)
+	req.Args = []string{"--status"}
+	return nil
+}
+
+func statusCommitLine(t *testing.T, repoDir string) string {
+	t.Helper()
+	short := gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	subject := gitOutput(t, repoDir, "log", "-1", "--pretty=%s")
+	return fmt.Sprintf("Commit:       %s  %s", short, subject)
+}
+
+func statusBranchLine(t *testing.T, repoDir string) string {
+	t.Helper()
+	branch := gitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+	return "Branch:       " + branch
+}
+
+func statusBlockTemplate(t *testing.T, repoDir, relDir, statusLine string) string {
+	t.Helper()
+	return fmt.Sprintf(`<contains>
+Dir:          %s
+%s
+%s
+Status:       %s
+</contains>`, relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
+}
+
+func statusInitRepoWithSubject(t *testing.T, path, subject string) {
+	t.Helper()
+	mkdirAll(t, path)
+	runGit(t, path, "init", "-b", "main")
+	runGit(t, path, "config", "user.email", "test@test.com")
+	runGit(t, path, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(path, "README.md"), "# "+filepath.Base(path)+"\n")
+	runGit(t, path, "add", "README.md")
+	runGit(t, path, "commit", "-m", subject)
+}
+
+func statusOutputBlockCount(stdout string) int {
+	return strings.Count(stdout, "Dir:          ")
+}
+```

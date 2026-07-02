@@ -47,6 +47,8 @@ func Run(cwd string, args []string) error {
 func run(origWd string, args []string) error {
 	var done bool
 	var list bool
+	var status bool
+	var repos bool
 	var confirmFromStdin bool
 	var noInModuleReplace bool
 	var depPath string
@@ -60,6 +62,8 @@ func run(origWd string, args []string) error {
 	setTaskFlagSet := hasArg(args, "--set-task")
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("-l,--list", &list).
+		Bool("--status", &status).
+		Bool("--repos", &repos).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
 		Bool("--no-in-module-replace", &noInModuleReplace).
 		Bool("--all-deps", &allDeps).
@@ -95,7 +99,7 @@ func run(origWd string, args []string) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --set-task is mutually exclusive with all other modes.
-	if setTaskFlagSet && (taskFlagSet || done || list || depPath != "" || allDeps || dryRun || targetDir != "") {
+	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || depPath != "" || allDeps || dryRun || targetDir != "") {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
@@ -106,12 +110,18 @@ func run(origWd string, args []string) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --task is only valid with create mode.
-	if taskFlagSet && (done || list || depPath != "" || allDeps) {
-		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --list, --dep and --all-deps")
+	if taskFlagSet && (done || list || status || repos || depPath != "" || allDeps) {
+		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --list, --status, --repos, --dep and --all-deps")
 	}
 
 	if list && done {
 		return fmt.Errorf("wrk: --list and --done are mutually exclusive")
+	}
+	if repos && (done || list || status || depPath != "" || allDeps || dryRun || targetDir != "") {
+		return fmt.Errorf("wrk: --repos is mutually exclusive with other modes")
+	}
+	if status && (done || list || depPath != "" || allDeps || dryRun || targetDir != "") {
+		return fmt.Errorf("wrk: --status is mutually exclusive with other modes")
 	}
 	if confirmFromStdin && !done {
 		return fmt.Errorf("wrk: --confirm-from-stdin is only valid with --done")
@@ -130,10 +140,16 @@ func run(origWd string, args []string) error {
 	}
 
 	// <target-dir> only applies to the create path. Reject it for any other mode.
-	if targetDir != "" && (depPath != "" || allDeps || list || done) {
+	if targetDir != "" && (depPath != "" || allDeps || list || status || repos || done) {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
 
+	if repos {
+		return runRepos()
+	}
+	if status {
+		return runStatus()
+	}
 	if depPath != "" {
 		return runDep(depPath)
 	}
@@ -172,6 +188,8 @@ Flags:
   --done [--confirm-from-stdin]   merge worktree branch back and remove it
   --done --no-in-module-replace   block --done on ANY local replace (strict)
   --list                          list worktrees (git worktree list)
+  --status                        show status for git repos under this checkout
+  --repos                         list git repos under this checkout
   --dep <path>                    spawn a dependency worktree under ./external
   --task <desc>                   append task slug to worktree/branch names
   --set-task <desc>               rename worktree/branch to match new task
