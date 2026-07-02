@@ -150,16 +150,6 @@ func GitOutput(args ...string) (string, error) {
 	return output, nil
 }
 
-func RestoreStaged(paths ...string) error {
-	args := append([]string{"restore", "--staged", "--"}, paths...)
-	cmd := exec.Command("git", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git restore --staged failed: %s: %w", strings.TrimSpace(string(output)), err)
-	}
-	return nil
-}
-
 func GitOptionalOutput(args ...string) (string, bool, error) {
 	cmd := exec.Command("git", args...)
 	output, err := cmd.CombinedOutput()

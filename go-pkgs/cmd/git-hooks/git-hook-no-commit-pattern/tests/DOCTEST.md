@@ -13,6 +13,7 @@ Tests for the git hook that rejects staged files whose names match user-supplied
 - **Staged files** — files added to the git index (`git diff --cached --name-only --diff-filter=ACMRT --`). Deleted files (`D` status) are excluded.
 - **Match detection** — each staged file name is checked against all provided patterns. On first match per file, the file path is printed immediately.
 - **Exit code** — 0 when no staged files match any pattern; 1 when any match is found.
+- **`--auto-unstage`** — when set, matched files are automatically unstaged (via `git restore --staged`) instead of failing the commit. Exit 0, matched paths still printed. Non-matched staged files remain staged.
 
 ## How to Run
 
@@ -31,6 +32,11 @@ doctest test -v ./
 - `match/multi-match`: multiple staged files match patterns, prints each, exit 1.
 - `match/deleted-excluded`: staged deleted file matches pattern but is excluded, exit 0.
 - `match/multi-pattern`: multiple patterns provided, staged file matches one, exit 1.
+- `auto-unstage/single-match-unstage`: `--auto-unstage` + one match → print, unstage, exit 0.
+- `auto-unstage/multi-match-unstage`: `--auto-unstage` + multiple matches → print all, unstage all, exit 0.
+- `auto-unstage/partial-unstage`: `--auto-unstage` + mixed staged (match + no-match) → only matched unstaged.
+- `auto-unstage/no-match`: `--auto-unstage` + no matches → exit 0, no output, nothing untaged.
+- `auto-unstage/domain-gate-skip`: `--auto-unstage` + domain filter skip → no effect.
 
 ```go
 import (

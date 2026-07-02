@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +9,8 @@ import (
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/file/detect"
+	"github.com/xhd2015/gitops/git"
+	"github.com/xhd2015/gitops/gitwrite"
 )
 
 const help = `
@@ -70,7 +71,7 @@ func runWithOutput(args []string, out io.Writer) error {
 		return nil
 	}
 
-	files, err := stagedFiles()
+	files, err := git.GetStagedFiles(".")
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func runWithOutput(args []string, out io.Writer) error {
 			for _, bf := range binaries {
 				paths = append(paths, bf.path)
 			}
-			if err := githook.RestoreStaged(paths...); err != nil {
+			if err := gitwrite.RestoreStaged(".", paths...); err != nil {
 				return err
 			}
 			return nil
@@ -147,20 +148,4 @@ func parseArgs(args []string) (config, error) {
 		return cfg, err
 	}
 	return cfg, nil
-}
-
-func stagedFiles() ([]string, error) {
-	output, err := githook.GitOutput("diff", "--cached", "--name-only", "--diff-filter=ACMRT", "--")
-	if err != nil {
-		return nil, err
-	}
-	var files []string
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		name := strings.TrimSpace(scanner.Text())
-		if name != "" {
-			files = append(files, name)
-		}
-	}
-	return files, scanner.Err()
 }

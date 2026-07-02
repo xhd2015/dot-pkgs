@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +9,8 @@ import (
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
+	"github.com/xhd2015/gitops/git"
+	"github.com/xhd2015/gitops/gitwrite"
 )
 
 const help = `
@@ -20,6 +21,8 @@ Reject staged files whose paths match any glob pattern.
 Options:
   --origin-domain DOMAIN            only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
+  --auto-unstage                    automatically unstage matched files instead of
+                                    failing (use for hooks that run early)
   -h, --help                        show help message
 `
 
@@ -28,6 +31,7 @@ var errPatternsMatched = errors.New("patterns matched")
 type config struct {
 	domainFilter githook.DomainFilter
 	showHelp     bool
+	autoUnstage  bool
 	patterns     []string
 }
 
@@ -63,23 +67,29 @@ func runWithOutput(args []string, out io.Writer) error {
 		return nil
 	}
 
-	files, err := stagedFiles()
+	files, err := git.GetStagedFiles(".")
 	if err != nil {
 		return err
 	}
 
-	matchedAny := false
+	var matched []string
 	for _, file := range files {
-		matched, err := matchesAny(file, cfg.patterns)
+		ok, err := matchesAny(file, cfg.patterns)
 		if err != nil {
 			return err
 		}
-		if matched {
+		if ok {
 			fmt.Fprintln(out, file)
-			matchedAny = true
+			matched = append(matched, file)
 		}
 	}
-	if matchedAny {
+	if len(matched) > 0 {
+		if cfg.autoUnstage {
+			if err := gitwrite.RestoreStaged(".", matched...); err != nil {
+				return err
+			}
+			return nil
+		}
 		return errPatternsMatched
 	}
 	return nil
@@ -100,6 +110,8 @@ func parseArgs(args []string) (config, error) {
 		case arg == "-h" || arg == "--help":
 			cfg.showHelp = true
 			return cfg, nil
+		case arg == "--auto-unstage":
+			cfg.autoUnstage = true
 		case strings.HasPrefix(arg, "-"):
 			return cfg, fmt.Errorf("unknown flag: %s", arg)
 		default:
@@ -126,20 +138,4 @@ func matchesAny(name string, patterns []string) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-func stagedFiles() ([]string, error) {
-	output, err := githook.GitOutput("diff", "--cached", "--name-only", "--diff-filter=ACMRT", "--")
-	if err != nil {
-		return nil, err
-	}
-	var files []string
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		name := strings.TrimSpace(scanner.Text())
-		if name != "" {
-			files = append(files, name)
-		}
-	}
-	return files, scanner.Err()
 }
