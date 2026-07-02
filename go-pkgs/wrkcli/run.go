@@ -46,6 +46,7 @@ func Run(cwd string, args []string) error {
 
 func run(origWd string, args []string) error {
 	var done bool
+	var mergeBack bool
 	var list bool
 	var status bool
 	var repos bool
@@ -61,6 +62,7 @@ func run(origWd string, args []string) error {
 	taskFlagSet := hasArg(args, "--task")
 	setTaskFlagSet := hasArg(args, "--set-task")
 	remaining, err := lessflags.Bool("--done", &done).
+		Bool("--merge-back", &mergeBack).
 		Bool("-l,--list", &list).
 		Bool("--status", &status).
 		Bool("--repos", &repos).
@@ -110,12 +112,18 @@ func run(origWd string, args []string) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --task is only valid with create mode.
-	if taskFlagSet && (done || list || status || repos || depPath != "" || allDeps) {
-		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --list, --status, --repos, --dep and --all-deps")
+	if taskFlagSet && (done || list || status || repos || depPath != "" || allDeps || mergeBack) {
+		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --merge-back, --list, --status, --repos, --dep and --all-deps")
 	}
 
 	if list && done {
 		return fmt.Errorf("wrk: --list and --done are mutually exclusive")
+	}
+	if list && mergeBack {
+		return fmt.Errorf("wrk: --list and --merge-back are mutually exclusive")
+	}
+	if done && mergeBack {
+		return fmt.Errorf("wrk: --done and --merge-back are mutually exclusive")
 	}
 	if repos && (done || list || status || depPath != "" || allDeps || dryRun || targetDir != "") {
 		return fmt.Errorf("wrk: --repos is mutually exclusive with other modes")
@@ -123,24 +131,24 @@ func run(origWd string, args []string) error {
 	if status && (done || list || depPath != "" || allDeps || dryRun || targetDir != "") {
 		return fmt.Errorf("wrk: --status is mutually exclusive with other modes")
 	}
-	if confirmFromStdin && !done {
-		return fmt.Errorf("wrk: --confirm-from-stdin is only valid with --done")
+	if confirmFromStdin && !done && !mergeBack {
+		return fmt.Errorf("wrk: --confirm-from-stdin is only valid with --done or --merge-back")
 	}
 	if noInModuleReplace && !done {
 		return fmt.Errorf("wrk: --no-in-module-replace is only valid with --done")
 	}
-	if depPath != "" && (done || list) {
-		return fmt.Errorf("wrk: --dep is mutually exclusive with --done and --list")
+	if depPath != "" && (done || list || mergeBack) {
+		return fmt.Errorf("wrk: --dep is mutually exclusive with --done, --merge-back and --list")
 	}
-	if allDeps && (depPath != "" || done || list) {
-		return fmt.Errorf("wrk: --all-deps is mutually exclusive with --dep, --done and --list")
+	if allDeps && (depPath != "" || done || list || mergeBack) {
+		return fmt.Errorf("wrk: --all-deps is mutually exclusive with --dep, --done, --merge-back and --list")
 	}
 	if dryRun && !allDeps {
 		return fmt.Errorf("wrk: --dry-run is only valid with --all-deps")
 	}
 
 	// <target-dir> only applies to the create path. Reject it for any other mode.
-	if targetDir != "" && (depPath != "" || allDeps || list || status || repos || done) {
+	if targetDir != "" && (depPath != "" || allDeps || list || status || repos || done || mergeBack) {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
 
@@ -161,6 +169,9 @@ func run(origWd string, args []string) error {
 	}
 	if done {
 		return runDone(confirmFromStdin, noInModuleReplace)
+	}
+	if mergeBack {
+		return runMergeBack(confirmFromStdin)
 	}
 	return runCreate(origWd, targetDir, taskDesc)
 }
@@ -186,6 +197,7 @@ Positional arguments:
 
 Flags:
   --done [--confirm-from-stdin]   merge worktree branch back and remove it
+  --merge-back [--confirm-from-stdin]  merge worktree branch back WITHOUT removing it
   --done --no-in-module-replace   block --done on ANY local replace (strict)
   --list                          list worktrees (git worktree list)
   --status                        show status for git repos under this checkout
@@ -273,6 +285,40 @@ func runDone(confirmFromStdin, noInModuleReplace bool) error {
 		SourcePath: checkoutRoot,
 		TargetPath: "",
 		Remove:     true,
+		Confirm: func(plan worktree.MergeBackPlan) (bool, error) {
+			return worktree.PromptConfirmPlan(plan, confirmFromStdin)
+		},
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println(result.Message)
+	return nil
+}
+
+func runMergeBack(confirmFromStdin bool) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get cwd: %w", err)
+	}
+	cwd, err = filepath.Abs(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve cwd: %w", err)
+	}
+
+	if !worktree.IsInsideWorkTree(cwd) {
+		return fmt.Errorf("%s is not a git repository", cwd)
+	}
+
+	checkoutRoot, err := worktree.ShowToplevel(cwd)
+	if err != nil {
+		return err
+	}
+
+	result, err := worktree.MergeBack(worktree.MergeBackOptions{
+		SourcePath: checkoutRoot,
+		TargetPath: "",
+		Remove:     false,
 		Confirm: func(plan worktree.MergeBackPlan) (bool, error) {
 			return worktree.PromptConfirmPlan(plan, confirmFromStdin)
 		},

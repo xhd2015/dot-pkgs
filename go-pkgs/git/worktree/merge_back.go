@@ -1,11 +1,15 @@
 package worktree
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 	"github.com/xhd2015/gitops/git"
@@ -67,10 +71,6 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 		return nil, fmt.Errorf("%s is not a linked worktree", sourceAbs)
 	}
 
-	if err := IsClean(sourceAbs); err != nil {
-		return nil, err
-	}
-
 	mainRepo, err := ReadMainRepo(sourceAbs)
 	if err != nil {
 		return nil, err
@@ -116,6 +116,23 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	}
 
 	relation, included := relationFromCompare(compare.Relation)
+
+	result := &MergeBackResult{
+		SourcePath: sourceAbs,
+		TargetPath: targetAbs,
+		Branch:     branch,
+		Relation:   relation,
+	}
+
+	// Dirty check: only required when --rm (Remove: true) because the worktree
+	// will be deleted. When Remove is false, the worktree stays — dirtiness is
+	// irrelevant. Diverged + dirty + !Remove uses tmp worktree for rebase.
+	dirtyErr := IsClean(sourceAbs)
+	dirty := dirtyErr != nil
+	if dirty && opts.Remove {
+		return nil, dirtyErr
+	}
+
 	plan, err := buildMergeBackPlan(mergeBackPlanInput{
 		relation:    relation,
 		branch:      mergeRef,
@@ -127,13 +144,6 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	result := &MergeBackResult{
-		SourcePath: sourceAbs,
-		TargetPath: targetAbs,
-		Branch:     branch,
-		Relation:   relation,
 	}
 
 	if included {
@@ -151,6 +161,11 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 		result.Action = "removed"
 		result.Message = fmt.Sprintf("worktree removed: %s [branch: %s deleted]", sourceAbs, branch)
 		return result, nil
+	}
+
+	// For diverged + dirty + !remove: use tmp worktree for rebase
+	if relation == "diverged" && dirty && !opts.Remove {
+		return mergeBackViaTmpWorktree(opts, result, sourceAbs, mainRepo, targetAbs, branch, mergeRef)
 	}
 
 	if opts.DryRun {
@@ -185,6 +200,160 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 		result.Message = fmt.Sprintf("rebased and merged branch %s into %s", branch, plan.TargetLabel)
 	}
 	return result, nil
+}
+
+// mergeBackViaTmpWorktree handles the diverged+dirty+!Remove case by creating
+// a temporary worktree, rebasing there, merging, and cleaning up.
+func mergeBackViaTmpWorktree(
+	opts MergeBackOptions,
+	result *MergeBackResult,
+	sourceAbs, mainRepo, targetAbs, branch, mergeRef string,
+) (*MergeBackResult, error) {
+	targetHEAD, err := revParseCommit(targetAbs, "HEAD")
+	if err != nil {
+		return nil, err
+	}
+
+	targetLabelStr := targetLabel(targetAbs)
+
+	tmpPath, tmpBranch, err := createTmpWorktree(mainRepo, branch, mergeRef)
+	if err != nil {
+		return nil, fmt.Errorf("create tmp worktree: %w", err)
+	}
+	defer cleanupTmpWorktree(mainRepo, tmpPath, tmpBranch)
+
+	// Build tmp plan: rebase in tmp worktree, merge tmp branch
+	tmpPlan := MergeBackPlan{
+		Relation:     "diverged",
+		Branch:       branch,
+		TargetLabel:  targetLabelStr,
+		NeedsConfirm: true,
+		Commands: []PlannedCommand{
+			{Dir: tmpPath, Args: []string{"rebase", targetHEAD}},
+			{Dir: targetAbs, Args: []string{"merge", "--ff-only", tmpBranch}},
+		},
+	}
+
+	if opts.DryRun {
+		return printDryRun(result, tmpPlan)
+	}
+
+	if tmpPlan.NeedsConfirm {
+		if opts.Confirm == nil {
+			return nil, ErrConfirmationRequired
+		}
+		confirmed, err := opts.Confirm(tmpPlan)
+		if err != nil {
+			return nil, err
+		}
+		if !confirmed {
+			result.Action = "aborted"
+			result.Message = "merge-back aborted"
+			return result, nil
+		}
+	}
+
+	if err := executePlan(tmpPlan); err != nil {
+		return nil, err
+	}
+
+	// Force-update the source branch to the rebased position.
+	// Use update-ref to directly update the ref without worktree restrictions.
+	tmpCommit, err := revParseCommit(mainRepo, tmpBranch)
+	if err != nil {
+		return nil, fmt.Errorf("resolve tmp branch commit: %w", err)
+	}
+	if err := runGit(mainRepo, "update-ref", "refs/heads/"+branch, tmpCommit); err != nil {
+		return nil, fmt.Errorf("update source branch ref: %w", err)
+	}
+
+	result.Action = "rebased-and-merged"
+	result.Message = fmt.Sprintf("rebased and merged branch %s into %s", branch, tmpPlan.TargetLabel)
+	return result, nil
+}
+
+func runGit(dir string, args ...string) error {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git %v: %w\n%s", args, err, combinedOutput(out))
+	}
+	return nil
+}
+
+func combinedOutput(out []byte) string { return strings.TrimSpace(string(out)) }
+
+func createTmpWorktree(mainRepo, sourceBranch, mergeRef string) (tmpPath, tmpBranch string, err error) {
+	worktreesDir, err := resolveWrkWorktreesDir()
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
+		return "", "", err
+	}
+
+	basename := filepath.Base(mainRepo)
+	pathToken := sanitizeBranchToken(sourceBranch)
+	date := resolveDate()
+
+	for suffix := 0; suffix < 100; suffix++ {
+		// tmp branch: source-branch-tmp-rebase-<random8>
+		candidateBranch := sourceBranch + "-tmp-rebase-" + random8()
+
+		// tmp path with optional suffix for directory collision
+		name := fmt.Sprintf("%s-%s-%s-tmp-rebase", basename, pathToken, date)
+		if suffix > 0 {
+			name = fmt.Sprintf("%s-%d", name, suffix)
+		}
+		candidatePath := filepath.Join(worktreesDir, name)
+
+		if _, statErr := os.Stat(candidatePath); statErr == nil {
+			continue // directory already exists, try next suffix
+		}
+
+		// Create tmp worktree with the branch
+		if err := runGit(mainRepo, "worktree", "add", "-b", candidateBranch, candidatePath, mergeRef); err != nil {
+			// Branch collision? Try again with a new random branch name.
+			continue
+		}
+
+		return candidatePath, candidateBranch, nil
+	}
+
+	return "", "", fmt.Errorf("could not create tmp worktree after 100 attempts")
+}
+
+func cleanupTmpWorktree(mainRepo, tmpPath, tmpBranch string) {
+	exec.Command("git", "-C", mainRepo, "worktree", "remove", "--force", tmpPath).Run()
+	exec.Command("git", "-C", mainRepo, "branch", "-D", tmpBranch).Run()
+}
+
+func resolveWrkWorktreesDir() (string, error) {
+	if v := os.Getenv("WRK_HOME"); v != "" {
+		return filepath.Join(pathfmt.Expand(v), "worktrees"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return filepath.Join(home, ".wrk", "worktrees"), nil
+}
+
+func resolveDate() string {
+	if v := os.Getenv("WRK_DATE"); v != "" {
+		return v
+	}
+	return time.Now().Format("2006-01-02")
+}
+
+func sanitizeBranchToken(branch string) string {
+	return strings.ReplaceAll(branch, "/", "-")
+}
+
+func random8() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 type mergeBackPlanInput struct {
