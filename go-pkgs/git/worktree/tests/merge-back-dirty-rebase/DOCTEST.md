@@ -75,10 +75,22 @@ merge-back-dirty-rebase
     │   └── dirty-errors/             diverged + dirty + --rm → still errors
     ├── clean/                        clean source worktree
     │   └── direct-rebase/            diverged + clean + no-rm → direct rebase (existing)
-    └── dirty/                        dirty, Remove=false → new tmp worktree path
-        ├── success/                  happy path: tmp created, rebased, merged, cleaned
-        ├── rebase-conflict/          rebase conflicts → abort, cleanup, error
-        └── tmp-path-collision/       existing tmp path → suffix increment
+    ├── dirty/                        dirty, Remove=false → simple dirt (dirty.txt only)
+    │   ├── success/                  happy path: tmp created, rebased, merged, cleaned
+    │   ├── rebase-conflict/          rebase conflicts → abort, cleanup, error
+    │   ├── tmp-path-collision/       existing tmp path → suffix increment
+    │   ├── index-preserved/          after rebase, source index is synced to new HEAD
+    │   ├── working-tree-mod-preserved/   mod survives sync
+    │   └── working-tree-del-preserved/   deletion survives sync
+    └── dirty-stash/                  dirty, Remove=false → stash-based conflict detection
+        ├── content-modify-conflict/       user modified file, rebase modified same file → conflict, reject
+        ├── modify-delete-conflict/       user modified, rebase deleted → conflict, reject
+        ├── delete-modify-conflict/       user deleted, rebase modified → conflict, reject
+        ├── add-add-conflict/             untracked file, rebase creates same → conflict, reject
+        ├── multi-file-atomic-reject/     3 files dirty, 1 conflicts → all rejected
+        ├── staged-unstaged-same-file/    staged+unstaged on same file → both survive
+        ├── untracked-only-success/       only untracked dirt → flow succeeds
+        └── stash-name-collision/         pre-existing stash name → no contamination
 ```
 
 ## Test Index
@@ -92,6 +104,17 @@ merge-back-dirty-rebase
 | `diverged/dirty/success` | Diverged + dirty + no-rm: tmp worktree rebase, merge, cleanup, branch force-updated |
 | `diverged/dirty/rebase-conflict` | Diverged + dirty + no-rm + conflicting commits: abort, cleanup, source unchanged |
 | `diverged/dirty/tmp-path-collision` | Diverged + dirty + no-rm: pre-existing tmp dir → suffix -1 used |
+| `diverged/dirty/index-preserved` | Diverged + dirty + no-rm: source worktree index synced, no spurious staged changes |
+| `diverged/dirty/working-tree-mod-preserved` | Dirty tracked-file modification survives rebase sync — user content NOT overwritten |
+| `diverged/dirty/working-tree-del-preserved` | Dirty tracked-file deletion survives rebase sync — file stays absent |
+| `diverged/dirty-stash/binary-modify-conflict` | Binary file modified by both user and rebase → conflict, reject, source intact |
+| `diverged/dirty-stash/modify-delete-conflict` | User modified file, rebase deleted it → modify/delete conflict, reject |
+| `diverged/dirty-stash/delete-modify-conflict` | User deleted file, rebase modified it → delete/modify conflict, reject |
+| `diverged/dirty-stash/add-add-conflict` | Untracked file + rebase creates same → add/add conflict, reject |
+| `diverged/dirty-stash/multi-file-atomic-reject` | 3 files dirty, 1 conflicts → ALL rejected atomically |
+| `diverged/dirty-stash/staged-unstaged-same-file` | Staged + unstaged changes on same file → both survive |
+| `diverged/dirty-stash/untracked-only-success` | Only untracked dirt → stash captures and restores |
+| `diverged/dirty-stash/stash-name-collision` | Pre-existing "wrk-merge-back" stash → no contamination |
 
 ## How to Run
 

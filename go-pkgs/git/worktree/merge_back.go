@@ -257,8 +257,14 @@ func mergeBackViaTmpWorktree(
 		return nil, err
 	}
 
+	// Stash user's dirty changes from source, test them against the
+	// rebased HEAD in tmp, then migrate them back to source after
+	// the branch ref is updated.
+	if err := migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch); err != nil {
+		return nil, err
+	}
+
 	// Force-update the source branch to the rebased position.
-	// Use update-ref to directly update the ref without worktree restrictions.
 	tmpCommit, err := revParseCommit(mainRepo, tmpBranch)
 	if err != nil {
 		return nil, fmt.Errorf("resolve tmp branch commit: %w", err)
@@ -267,9 +273,82 @@ func mergeBackViaTmpWorktree(
 		return nil, fmt.Errorf("update source branch ref: %w", err)
 	}
 
+	// Reset source worktree to clean rebased HEAD.
+	if err := runGit(sourceAbs, "reset", "--hard", "HEAD"); err != nil {
+		return nil, fmt.Errorf("sync source worktree: %w", err)
+	}
+	if err := runGit(sourceAbs, "clean", "-fd"); err != nil {
+		return nil, fmt.Errorf("clean source worktree: %w", err)
+	}
+
+	// Pop the migrated stash back onto source.
+	if err := runGit(sourceAbs, "stash", "pop"); err != nil {
+		return nil, fmt.Errorf("restore dirty changes to source: %w", err)
+	}
+
 	result.Action = "rebased-and-merged"
 	result.Message = fmt.Sprintf("rebased and merged branch %s into %s", branch, tmpPlan.TargetLabel)
 	return result, nil
+}
+
+// migrateDirtyChanges stashes dirty tracked+untracked changes from source,
+// applies them to tmp (the rebased worktree) to check for conflicts, then
+// re-stashes them on tmp. If apply-on-tmp conflicts, the source stash is
+// preserved so the user can manually resolve on source.
+func migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch string) error {
+	// git stash push includes untracked files (-u) but not ignored.
+	// On clean worktrees this is a no-op (empty stash).
+	// We push first, then check if anything was stashed.
+	if err := runGit(sourceAbs, "stash", "push", "-u", "-m", "wrk-merge-back"); err != nil {
+		return fmt.Errorf("stash dirty changes: %w", err)
+	}
+
+	// Check if stash was actually created (dirty worktree may have been clean).
+	stashList, err := gitOutput(sourceAbs, "stash", "list", "-1")
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(stashList, "wrk-merge-back") {
+		// Source was clean — nothing to migrate.
+		return nil
+	}
+
+	// Apply the stash to the tmp worktree (rebased HEAD) to detect conflicts.
+	if err := runGit(tmpPath, "stash", "apply"); err != nil {
+		// Conflict: working tree has conflict markers, stash survives.
+		// Clean up tmp, pop stash back on source, report error.
+		runGit(tmpPath, "reset", "--hard", "HEAD")
+		runGit(tmpPath, "clean", "-fd")
+		runGit(sourceAbs, "stash", "pop")
+		return fmt.Errorf("dirty changes conflict with rebase — resolve manually, then retry: %w", err)
+	}
+
+	// Applied cleanly on tmp. Drop the original stash (we'll re-stash from tmp).
+	if err := runGit(sourceAbs, "stash", "drop"); err != nil {
+		return fmt.Errorf("drop original stash: %w", err)
+	}
+
+	// Re-stash from tmp — this captures the user's changes relative to
+	// the rebased HEAD. After source branch is update-ref'd and reset,
+	// we'll pop this stash on source.
+	if err := runGit(tmpPath, "stash", "push", "-u", "-m", "wrk-merge-back"); err != nil {
+		return fmt.Errorf("re-stash from tmp: %w", err)
+	}
+
+	return nil
+}
+
+func gitOutput(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return string(out), fmt.Errorf("git %v: %w\n%s", args, err, exitErr.Stderr)
+		}
+		return string(out), err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func runGit(dir string, args ...string) error {
