@@ -1,14 +1,18 @@
 package wrkcli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
@@ -18,6 +22,7 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/resolve"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 	lessflags "github.com/xhd2015/less-flags"
+	"golang.org/x/term"
 )
 
 // Run executes wrk logic with effective cwd set to cwd.
@@ -48,6 +53,11 @@ func run(origWd string, args []string) error {
 	var allDeps bool
 	var dryRun bool
 	var scanRoot string
+	var taskDesc string
+	var setTaskDesc string
+	// Detect if --task / --set-task were explicitly passed (even with empty value).
+	taskFlagSet := hasArg(args, "--task")
+	setTaskFlagSet := hasArg(args, "--set-task")
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("--list", &list).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
@@ -56,6 +66,8 @@ func run(origWd string, args []string) error {
 		Bool("--dry-run", &dryRun).
 		String("--dep", &depPath).
 		String("--scan-root", &scanRoot).
+		String("--task", &taskDesc).
+		String("--set-task", &setTaskDesc).
 		Help("-h, --help", usage()).
 		HelpNoExit().
 		Parse(args)
@@ -76,6 +88,26 @@ func run(origWd string, args []string) error {
 	}
 	if len(remaining) == 1 {
 		targetDir = remaining[0]
+	}
+
+	// --set-task is mutually exclusive with all other modes.
+	if setTaskFlagSet && strings.TrimSpace(setTaskDesc) == "" {
+		return fmt.Errorf("wrk: task description must not be empty")
+	}
+	// --set-task is mutually exclusive with all other modes.
+	if setTaskFlagSet && (taskFlagSet || done || list || depPath != "" || allDeps || dryRun || targetDir != "") {
+		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
+	}
+	if setTaskFlagSet {
+		return runSetTask(setTaskDesc)
+	}
+
+	if taskFlagSet && strings.TrimSpace(taskDesc) == "" {
+		return fmt.Errorf("wrk: task description must not be empty")
+	}
+	// --task is only valid with create mode.
+	if taskFlagSet && (done || list || depPath != "" || allDeps) {
+		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --list, --dep and --all-deps")
 	}
 
 	if list && done {
@@ -114,7 +146,7 @@ func run(origWd string, args []string) error {
 	if done {
 		return runDone(confirmFromStdin, noInModuleReplace)
 	}
-	return runCreate(origWd, targetDir)
+	return runCreate(origWd, targetDir, taskDesc)
 }
 
 // usage returns the wrk help text printed by lessflags when -h/--help is given.
@@ -141,6 +173,8 @@ Flags:
   --done --no-in-module-replace   block --done on ANY local replace (strict)
   --list                          list worktrees (git worktree list)
   --dep <path>                    spawn a dependency worktree under ./external
+  --task <desc>                   append task slug to worktree/branch names
+  --set-task <desc>               rename worktree/branch to match new task
   --help, -h                      show this help and exit
 
 Environment:
@@ -870,7 +904,7 @@ func externalCandidateBlocked(mainRepo, wtPath, branch string) bool {
 	return branchExists(mainRepo, branch)
 }
 
-func runCreate(origWd string, targetDir string) error {
+func runCreate(origWd string, targetDir string, taskDesc string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get cwd: %w", err)
@@ -906,8 +940,20 @@ func runCreate(origWd string, targetDir string) error {
 	}
 	basename := filepath.Base(mainRepo)
 
+	// Derive task slug if --task was set.
+	var slug string
+	if taskDesc != "" {
+		if strings.TrimSpace(taskDesc) == "" {
+			return fmt.Errorf("wrk: task description must not be empty")
+		}
+		slug = slugify(taskDesc)
+		if slug == "" {
+			return fmt.Errorf("wrk: task description %q produces an empty slug", taskDesc)
+		}
+	}
+
 	if targetDir != "" {
-		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date)
+		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug)
 	}
 
 	wrkHome, err := resolveWrkHome()
@@ -921,7 +967,7 @@ func runCreate(origWd string, targetDir string) error {
 	}
 
 	for suffix := 0; suffix < 100; suffix++ {
-		wtPath, branch := candidateNames(worktreesDir, basename, branchBase, pathToken, date, suffix)
+		wtPath, branch := candidateNames(worktreesDir, basename, branchBase, pathToken, date, slug, suffix)
 		if candidateBlocked(mainRepo, wtPath, branch) {
 			continue
 		}
@@ -943,7 +989,7 @@ func runCreate(origWd string, targetDir string) error {
 // runCreateTargetDir handles wrk <dir> <target-dir>. A relative <target-dir> is
 // resolved against origWd (the process/shell cwd), NOT the repo dir that Run
 // chdir'd into.
-func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date string) error {
+func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string) error {
 	// Resolve <target-dir> against the shell cwd (origWd), not the repo dir.
 	absTarget := targetDir
 	if !filepath.IsAbs(absTarget) {
@@ -960,7 +1006,7 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		// Case 2: spawn a default-named sub-dir under <target-dir>, with the
 		// usual -N collision handling on both path and branch.
 		for suffix := 0; suffix < 100; suffix++ {
-			wtPath, branch := candidateNames(absTarget, basename, branchBase, pathToken, date, suffix)
+			wtPath, branch := candidateNames(absTarget, basename, branchBase, pathToken, date, slug, suffix)
 			if candidateBlocked(mainRepo, wtPath, branch) {
 				continue
 			}
@@ -994,6 +1040,9 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 	// ref already exists, reuse it via the branchPreExists checkout path.
 	wtPath := absTarget
 	branch := branchBase + "-" + date
+		if slug != "" {
+			branch = branch + "-" + slug
+		}
 	if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
 		return err
 	}
@@ -1047,9 +1096,15 @@ func sanitizeBranchToken(branch string) string {
 	return strings.ReplaceAll(branch, "/", "-")
 }
 
-func candidateNames(worktreesDir, basename, branchBase, pathToken, date string, suffix int) (path, branch string) {
+func candidateNames(worktreesDir, basename, branchBase, pathToken, date, slug string, suffix int) (path, branch string) {
 	name := fmt.Sprintf("%s-%s-%s", basename, pathToken, date)
+	if slug != "" {
+		name = fmt.Sprintf("%s-%s", name, slug)
+	}
 	branch = branchBase + "-" + date
+	if slug != "" {
+		branch = branch + "-" + slug
+	}
 	if suffix > 0 {
 		name = fmt.Sprintf("%s-%d", name, suffix)
 		branch = fmt.Sprintf("%s-%d", branch, suffix)
@@ -1088,5 +1143,208 @@ func createWorktree(sourceDir, wtPath, branch string, branchPreExists bool) erro
 		_ = exec.Command("git", "-C", sourceDir, "worktree", "remove", "--force", wtPath).Run()
 		return fmt.Errorf("git checkout: %w\n%s", err, out)
 	}
+	return nil
+}
+
+
+// hasArg returns true if args contains the given flag.
+func hasArg(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// slugify converts a task description into a path-safe slug.
+// Rules: lowercase, non-letter-non-digit -> "-", collapse runs of "-",
+// trim leading/trailing "-", truncate to 64 runes.
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	s = b.String()
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	s = strings.Trim(s, "-")
+	runes := []rune(s)
+	if len(runes) > 64 {
+		s = string(runes[:64])
+	}
+	s = strings.Trim(s, "-")
+	return s
+}
+
+// datePattern matches "-YYYY-MM-DD" in branch names for parsing wrk naming conventions.
+var datePattern = regexp.MustCompile(`-(\d{4}-\d{2}-\d{2})`)
+
+// parseBranchNaming extracts branchBase, date, slug, and suffix from a wrk-style
+// branch name like "master-2026-07-01-fix-login-1". Returns an error if the
+// branch doesn't contain a recognizable date pattern.
+func parseBranchNaming(branch string) (branchBase, date, slug string, suffix int, err error) {
+	loc := datePattern.FindStringSubmatchIndex(branch)
+	if loc == nil {
+		return "", "", "", 0, fmt.Errorf("no date pattern in branch name %q", branch)
+	}
+	branchBase = branch[:loc[0]]
+	date = branch[loc[2]:loc[3]]
+	tail := branch[loc[1]:] // includes leading "-"
+	if tail == "" {
+		return branchBase, date, "", 0, nil
+	}
+	tail = tail[1:] // strip leading "-"
+	parts := strings.Split(tail, "-")
+	last := parts[len(parts)-1]
+
+	if n, convErr := strconv.Atoi(last); convErr == nil && n >= 0 && n < 100 {
+		if len(parts) > 1 {
+			slug = strings.Join(parts[:len(parts)-1], "-")
+			suffix = n
+		} else {
+			suffix = n
+		}
+	} else {
+		slug = tail
+	}
+	return branchBase, date, slug, suffix, nil
+}
+
+// runSetTask renames a linked worktree via git worktree move to include a new
+// task slug in the directory and branch names. Requires TTY confirmation (or
+// WRK_SET_TASK_CONFIRM=1 env var) before executing the move.
+func runSetTask(taskDesc string) error {
+	if strings.TrimSpace(taskDesc) == "" {
+		return fmt.Errorf("wrk: task description must not be empty")
+	}
+	newSlug := slugify(taskDesc)
+	if newSlug == "" {
+		return fmt.Errorf("wrk: task description %q produces an empty slug", taskDesc)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get cwd: %w", err)
+	}
+	cwd, err = filepath.Abs(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve cwd: %w", err)
+	}
+
+	if !worktree.IsLinked(cwd) {
+		return fmt.Errorf("wrk: --set-task must be run from inside a linked worktree")
+	}
+
+	branch, err := worktree.ReadBranch(cwd)
+	if err != nil {
+		return fmt.Errorf("read branch: %w", err)
+	}
+
+	branchBase, date, _, _, err := parseBranchNaming(branch)
+	if err != nil {
+		return fmt.Errorf("wrk: cannot parse branch name %q — is this a wrk worktree? (%w)", branch, err)
+	}
+
+	mainRepo, err := worktree.ResolveMainRepo(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve main repo: %w", err)
+	}
+
+	basename := filepath.Base(mainRepo)
+	pathToken := sanitizeBranchToken(branchBase)
+
+	// Compute new names. We don't know the old suffix from the dir name alone,
+	// so we derive it from the current dir basename. Find the wrk-style naming
+	// by looking for the date pattern in the dir basename.
+	curBase := filepath.Base(cwd)
+	curLoc := datePattern.FindStringSubmatchIndex(curBase)
+	if curLoc == nil {
+		return fmt.Errorf("wrk: cannot parse directory name %q — is this a wrk worktree?", curBase)
+	}
+	curDate := curBase[curLoc[2]:curLoc[3]]
+	curTail := curBase[curLoc[1]:]
+	curSuffix := 0
+	if curTail != "" {
+		curTail = curTail[1:] // strip leading "-"
+		// Remove the old slug (if any) from the tail to extract the suffix.
+		// After date: [-slug][-N]. The suffix is at the very end if numeric.
+		parts := strings.Split(curTail, "-")
+		last := parts[len(parts)-1]
+		if n, convErr := strconv.Atoi(last); convErr == nil && n >= 0 && n < 100 {
+			curSuffix = n
+		}
+	}
+
+	if curDate != date {
+		return fmt.Errorf("wrk: date mismatch between branch (%s) and directory (%s)", date, curDate)
+	}
+
+	newDirName := fmt.Sprintf("%s-%s-%s", basename, pathToken, date)
+	if newSlug != "" {
+		newDirName = fmt.Sprintf("%s-%s", newDirName, newSlug)
+	}
+	if curSuffix > 0 {
+		newDirName = fmt.Sprintf("%s-%d", newDirName, curSuffix)
+	}
+
+	newBranch := branchBase + "-" + date
+	if newSlug != "" {
+		newBranch = newBranch + "-" + newSlug
+	}
+	if curSuffix > 0 {
+		newBranch = fmt.Sprintf("%s-%d", newBranch, curSuffix)
+	}
+
+	// If nothing changed, just report.
+	if newDirName == curBase && newBranch == branch {
+		fmt.Println("task unchanged")
+		return nil
+	}
+
+	parentDir := filepath.Dir(cwd)
+	newPath := filepath.Join(parentDir, newDirName)
+
+	// Check if new path already exists
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("wrk: target path %s already exists", newPath)
+	}
+
+	// TTY check (escape hatch for testing via WRK_SET_TASK_CONFIRM=1)
+	if os.Getenv("WRK_SET_TASK_CONFIRM") != "1" {
+		if !term.IsTerminal(int(os.Stdout.Fd())) {
+			return fmt.Errorf("wrk: --set-task requires a terminal (tty)")
+		}
+		fmt.Printf("Rename worktree:\n  %s → %s\n  branch %s → %s\n", cwd, newPath, branch, newBranch)
+		fmt.Print("Proceed? [Y/n] ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(answer)
+		if answer != "" && answer != "y" && answer != "Y" {
+			return fmt.Errorf("wrk: --set-task aborted")
+		}
+	}
+
+	// Execute git worktree move
+	cmd := exec.Command("git", "-C", mainRepo, "worktree", "move", cwd, newPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git worktree move: %w\n%s", err, out)
+	}
+
+	// Also rename the branch
+	branchCmd := exec.Command("git", "-C", mainRepo, "branch", "-m", branch, newBranch)
+	out, err = branchCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git branch rename: %w\n%s", err, out)
+	}
+
+	fmt.Println(newPath)
 	return nil
 }
