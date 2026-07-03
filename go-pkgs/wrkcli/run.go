@@ -22,6 +22,7 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/replace"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/resolve"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/storage"
 	lessflags "github.com/xhd2015/less-flags"
 	"golang.org/x/term"
 )
@@ -33,15 +34,27 @@ func Run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("get cwd: %w", err)
 	}
-	return run(origWd, args)
+	ctx := newInvocationContext(origWd, args)
+	var runErr error
+	defer func() {
+		exitCode := 0
+		if runErr != nil {
+			exitCode = 1
+		}
+		ctx.finish(exitCode)
+	}()
+	runErr = run(origWd, args, ctx)
+	return runErr
 }
 
-func run(origWd string, args []string) error {
+func run(origWd string, args []string, ctx *invocationContext) error {
 	var done bool
 	var mergeBack bool
 	var list bool
 	var status bool
 	var repos bool
+	var projects bool
+	var addPath string
 	var confirmFromStdin bool
 	var noInModuleReplace bool
 	var depPath string
@@ -53,11 +66,14 @@ func run(origWd string, args []string) error {
 	// Detect if --task / --set-task were explicitly passed (even with empty value).
 	taskFlagSet := hasArg(args, "--task")
 	setTaskFlagSet := hasArg(args, "--set-task")
+	addFlagSet := hasArg(args, "--add")
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("--merge-back", &mergeBack).
 		Bool("-l,--list", &list).
 		Bool("--status", &status).
 		Bool("--repos", &repos).
+		Bool("--projects", &projects).
+		String("--add", &addPath).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
 		Bool("--no-in-module-replace", &noInModuleReplace).
 		Bool("--all-deps", &allDeps).
@@ -72,10 +88,14 @@ func run(origWd string, args []string) error {
 	if err != nil {
 		if errors.Is(err, lessflags.ErrHelp) {
 			// Help text already printed by Parse; exit 0.
+			ctx.skipEvent = true
 			return nil
 		}
 		return err
 	}
+
+	ctx.command = resolveCommand(projects, addFlagSet, setTaskFlagSet, done, list, status, repos, mergeBack, depPath, allDeps)
+	ctx.eventArgs = extractEventArgs(args, remaining)
 
 	// remaining holds 0, 1, or 2 positionals:
 	//   remaining[0] = sourceDir (valid for ALL modes — cwd when absent)
@@ -111,13 +131,30 @@ func run(origWd string, args []string) error {
 			return fmt.Errorf("stat dir: %w", err)
 		}
 	}
+	ctx.workDir = workDir
+
+	wrkHome, err := resolveWrkHome()
+	if err != nil {
+		return err
+	}
+	ctx.wrkHome = wrkHome
+	if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
+		return err
+	}
+	if err := ctx.autoRecord(); err != nil {
+		return err
+	}
+
+	if addFlagSet && strings.TrimSpace(addPath) == "" {
+		return fmt.Errorf("wrk: --add requires a path argument")
+	}
 
 	// --set-task is mutually exclusive with all other modes.
 	if setTaskFlagSet && strings.TrimSpace(setTaskDesc) == "" {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --set-task is mutually exclusive with all other modes.
-	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || depPath != "" || allDeps || dryRun || spawnTarget != "") {
+	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || projects || addFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "") {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
@@ -128,8 +165,8 @@ func run(origWd string, args []string) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --task is only valid with create mode.
-	if taskFlagSet && (done || list || status || repos || depPath != "" || allDeps || mergeBack) {
-		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --merge-back, --list, --status, --repos, --dep and --all-deps")
+	if taskFlagSet && (done || list || status || repos || projects || addFlagSet || depPath != "" || allDeps || mergeBack) {
+		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --merge-back, --list, --status, --repos, --projects, --add, --dep and --all-deps")
 	}
 
 	if list && done {
@@ -141,10 +178,16 @@ func run(origWd string, args []string) error {
 	if done && mergeBack {
 		return fmt.Errorf("wrk: --done and --merge-back are mutually exclusive")
 	}
-	if repos && (done || list || status || depPath != "" || allDeps || dryRun || spawnTarget != "") {
+	if repos && (done || list || status || projects || addFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "") {
 		return fmt.Errorf("wrk: --repos is mutually exclusive with other modes")
 	}
-	if status && (done || list || depPath != "" || allDeps || dryRun || spawnTarget != "") {
+	if projects && (done || list || status || repos || addFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "") {
+		return fmt.Errorf("wrk: --projects is mutually exclusive with other modes")
+	}
+	if addFlagSet && (done || list || status || repos || projects || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "") {
+		return fmt.Errorf("wrk: --add is mutually exclusive with other modes")
+	}
+	if status && (done || list || projects || addFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "") {
 		return fmt.Errorf("wrk: --status is mutually exclusive with other modes")
 	}
 	if confirmFromStdin && !done && !mergeBack {
@@ -164,10 +207,16 @@ func run(origWd string, args []string) error {
 	}
 
 	// spawnTarget only applies to the create path. Reject for any other mode.
-	if spawnTarget != "" && (depPath != "" || allDeps || list || status || repos || done || mergeBack) {
+	if spawnTarget != "" && (depPath != "" || allDeps || list || status || repos || projects || addFlagSet || done || mergeBack) {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
 
+	if projects {
+		return runProjects(wrkHome)
+	}
+	if addFlagSet {
+		return runAdd(wrkHome, addPath)
+	}
 	if repos {
 		return runRepos(workDir)
 	}
@@ -218,6 +267,8 @@ Flags:
   --list                          list worktrees (git worktree list)
   --status                        show status for git repos under this checkout
   --repos                         list git repos under this checkout
+  --projects                      list recorded main repository paths
+  --add <dir>                     manually record a main repository path
   --dep <path>                    spawn a dependency worktree under ./external
   --task <desc>                   append task slug to worktree/branch names
   --set-task <desc>               rename worktree/branch to match new task
@@ -227,6 +278,47 @@ Environment:
   WRK_HOME   worktree storage root (default: ~/.wrk)
   WRK_DATE   override the run date (YYYY-MM-DD) used in worktree/branch names
 `
+}
+
+func runProjects(wrkHome string) error {
+	paths, err := storage.ListProjects(wrkHome)
+	if err != nil {
+		return err
+	}
+	for _, p := range paths {
+		fmt.Println(p)
+	}
+	return nil
+}
+
+func runAdd(wrkHome, addDir string) error {
+	abs, err := filepath.Abs(addDir)
+	if err != nil {
+		return fmt.Errorf("resolve dir: %w", err)
+	}
+	if _, err := os.Stat(abs); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("wrk: %s does not exist", abs)
+		}
+		return fmt.Errorf("stat dir: %w", err)
+	}
+	if !worktree.IsInsideWorkTree(abs) {
+		return fmt.Errorf("%s is not a git repository", abs)
+	}
+	top, err := worktree.ShowToplevel(abs)
+	if err != nil {
+		return err
+	}
+	mainRepo, err := worktree.ResolveMainRepo(top)
+	if err != nil {
+		return err
+	}
+	mainRepo = storage.NormalizePath(mainRepo)
+	if err := storage.RecordProject(wrkHome, mainRepo, storage.SourceManual); err != nil {
+		return err
+	}
+	fmt.Println(mainRepo)
+	return nil
 }
 
 func runList(workDir string) error {

@@ -6,7 +6,8 @@
 Decision tree covering the `wrk` CLI: no-args worktree creation, optional `wrk <dir>`
 first positional, `wrk <dir> <target-dir>` second positional spawn-location override,
 `wrk --dep` external dependency worktrees, `wrk --done` merge-back
-(including external cascade), `wrk --list`, and `wrk --status`.
+(including external cascade), `wrk --list`, `wrk --status`, and project persistence
+(`wrk --projects`, `wrk --add`, auto-record, events.jsonl).
 
 # DSN (Domain Specific Notion)
 
@@ -40,6 +41,13 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **Request.TaskDesc** — when set, used by test assertions to compute expected dir/branch names with task slug.
 - **Request.SetTaskDesc** — when set, tests pass `--set-task <desc>` to wrk; test assertions verify rename side effects.
 - **Request.SetTaskEnv** — when set, appended to wrk's environment (e.g., `WRK_SET_TASK_CONFIRM=1` to auto-confirm rename in tests).
+- **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos) and `events.jsonl` (append-only event log); tests isolate at `{WorkRoot}/.wrk`.
+- **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
+- **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
+- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints all recorded project paths **one per line**, sorted lexicographically (absolute paths); no `<dir>` required; exit 0 when empty (no output).
+- **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
+- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
+- **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
 
 ## Tree Overview
 
@@ -163,6 +171,33 @@ wrk tests
                 ├── empty-desc/        # empty description → error
                 ├── mutually-exclusive/# with --list → mutual exclusion error
                 └── missing-dir/       # non-existent dir → "does not exist"
+└── projects/                     # project persistence + event logging
+    ├── auto-record/              # auto-record main repo on every invocation
+    │   ├── no-dir/               # effective work dir = process cwd
+    │   │   ├── main-cwd/         # cwd is main repo root
+    │   │   └── subdir-cwd/       # cwd is nested subpath inside repo
+    │   ├── dir-arg/              # effective work dir = <dir> positional
+    │   │   ├── main-repo/        # wrk <mainRepo>
+    │   │   ├── linked-worktree/  # wrk <linkedWt> → main repo
+    │   │   └── nested-subpath/   # wrk <nestedSubpath> → main repo
+    │   ├── non-git/              # non-git cwd → no record
+    │   ├── missing-dir/          # wrk <nonexistent> → no record
+    │   └── fail-after-record/    # dirty --done fails but project recorded
+    ├── list/
+    │   └── projects/
+    │       ├── empty/            # wrk --projects empty → exit 0, no output
+    │       └── after-records/    # sorted paths one per line
+    ├── add/
+    │   ├── manual/
+    │   │   ├── main-repo/        # wrk --add <mainRepo>
+    │   │   └── linked-worktree/  # wrk --add <linkedWt> → main repo
+    │   └── idempotent/           # auto + manual → single entry
+    ├── events/
+    │   ├── append-on-success/    # create → event exit_code 0
+    │   └── append-on-failure/    # failed command → event exit_code != 0
+    └── invalid-mode/
+        ├── projects-with-list/   # wrk --projects --list → mutual exclusion
+        └── add-missing-path/     # wrk --add without path → error
 ```
 
 ## Test Case Index
@@ -264,6 +299,23 @@ wrk tests
 | 86 | status/valid-git-cwd/dirty-counts | status counts one added, changed, renamed, and deleted entry |
 | 87 | status/invalid-git-cwd/non-git | `wrk --status` outside git fails with `is not a git repository` |
 | 88 | status/invalid-mode/with-list | `wrk --status --list` fails as mutually exclusive |
+| 90 | projects/auto-record/no-dir/main-cwd | `wrk --list` from main repo cwd records main repo |
+| 91 | projects/auto-record/no-dir/subdir-cwd | `wrk --list` from nested subdir records main repo |
+| 92 | projects/auto-record/dir-arg/main-repo | `wrk <mainRepo> --list` records main repo |
+| 93 | projects/auto-record/dir-arg/linked-worktree | `wrk <linkedWt> --list` records main repo, not worktree |
+| 94 | projects/auto-record/dir-arg/nested-subpath | `wrk <nestedSubpath> --list` records main repo |
+| 95 | projects/auto-record/non-git | non-git cwd → no project record |
+| 96 | projects/auto-record/missing-dir | `wrk <nonexistent> --list` → no project record |
+| 97 | projects/auto-record/fail-after-record | dirty `--done` fails but project auto-recorded + event logged |
+| 98 | projects/list/projects/empty | `wrk --projects` empty → exit 0, no output |
+| 99 | projects/list/projects/after-records | `wrk --projects` prints sorted paths one per line |
+| 100 | projects/add/manual/main-repo | `wrk --add <mainRepo>` records + stdout path |
+| 101 | projects/add/manual/linked-worktree | `wrk --add <linkedWt>` resolves to main repo |
+| 102 | projects/add/idempotent | duplicate auto + manual → single entry (source stays auto) |
+| 103 | projects/events/append-on-success | create appends event with `exit_code` 0 |
+| 104 | projects/events/append-on-failure | failed command appends event with `exit_code` != 0 |
+| 105 | projects/invalid-mode/projects-with-list | `wrk --projects --list` → mutually exclusive error |
+| 106 | projects/invalid-mode/add-missing-path | `wrk --add` without path → error |
 
 ## How to Run
 
@@ -334,6 +386,14 @@ doctest test ./tests/task/set-task/not-linked
 # Run a set-task with-dir leaf
 doctest test ./tests/task/set-task/with-dir/rename-succeeds
 doctest test ./tests/task/set-task/with-dir/missing-dir
+
+# Run projects leaves (expect RED until project persistence is implemented)
+doctest vet ./tests/projects
+doctest test ./tests/projects
+doctest test ./tests/projects/auto-record/no-dir/main-cwd
+doctest test ./tests/projects/list/projects/after-records
+doctest test ./tests/projects/add/manual/main-repo
+doctest test ./tests/projects/events/append-on-success
 ```
 
 ```go
@@ -368,6 +428,7 @@ type Request struct {
 	SetTaskEnv         string // task tests: extra env vars for --set-task (e.g., WRK_SET_TASK_CONFIRM=1)
 	OldExternalGitdir  string // propagate tests: old gitdir content before rename
 	ExternalWtDir2    string // propagate tests: second external worktree path
+	SecondRepo         string // projects tests: second main repo path
 }
 
 type Response struct {
