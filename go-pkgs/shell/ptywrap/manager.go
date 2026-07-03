@@ -217,7 +217,7 @@ func (m *Manager) listPaginated(page, pageSize int) *SessionsResponse {
 	sessions := make([]SessionInfo, 0, len(pagedSessions))
 	for _, s := range pagedSessions {
 		s.mu.Lock()
-		connected := s.conn != nil
+		connected := s.writerConn != nil || len(s.observers) > 0
 		s.mu.Unlock()
 		sessions = append(sessions, s.info(connected))
 	}

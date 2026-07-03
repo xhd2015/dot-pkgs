@@ -2,6 +2,7 @@ package ptywrap
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"sync"
@@ -9,6 +10,14 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
+)
+
+type attachRole string
+
+const (
+	roleWriter   attachRole = "writer"
+	roleObserver attachRole = "observer"
+	roleSnapshot attachRole = "snapshot"
 )
 
 type session struct {
@@ -23,13 +32,16 @@ type session struct {
 	cols int
 	rows int
 
-	mu         sync.Mutex
-	scrollback []byte
-	conn       *websocket.Conn
-	done       chan struct{}
-	exited     bool
-	closeOnce  sync.Once
-	waitOnce   sync.Once
+	mu          sync.Mutex
+	scrollback  []byte
+	done        chan struct{}
+	exited      bool
+	closeOnce   sync.Once
+	waitOnce    sync.Once
+
+	writeClaimed bool
+	writerConn   *websocket.Conn
+	observers    map[*websocket.Conn]struct{}
 }
 
 func (s *session) readLoop() {
@@ -44,26 +56,49 @@ func (s *session) readLoop() {
 			if len(s.scrollback) > maxScrollback {
 				s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
 			}
-			ws := s.conn
+			writer := s.writerConn
+			observerSet := make([]*websocket.Conn, 0, len(s.observers))
+			for conn := range s.observers {
+				observerSet = append(observerSet, conn)
+			}
 			s.mu.Unlock()
 
-			if ws != nil {
-				ws.WriteMessage(websocket.BinaryMessage, data)
-			}
+			s.broadcastOutput(data, writer, observerSet)
 		}
 		if err != nil {
 			s.markExited()
 			s.appendExitMarker()
 			s.wait()
 
+			exitMsg := []byte("\r\n[Terminal exited]")
 			s.mu.Lock()
-			ws := s.conn
-			s.mu.Unlock()
-			if ws != nil {
-				ws.WriteMessage(websocket.TextMessage, []byte("\r\n[Terminal exited]"))
+			writer := s.writerConn
+			observerSet := make([]*websocket.Conn, 0, len(s.observers))
+			for conn := range s.observers {
+				observerSet = append(observerSet, conn)
 			}
+			s.mu.Unlock()
+			s.broadcastText(exitMsg, writer, observerSet)
 			return
 		}
+	}
+}
+
+func (s *session) broadcastOutput(data []byte, writer *websocket.Conn, observers []*websocket.Conn) {
+	if writer != nil {
+		_ = writer.WriteMessage(websocket.BinaryMessage, data)
+	}
+	for _, conn := range observers {
+		_ = conn.WriteMessage(websocket.BinaryMessage, data)
+	}
+}
+
+func (s *session) broadcastText(data []byte, writer *websocket.Conn, observers []*websocket.Conn) {
+	if writer != nil {
+		_ = writer.WriteMessage(websocket.TextMessage, data)
+	}
+	for _, conn := range observers {
+		_ = conn.WriteMessage(websocket.TextMessage, data)
 	}
 }
 
@@ -92,14 +127,55 @@ func (s *session) setSize(cols, rows int) {
 	s.mu.Unlock()
 }
 
-func (s *session) attach(conn *websocket.Conn, attachMode string) {
-	s.mu.Lock()
-	if s.conn != nil {
-		s.conn.Close()
+func (s *session) claimRole(attachMode string) attachRole {
+	switch attachMode {
+	case "observer":
+		return roleObserver
+	case "snapshot":
+		return roleSnapshot
+	case "screen", "interactive", "":
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if !s.writeClaimed {
+			s.writeClaimed = true
+			return roleWriter
+		}
+		return roleObserver
+	default:
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if !s.writeClaimed {
+			s.writeClaimed = true
+			return roleWriter
+		}
+		return roleObserver
 	}
-	s.conn = conn
-	s.mu.Unlock()
+}
 
+func (s *session) registerConn(conn *websocket.Conn, role attachRole) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch role {
+	case roleWriter:
+		s.writerConn = conn
+	case roleObserver:
+		if s.observers == nil {
+			s.observers = make(map[*websocket.Conn]struct{})
+		}
+		s.observers[conn] = struct{}{}
+	}
+}
+
+func (s *session) unregisterConn(conn *websocket.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.writerConn == conn {
+		s.writerConn = nil
+	}
+	delete(s.observers, conn)
+}
+
+func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
 	scrollbackCopy, cols, rows := s.snapshotInput()
 	if len(scrollbackCopy) == 0 {
 		return
@@ -121,12 +197,18 @@ func (s *session) attach(conn *websocket.Conn, attachMode string) {
 	conn.WriteMessage(websocket.BinaryMessage, scrollbackCopy)
 }
 
-func (s *session) detach(conn *websocket.Conn) {
+func (s *session) sendRoleHandshake(conn *websocket.Conn, role attachRole) {
+	payload, _ := json.Marshal(map[string]string{
+		"type":        "attach_role",
+		"attach_role": string(role),
+	})
+	_ = conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+func (s *session) isWriter(conn *websocket.Conn) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.conn == conn {
-		s.conn = nil
-	}
+	return s.writerConn == conn
 }
 
 func (s *session) status() string {
@@ -167,10 +249,14 @@ func (s *session) wait() {
 func (s *session) close() {
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
-		if s.conn != nil {
-			s.conn.Close()
-			s.conn = nil
+		if s.writerConn != nil {
+			s.writerConn.Close()
+			s.writerConn = nil
 		}
+		for conn := range s.observers {
+			conn.Close()
+		}
+		s.observers = nil
 		s.mu.Unlock()
 
 		if s.ptmx != nil {
@@ -186,6 +272,12 @@ func (s *session) close() {
 func (s *session) info(connected bool) SessionInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	writerConnected := s.writerConn != nil
+	observerCount := len(s.observers)
+	if !connected {
+		writerConnected = s.writerConn != nil
+	}
+	_ = observerCount
 	return SessionInfo{
 		ID:        s.id,
 		Name:      s.name,
@@ -193,7 +285,7 @@ func (s *session) info(connected bool) SessionInfo {
 		Cwd:       s.cwd,
 		CreatedAt: s.createdAt,
 		Status:    s.status(),
-		Connected: connected,
+		Connected: connected || writerConnected || observerCount > 0,
 	}
 }
 

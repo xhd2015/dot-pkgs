@@ -3,6 +3,7 @@ package ptywrap
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,18 +30,40 @@ func RegisterAPIWithManager(mux *http.ServeMux, mgr *Manager) {
 	RegisterSessionAPI(mux, mgr)
 }
 
-// RegisterSessionAPI registers only the session-management HTTP routes
-// (/api/terminal/sessions and /api/terminal/sessions/), not the /api/terminal
-// WebSocket route. Adapters that register their own /api/terminal handler
-// (e.g. to layer SSH support on top) call this to avoid a duplicate-pattern
-// panic under Go 1.22+ ServeMux.
+// RegisterSessionAPI registers session-management HTTP routes.
 func RegisterSessionAPI(mux *http.ServeMux, mgr *Manager) {
 	mux.HandleFunc("/api/terminal/sessions", func(w http.ResponseWriter, r *http.Request) {
 		handleSessions(w, r, mgr)
 	})
 	mux.HandleFunc("/api/terminal/sessions/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/terminal/sessions/")
+		path = strings.TrimSuffix(path, "/")
+		if strings.HasSuffix(path, "/input") {
+			id := strings.TrimSuffix(path, "/input")
+			if r.Method == http.MethodPost {
+				handleSessionInput(w, r, mgr, id)
+				return
+			}
+		}
 		handleSessionByID(w, r, mgr)
 	})
+}
+
+func handleSessionInput(w http.ResponseWriter, r *http.Request, mgr *Manager, sessionID string) {
+	if sessionID == "" {
+		http.Error(w, "missing session id", http.StatusBadRequest)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read body failed", http.StatusBadRequest)
+		return
+	}
+	if err := mgr.WriteInput(sessionID, body); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // HandleTerminalWebSocket upgrades and serves the terminal WebSocket protocol.
@@ -87,13 +110,25 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 		conn.Close()
 		return
 	}
-	s.attach(conn, attachMode)
+
+	role := s.claimRole(attachMode)
+	s.sendRoleHandshake(conn, role)
+	s.sendInitialFrame(conn, attachMode)
+
+	if role == roleSnapshot {
+		conn.Close()
+		return
+	}
+
+	s.registerConn(conn, role)
 
 	type wsCloseResult struct {
 		closeCode int
 	}
 	wsCloseCh := make(chan wsCloseResult, 1)
 	deleteOnClose := false
+	isWriter := role == roleWriter
+
 	go func() {
 		var closeCode int
 		defer func() {
@@ -106,6 +141,10 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 					closeCode = closeErr.Code
 				}
 				return
+			}
+
+			if !isWriter {
+				continue
 			}
 
 			if msgType == websocket.TextMessage {
@@ -128,14 +167,14 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 
 	select {
 	case <-s.done:
-		s.detach(conn)
+		s.unregisterConn(conn)
 		conn.Close()
 	case result := <-wsCloseCh:
-		shouldDelete := result.closeCode == 4000 || deleteOnClose
+		shouldDelete := isWriter && (result.closeCode == 4000 || deleteOnClose)
 		if shouldDelete {
 			mgr.remove(s.id)
 		} else {
-			s.detach(conn)
+			s.unregisterConn(conn)
 		}
 	}
 }
@@ -227,4 +266,3 @@ func handleSessionByID(w http.ResponseWriter, r *http.Request, mgr *Manager) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s.info(false))
 }
-
