@@ -117,7 +117,7 @@ func run(origWd string, args []string) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --set-task is mutually exclusive with all other modes.
-	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || depPath != "" || allDeps || dryRun || spawnTarget != "" || sourceDir != "") {
+	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || depPath != "" || allDeps || dryRun || spawnTarget != "") {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {

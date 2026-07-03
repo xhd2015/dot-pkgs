@@ -36,7 +36,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **wrk --all-deps --dry-run** — runs the full read-only discovery/planning of `--all-deps` but writes nothing. Same cwd/git/go.mod validation, same `required`/`alreadyReplaced`/`consumerModule` sets, same scan-root resolution (`--scan-root` > `WRK_SCAN_ROOT` > home), same `scan_repo.Scan` + `modscan.Scan`, same self / not-required / already-replaced / seen skips, and the SAME external-path naming + collision logic as the real run — but it does NOT `MkdirAll(external/)`, does NOT `ensureGitignoreExternal`, does NOT `createExternalWorktree` (no `git worktree add`/branch/remote/fetch), does NOT `GoModEditReplace`, and does NOT `GoModTidy`. stdout: one line per planned module in scan order `would: wrk <module-path> at ./external/<name>[/<subdir>]`, then a final `would: wrk <N> deps` (zero → single `would: wrk 0 deps`). Core guarantee: after a dry run `{consumerTop}/external/` does NOT exist, consumer `go.mod` is unchanged (no new replaces), and `.gitignore` is unchanged (no `/external` line). Errors that occur during planning (non-git cwd, unreadable go.mod) still surface as errors — the process "actually runs".
 - **--dry-run** — bool flag (no value); valid ONLY with `--all-deps` (and `--scan-root`). Bare `wrk --dry-run`, or `--dry-run` with any other mode (`--dep`/`--done`/`--list`/no-args create) → non-zero exit, stderr `wrk: --dry-run is only valid with --all-deps`. It does NOT relax `--all-deps`'s mutual exclusion with `--dep`/`--done`/`--list` — `--dry-run --all-deps --dep <x>` still errors as mutually exclusive (the `--all-deps` mutual-exclusion check runs first). `extractDir` in `cmd/wrk/main.go` needs no change (its `strings.HasPrefix(arg, "-")` branch already treats `--dry-run` as a flag).
 - **wrk --task <desc>** — flag valid only in create mode (no `--done`/`--list`/`--dep`/`--all-deps`). Derives a sanitized slug from `<desc>` (lowercase, non-letter-digit → `-`, collapse, trim, truncate 64 runes). Appends slug after the date in both dir and branch names: `{basename}-{token}-{date}-{slug}[-N]` for dir, `{branchBase}-{date}-{slug}[-N]` for branch. Empty `<desc>` or slug → non-zero exit. No metadata file stored — the slug is embedded in the name.
-- **wrk --set-task <desc>** — flag valid alone (mutually exclusive with all other flags and positional args). Must be run inside a linked worktree. Parses the current branch name to extract `branchBase` and `date` (branch must match `{branchBase}-{YYYY-MM-DD}[-slug][-N]`; non-wrk worktrees → error). Computes new dir and branch names with the new slug. If slug is unchanged → no-op. Before `git worktree move`, checks stdout: TTY → warns (old→new path + branch) and prompts `Proceed? [Y/n]`; confirmation executes the move. Non-TTY → non-zero exit `wrk: --set-task requires a terminal (tty)`. When run with `WRK_SET_TASK_CONFIRM=1` env → auto-confirms without TTY (test escape hatch).
+- **wrk --set-task <desc>** — flag valid alone (mutually exclusive with all other flags). When run from inside a linked worktree (no `<dir>`), renames that worktree. When run as `wrk <dir> --set-task <desc>`, renames the worktree at `<dir>`. Parses the worktree's branch name to extract `branchBase` and `date` (branch must match `{branchBase}-{YYYY-MM-DD}[-slug][-N]`; non-wrk worktrees → error). Computes new dir and branch names with the new slug. If slug is unchanged → no-op. Before `git worktree move`, checks stdout: TTY → warns (old→new path + branch) and prompts `Proceed? [Y/n]`; confirmation executes the move. Non-TTY → non-zero exit `wrk: --set-task requires a terminal (tty)`. When run with `WRK_SET_TASK_CONFIRM=1` env → auto-confirms without TTY (test escape hatch). `<dir>` resolves to the effective working directory; empty `<dir>` (or absent) defaults to cwd.
 - **Request.TaskDesc** — when set, used by test assertions to compute expected dir/branch names with task slug.
 - **Request.SetTaskDesc** — when set, tests pass `--set-task <desc>` to wrk; test assertions verify rename side effects.
 - **Request.SetTaskEnv** — when set, appended to wrk's environment (e.g., `WRK_SET_TASK_CONFIRM=1` to auto-confirm rename in tests).
@@ -156,8 +156,13 @@ wrk tests
             ├── not-wrk-worktree/      # custom branch → cannot parse → error
             ├── rename-succeeds/       # TTY-confirmed rename via WRK_SET_TASK_CONFIRM=1
             ├── slug-unchanged/        # same slug → no-op "task unchanged"
-            └── propagate/             # --set-task updates gitdir for nested repos
-                └── single-external-dep/ # external dep's gitdir updated to new path
+            ├── propagate/             # --set-task updates gitdir for nested repos
+            │   └── single-external-dep/ # external dep's gitdir updated to new path
+            └── with-dir/              # wrk <dir> --set-task (target via argument)
+                ├── rename-succeeds/   # rename worktree at given <dir>
+                ├── empty-desc/        # empty description → error
+                ├── mutually-exclusive/# with --list → mutual exclusion error
+                └── missing-dir/       # non-existent dir → "does not exist"
 ```
 
 ## Test Case Index
@@ -249,6 +254,10 @@ wrk tests
 | 83 | task/set-task/rename-succeeds | `--set-task "new task"` with WRK_SET_TASK_CONFIRM=1 → worktree renamed, branch renamed |
 | 84 | task/set-task/slug-unchanged | `--set-task` with same slug → no-op, prints "task unchanged" |
 | 85 | task/set-task/propagate/single-external-dep | `--set-task` with external dep → consumer renamed, dep gitdir updated to new path |
+| 86 | task/set-task/with-dir/rename-succeeds | `wrk <dir> --set-task "new task"` renames worktree at `<dir>` |
+| 87 | task/set-task/with-dir/empty-desc | `wrk <dir> --set-task ""` → error |
+| 88 | task/set-task/with-dir/mutually-exclusive | `wrk <dir> --set-task "task" --list` → mutual exclusion error |
+| 89 | task/set-task/with-dir/missing-dir | `wrk <nonexistent> --set-task "task"` → does not exist |
 | 83 | status/valid-git-cwd/root-clean | `wrk --status` from repo root shows `Dir: .` and clean status |
 | 84 | status/valid-git-cwd/subdir-clean | `wrk --status` from nested subdir still shows `Dir: .` |
 | 85 | status/valid-git-cwd/multiple-git-dirs | root + nested independent git repo produce two status blocks |
@@ -321,6 +330,10 @@ doctest test ./tests/task/spawn/sequence
 doctest test ./tests/task/set-task/non-tty
 doctest test ./tests/task/set-task/empty-desc
 doctest test ./tests/task/set-task/not-linked
+
+# Run a set-task with-dir leaf
+doctest test ./tests/task/set-task/with-dir/rename-succeeds
+doctest test ./tests/task/set-task/with-dir/missing-dir
 ```
 
 ```go
