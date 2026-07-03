@@ -28,8 +28,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if strings.TrimSpace(resp.Stdout) != "" {
 		t.Fatalf("stdout should be empty, got %q", resp.Stdout)
 	}
-	assert.Output(t, resp.Stderr, `
-<contains>
+	assert.Output(t, resp.Stderr, `<contains>
 wrk: unexpected arguments
 </contains>`)
 

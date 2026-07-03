@@ -26,22 +26,13 @@ import (
 	"golang.org/x/term"
 )
 
-// Run executes wrk logic with effective cwd set to cwd.
-func Run(cwd string, args []string) error {
-	absCwd, err := filepath.Abs(cwd)
-	if err != nil {
-		return fmt.Errorf("resolve cwd: %w", err)
-	}
-
+// Run executes wrk logic with args. The first positional argument,
+// if present, is the source directory for all modes.
+func Run(args []string) error {
 	origWd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get cwd: %w", err)
 	}
-	if err := os.Chdir(absCwd); err != nil {
-		return fmt.Errorf("chdir: %w", err)
-	}
-	defer func() { _ = os.Chdir(origWd) }()
-
 	return run(origWd, args)
 }
 
@@ -86,15 +77,39 @@ func run(origWd string, args []string) error {
 		return err
 	}
 
-	// remaining holds 0 or 1 positional: the optional <target-dir> (the first
-	// positional <dir> is consumed by cmd/wrk extractDir before Run is called).
-	// More than one extra positional is an error.
-	var targetDir string
-	if len(remaining) > 1 {
+	// remaining holds 0, 1, or 2 positionals:
+	//   remaining[0] = sourceDir (valid for ALL modes — cwd when absent)
+	//   remaining[1] = spawnTarget (create-only, was targetDir)
+	// More than two positionals is an error.
+	if len(remaining) > 2 {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
-	if len(remaining) == 1 {
-		targetDir = remaining[0]
+	var sourceDir string
+	var spawnTarget string
+	if len(remaining) >= 1 {
+		sourceDir = remaining[0]
+	}
+	if len(remaining) == 2 {
+		spawnTarget = remaining[1]
+	}
+
+	// Resolve sourceDir to absolute; default to process cwd when absent.
+	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
+	workDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get cwd: %w", err)
+	}
+	if sourceDir != "" {
+		workDir, err = filepath.Abs(sourceDir)
+		if err != nil {
+			return fmt.Errorf("resolve dir: %w", err)
+		}
+		if _, err := os.Stat(workDir); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("wrk: %s does not exist", workDir)
+			}
+			return fmt.Errorf("stat dir: %w", err)
+		}
 	}
 
 	// --set-task is mutually exclusive with all other modes.
@@ -102,11 +117,11 @@ func run(origWd string, args []string) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --set-task is mutually exclusive with all other modes.
-	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || depPath != "" || allDeps || dryRun || targetDir != "") {
+	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || depPath != "" || allDeps || dryRun || spawnTarget != "" || sourceDir != "") {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
-		return runSetTask(setTaskDesc)
+		return runSetTask(workDir, setTaskDesc)
 	}
 
 	if taskFlagSet && strings.TrimSpace(taskDesc) == "" {
@@ -126,10 +141,10 @@ func run(origWd string, args []string) error {
 	if done && mergeBack {
 		return fmt.Errorf("wrk: --done and --merge-back are mutually exclusive")
 	}
-	if repos && (done || list || status || depPath != "" || allDeps || dryRun || targetDir != "") {
+	if repos && (done || list || status || depPath != "" || allDeps || dryRun || spawnTarget != "") {
 		return fmt.Errorf("wrk: --repos is mutually exclusive with other modes")
 	}
-	if status && (done || list || depPath != "" || allDeps || dryRun || targetDir != "") {
+	if status && (done || list || depPath != "" || allDeps || dryRun || spawnTarget != "") {
 		return fmt.Errorf("wrk: --status is mutually exclusive with other modes")
 	}
 	if confirmFromStdin && !done && !mergeBack {
@@ -148,33 +163,33 @@ func run(origWd string, args []string) error {
 		return fmt.Errorf("wrk: --dry-run is only valid with --all-deps")
 	}
 
-	// <target-dir> only applies to the create path. Reject it for any other mode.
-	if targetDir != "" && (depPath != "" || allDeps || list || status || repos || done || mergeBack) {
+	// spawnTarget only applies to the create path. Reject for any other mode.
+	if spawnTarget != "" && (depPath != "" || allDeps || list || status || repos || done || mergeBack) {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
 
 	if repos {
-		return runRepos()
+		return runRepos(workDir)
 	}
 	if status {
-		return runStatus()
+		return runStatus(workDir)
 	}
 	if depPath != "" {
-		return runDep(depPath)
+		return runDep(workDir, depPath)
 	}
 	if allDeps {
-		return runAllDeps(scanRoot, dryRun)
+		return runAllDeps(workDir, scanRoot, dryRun)
 	}
 	if list {
-		return runList()
+		return runList(workDir)
 	}
 	if done {
-		return runDone(confirmFromStdin, noInModuleReplace)
+		return runDone(workDir, confirmFromStdin, noInModuleReplace)
 	}
 	if mergeBack {
-		return runMergeBack(confirmFromStdin)
+		return runMergeBack(workDir, confirmFromStdin)
 	}
-	return runCreate(origWd, targetDir, taskDesc)
+	return runCreate(workDir, origWd, spawnTarget, taskDesc)
 }
 
 // usage returns the wrk help text printed by lessflags when -h/--help is given.
@@ -214,12 +229,8 @@ Environment:
 `
 }
 
-func runList() error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runList(workDir string) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
@@ -240,12 +251,8 @@ func runList() error {
 	return nil
 }
 
-func runDone(confirmFromStdin, noInModuleReplace bool) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runDone(workDir string, confirmFromStdin, noInModuleReplace bool) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
@@ -297,12 +304,8 @@ func runDone(confirmFromStdin, noInModuleReplace bool) error {
 	return nil
 }
 
-func runMergeBack(confirmFromStdin bool) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runMergeBack(workDir string, confirmFromStdin bool) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
@@ -409,12 +412,8 @@ func forceRemoveWorktree(wtPath string) error {
 	return nil
 }
 
-func runDep(depArg string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runDep(workDir string, depArg string) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
@@ -689,12 +688,8 @@ func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath st
 	return externalPath, nil
 }
 
-func runAllDeps(scanRootFlag string, dryRun bool) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runAllDeps(workDir string, scanRootFlag string, dryRun bool) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
@@ -1035,12 +1030,8 @@ func externalCandidateBlocked(mainRepo, wtPath, branch string) bool {
 	return branchExists(mainRepo, branch)
 }
 
-func runCreate(origWd string, targetDir string, taskDesc string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runCreate(workDir string, origWd string, targetDir string, taskDesc string) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
@@ -1351,7 +1342,7 @@ func parseBranchNaming(branch string) (branchBase, date, slug string, suffix int
 // runSetTask renames a linked worktree via git worktree move to include a new
 // task slug in the directory and branch names. Requires TTY confirmation (or
 // WRK_SET_TASK_CONFIRM=1 env var) before executing the move.
-func runSetTask(taskDesc string) error {
+func runSetTask(workDir string, taskDesc string) error {
 	if strings.TrimSpace(taskDesc) == "" {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
@@ -1360,11 +1351,7 @@ func runSetTask(taskDesc string) error {
 		return fmt.Errorf("wrk: task description %q produces an empty slug", taskDesc)
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}

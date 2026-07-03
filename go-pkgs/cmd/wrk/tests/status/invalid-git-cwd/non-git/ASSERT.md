@@ -23,8 +23,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stdout != "" {
 		t.Fatalf("stdout should be empty, got %q", resp.Stdout)
 	}
-	assert.Output(t, resp.Stderr, `
-<contains>
+	assert.Output(t, resp.Stderr, `<contains>
 is not a git repository
 </contains>`)
 }

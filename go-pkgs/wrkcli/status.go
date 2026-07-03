@@ -20,12 +20,8 @@ type statusCounts struct {
 	deleted int
 }
 
-func runStatus() error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runStatus(workDir string) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
@@ -55,12 +51,8 @@ func runStatus() error {
 	return nil
 }
 
-func runRepos() error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	cwd, err = filepath.Abs(cwd)
+func runRepos(workDir string) error {
+	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
