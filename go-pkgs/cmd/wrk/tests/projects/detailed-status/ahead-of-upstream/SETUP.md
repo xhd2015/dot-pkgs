@@ -1,0 +1,29 @@
+# Scenario
+
+**Feature**: Compare with Remote shows branch ahead of upstream
+
+```
+main tracked to origin/main -> commit on main -> Compare with Remote: main is newer(...)
+```
+
+## Steps
+
+1. Create tracked repo `{WorkRoot}/ahead` pushed to bare `origin`.
+2. Commit once more on `main` (1 commit ahead of `origin/main`).
+3. Record and run `wrk --projects`.
+
+```go
+import "path/filepath"
+
+func Setup(t *testing.T, req *Request) error {
+	ensureDetailedStatusHelpersUsed()
+	origin := setupBareOrigin(t, req.WorkRoot, "origin")
+	repo := setupTrackedMainRepo(t, req.WorkRoot, "ahead", origin, "ahead base")
+	writeFile(t, filepath.Join(repo, "ahead.txt"), "ahead\n")
+	runGit(t, repo, "add", "ahead.txt")
+	runGit(t, repo, "commit", "-m", "ahead of upstream")
+	recordProject(t, req, repo)
+	req.MainRepo = repo
+	return nil
+}
+```

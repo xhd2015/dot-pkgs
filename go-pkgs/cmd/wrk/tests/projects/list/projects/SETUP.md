@@ -1,18 +1,84 @@
 # Scenario
 
-**Feature**: wrk --projects output format
+**Feature**: wrk --projects detailed status output
 
 ```
-wrk --projects -> one absolute path per line, lexicographically sorted
+wrk --projects -> one detailed status block per recorded main repo (lexicographic order)
 ```
 
 ## Steps
 
 - Descendants vary whether any projects have been recorded.
 
+## Context
+
+- Each block uses absolute `Dir`, standard status fields, `Compare with Remote`, and `Worktrees: N Clean, N Dirty`.
+
 ```go
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"github.com/xhd2015/gitops/git"
+)
+
 func Setup(t *testing.T, req *Request) error {
 	ensureProjectsHelpersUsed()
 	return nil
+}
+
+func setupBareOriginForList(t *testing.T, workRoot, name string) string {
+	t.Helper()
+	bare := filepath.Join(workRoot, name+".git")
+	runGit(t, workRoot, "init", "--bare", "-b", "main", bare)
+	return bare
+}
+
+func projectListBranchLine(t *testing.T, repoDir string) string {
+	t.Helper()
+	return "Branch:       " + gitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+}
+
+func projectListCommitLine(t *testing.T, repoDir string) string {
+	t.Helper()
+	short := gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	subject := gitOutput(t, repoDir, "log", "-1", "--pretty=%s")
+	return fmt.Sprintf("Commit:       %s  %s", short, subject)
+}
+
+func projectListCompareRemoteField(t *testing.T, mainRepo string) string {
+	t.Helper()
+	upstream := gitOutput(t, mainRepo, "rev-parse", "--abbrev-ref", "@{upstream}")
+	if upstream == "" {
+		return "Compare with Remote: (no upstream)"
+	}
+	result, err := git.CompareBranches(mainRepo, upstream, "main")
+	if err != nil {
+		t.Fatalf("CompareBranches: %v", err)
+	}
+	if result.Relation != git.BranchRelationSame {
+		t.Fatalf("expected identical upstream, got relation %v", result.Relation)
+	}
+	return fmt.Sprintf("Compare with Remote: %s and %s are identical", upstream, "main")
+}
+
+func projectListBlock(t *testing.T, mainRepo string) string {
+	t.Helper()
+	return fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       clean\n%s\nWorktrees: 0 Clean, 0 Dirty",
+		resolvePath(t, mainRepo),
+		projectListBranchLine(t, mainRepo),
+		projectListCommitLine(t, mainRepo),
+		projectListCompareRemoteField(t, mainRepo),
+	)
+}
+
+func ensureProjectListHelpersUsed() {
+	_ = setupBareOriginForList
+	_ = projectListBranchLine
+	_ = projectListCommitLine
+	_ = projectListCompareRemoteField
+	_ = projectListBlock
+	_ = strings.TrimSpace
 }
 ```

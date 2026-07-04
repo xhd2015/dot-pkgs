@@ -24,6 +24,7 @@ wrk --status + other mode -> error (mutually exclusive)
 
 - Successful status output is a sequence of blocks containing `Dir`, `Branch`, `Commit`, and `Status` lines.
 - The `Dir` line is relative to the current checkout toplevel; the checkout itself is `.`.
+- **Linked worktrees only** (`worktree.IsLinked`) also include `Compare with Master:` — kool-style output comparing the main repo's current branch vs the worktree's current branch (`git.CompareBranches`); main checkout and nested independent `RepoTypeMain` repos omit this field.
 
 ```go
 import (

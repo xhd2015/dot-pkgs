@@ -10,7 +10,7 @@ wrk [dir] [mode] -> resolve work dir -> auto-record main repo (if git)
 WRK_HOME -> projects.json (deduped main repos) + events.jsonl (append-only log)
 
 # standalone project modes
-wrk --projects -> sorted project paths (one per line)
+wrk --projects -> sorted detailed status blocks (one per recorded main repo)
 wrk --add <dir> -> manual record + stdout main repo path
 ```
 

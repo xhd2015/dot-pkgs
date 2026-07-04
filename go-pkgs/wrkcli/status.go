@@ -9,6 +9,8 @@ import (
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/storage"
+	"github.com/xhd2015/gitops/git"
 )
 
 type statusCounts struct {
@@ -112,7 +114,129 @@ func printStatusBlock(root, repoPath string) error {
 	fmt.Printf("Branch:       %s\n", branch)
 	fmt.Printf("Commit:       %s  %s\n", short, subject)
 	fmt.Printf("Status:       %s\n", formatStatusCounts(counts))
+
+	if worktree.IsLinked(repoPath) {
+		if err := printCompareWithMaster(repoPath, branch); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func printProjectStatusBlock(mainRepoPath string) error {
+	mainRepoPath = storage.NormalizePath(mainRepoPath)
+
+	branch, err := gitOutput(mainRepoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return err
+	}
+	short, err := gitOutput(mainRepoPath, "rev-parse", "--short=7", "HEAD")
+	if err != nil {
+		return err
+	}
+	subject, err := gitOutput(mainRepoPath, "log", "-1", "--pretty=%s")
+	if err != nil {
+		return err
+	}
+	counts, err := gitStatusCounts(mainRepoPath)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Dir:          %s\n", mainRepoPath)
+	fmt.Printf("Branch:       %s\n", branch)
+	fmt.Printf("Commit:       %s  %s\n", short, subject)
+	fmt.Printf("Status:       %s\n", formatStatusCounts(counts))
+
+	if err := printCompareWithRemote(mainRepoPath, branch); err != nil {
+		return err
+	}
+
+	summary, err := linkedWorktreeSummary(mainRepoPath)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Worktrees: %s\n", summary)
+	return nil
+}
+
+func printCompareWithMaster(repoPath, wtBranch string) error {
+	mainRepo, err := worktree.ReadMainRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	mainBranch, err := gitOutput(mainRepo, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return err
+	}
+	result, err := git.CompareBranches(mainRepo, mainBranch, wtBranch)
+	if err != nil {
+		return err
+	}
+	fmt.Println(formatCompareField("Compare with Master: ", mainBranch, wtBranch, result))
+	return nil
+}
+
+func printCompareWithRemote(mainRepoPath, currentBranch string) error {
+	upstream, err := gitUpstreamRef(mainRepoPath)
+	if err != nil {
+		return err
+	}
+	if upstream == "" {
+		fmt.Println("Compare with Remote: (no upstream)")
+		return nil
+	}
+	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
+	if err != nil {
+		return err
+	}
+	fmt.Println(formatCompareField("Compare with Remote: ", upstream, currentBranch, result))
+	return nil
+}
+
+func gitUpstreamRef(repoPath string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "@{upstream}")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", nil
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func linkedWorktreeSummary(mainRepo string) (string, error) {
+	linked, err := worktree.ListLinked(mainRepo)
+	if err != nil {
+		return "", err
+	}
+	clean, dirty := 0, 0
+	for _, entry := range linked {
+		counts, err := gitWorktreeStatusCounts(entry.Path)
+		if err != nil {
+			return "", err
+		}
+		if counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0 {
+			clean++
+		} else {
+			dirty++
+		}
+	}
+	return fmt.Sprintf("%d Clean, %d Dirty", clean, dirty), nil
+}
+
+func gitWorktreeStatusCounts(repoPath string) (statusCounts, error) {
+	out, err := gitOutput(repoPath, "status", "--porcelain")
+	if err != nil {
+		return statusCounts{}, err
+	}
+
+	var counts statusCounts
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		countStatusLine(&counts, line)
+	}
+	return counts, nil
 }
 
 func gitOutput(repoPath string, args ...string) (string, error) {

@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: wrk --projects lists recorded project paths
+**Feature**: wrk --projects lists detailed status for recorded projects
 
 ```
-wrk --projects -> sorted absolute main-repo paths (one per line)
+wrk --projects -> sorted detailed status blocks (one per recorded main repo)
 ```
 
 ## Preconditions

@@ -21,7 +21,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **wrk --dep** — spawns a dependency worktree under `{consumerTop}/external/` as a worktree of the DEP repo (`git -C <depMain> worktree add`), so it is registered under `<depMain>/.git/worktrees/` (NOT the consumer's); the dep already holds its own objects, so no remote/fetch into the consumer is needed. **Consumer module discovery**: scans the full consumer tree (`gotool/mod/scan.Scan`) for all Go modules — consumers without a root `go.mod` (module lives in a subdirectory like `go-pkgs/`) are supported. **Dep module discovery**: likewise scans the dep tree for all Go modules. Matches each dep module against every consumer module's `require`/`replace` directives; for every matching consumer module, runs `gotool.Replace` + `gotool.Tidy`. Appends `/external` to `.gitignore` when missing, prints external worktree abs path on stdout. Naming: `{basename}-{token}-{WRK_DATE}[-N]` (same rules as create; basename from dep main repo); the branch lives in the dep repo, so the `-N` collision check runs against `depMain` (path under `consumerTop/external/` + branch in dep repo).
 - **wrk --done** — resolves checkout root via `ShowToplevel(cwd)`; requires a linked worktree (not main repo); clean worktree; implicit `--rm`. **Cascade**: `scan_repo.Scan(consumerTop)` discovers every git directory under the checkout; for each row where `RepoType == worktree` and `IsLinked(path)` and `path != checkoutRoot`, run `mergeBackExternalWorktree(path)` in scan path order (path-sorted). This covers `external/*` dep worktrees **and** manually linked worktrees elsewhere (e.g. `deps/foo`). Skip `RepoTypeMain` nested repos (no merge-back/delete). Each cascaded worktree is a dep-repo worktree (registered under `<depMain>/.git/worktrees/`), so `MergeBack` resolves its main repo from the worktree's `.git` gitdir (the dep main) and merges the dep branch back into the dep repo (the branch shares the dep's history, so merge-base resolves); this ensures dep work committed on a nested linked worktree is merged back before removal. Relation to dep main: already-included → remove only; ahead/diverged → prompt (`--confirm-from-stdin`), non-interactive ahead/diverged falls back to force-removal. The consumer's own `checkoutRoot` is excluded (finished by the final `MergeBack` in `runDone`). **Guard**: scan **every** Go module under the checkout (`gotool/mod/scan.Scan`) — main + all sub-modules — and classify each filesystem/local `replace` (`./`, `../`, or absolute path without version) by resolving its target relative to the module's `go.mod` dir: **intra-repo** = target dir exists AND `git -C <target> rev-parse --show-toplevel` equals the consumer's toplevel (a `../../`/`./sub` nested-module reference back into the same repo); **extra-repo** = everything else (`./external/foo` dep worktree, non-existent target, absolute path to another checkout, sibling outside) (`./external/foo` dep worktree, non-existent target, absolute/sibling outside). The guard names the offending `<top>/<m.Dir>/go.mod` file and each `replace <Old> => <New>` directive in its message. Default (no flag): intra-repo → **WARN to stderr and proceed** (exit 0, merge-back runs); extra-repo → **error, block**. `--no-in-module-replace` (opt-in, valid only with `--done`) → **all** local replaces block (fully-strict). A checkout with no `go.mod` at all yields zero modules → guard is a no-op → `--done` proceeds (and the linked-worktree check inside `MergeBack` still runs for a main-repo cwd, producing `not a linked worktree`). Branch relation to main: already-included → remove only; ahead/diverged → prompt then merge/rebase.
 - **wrk --list** — runs `git -C <cwd> worktree list`; prints stdout unchanged; cwd must be inside a git work tree (main repo, linked worktree, or nested subpath). Mutually exclusive with no-args create and `--done`.
-- **wrk --status** — standalone reporting mode; cwd must be inside a git work tree. Resolves the effective cwd's checkout root with git toplevel discovery, calls `scan_repo.Scan(context.Background(), scan_repo.Options{Roots: []string{Root}})`, and prints every discovered git directory in scan path order. Each block includes `Dir` relative to the initial toplevel (`.` for the root), current branch, short commit hash plus subject, and `Status` as either `clean` or `dirty (<added> added, <changed> changed, <renamed> renamed, <deleted> deleted)`. Mutually exclusive with `--done`, `--list`, `--dep`, `--all-deps`, create target arguments, and other modes.
+- **wrk --status** — standalone reporting mode; cwd must be inside a git work tree. Resolves the effective cwd's checkout root with git toplevel discovery, calls `scan_repo.Scan(context.Background(), scan_repo.Options{Roots: []string{Root}})`, and prints every discovered git directory in scan path order. Each block includes `Dir` relative to the initial toplevel (`.` for the root), current branch, short commit hash plus subject, and `Status` as either `clean` or `dirty (<added> added, <changed> changed, <renamed> renamed, <deleted> deleted)`. **Linked worktrees only** (`worktree.IsLinked`) also include `Compare with Master:` — same formatted output as `kool git compare-branch <main-repo-branch>` (compares main repo's current branch vs the worktree's current branch via `git.CompareBranches`; multi-line kool output with label on first line only). Main checkout (including `Dir: .`) and nested independent `RepoTypeMain` repos do **not** show `Compare with Master`. Mutually exclusive with `--done`, `--list`, `--dep`, `--all-deps`, create target arguments, and other modes.
 - **--confirm-from-stdin** — when set with piped `StdinInput`, reads Y/n from stdin for merge-back confirmation (required for non-TTY ahead/diverged cases).
 - **--no-in-module-replace** — bool flag (no value); valid ONLY with `--done`. Restores the fully-strict local-replace guard: every filesystem/local `replace` (intra-repo or extra-repo) blocks `--done`. Without it (default), intra-repo replaces — whose target dir exists and shares the consumer's `git rev-parse --show-toplevel` (`../../`/`./sub` nested-module reference) — only WARN and `--done` proceeds; extra-repo replaces (`./external/foo` dep worktree, non-existent/absolute/sibling) still block. Bare `wrk --no-in-module-replace`, or with any other mode (`--dep`/`--list`/no-args create/`--all-deps`) → non-zero exit, stderr `wrk: --no-in-module-replace is only valid with --done`.
 - **Request.Args** — CLI arguments passed to `wrk` after optional `<dir>` (empty → no-args create; `["--dep", depPath]` for dep tests; `["--done"]` or `["--done", "--confirm-from-stdin"]` for done tests; `["--list"]` for list tests).
@@ -45,7 +45,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos) and `events.jsonl` (append-only event log); tests isolate at `{WorkRoot}/.wrk`.
 - **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
 - **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
-- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints all recorded project paths **one per line**, sorted lexicographically (absolute paths); no `<dir>` required; exit 0 when empty (no output).
+- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Compare with Remote:` (kool-style compare of upstream tracking branch vs current branch via `git.CompareBranches`; `(no upstream)` when the branch has no upstream), and `Worktrees: N Clean, N Dirty` (counts of **linked** worktrees only via `worktree.ListLinked` + porcelain status; always shown, e.g. `0 Clean, 0 Dirty`). No `<dir>` required; exit 0 when empty (no output).
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
@@ -137,6 +137,11 @@ wrk tests
 │   │   └── dirty-counts/         # added/changed/renamed/deleted counts
 │   ├── invalid-git-cwd/
 │   │   └── non-git/              # cwd is not a git repo (error)
+│   ├── compare-with-master/      # Compare with Master on linked worktrees only
+│   │   ├── linked-ahead/         # main newer than linked wt branch
+│   │   ├── linked-identical/      # branches identical
+│   │   ├── main-no-compare/       # main checkout omits field
+│   │   └── nested-main-no-compare/ # nested independent repo omits field
 │   └── invalid-mode/
 │       └── with-list/            # --status with --list is mutually exclusive
 ├── non-git-cwd/                  # cwd is not a git repo (error, no-args create)
@@ -198,10 +203,17 @@ wrk tests
     │   ├── non-git/              # non-git cwd → no record
     │   ├── missing-dir/          # wrk <nonexistent> → no record
     │   └── fail-after-record/    # dirty --done fails but project recorded
+    ├── detailed-status/          # wrk --projects detailed status blocks
+    │   ├── single-clean-no-wts/  # one project, clean, no linked wts
+    │   ├── with-linked-mixed/    # Worktrees: 2 Clean, 1 Dirty
+    │   ├── ahead-of-upstream/    # Compare with Remote ahead message
+    │   ├── no-upstream/          # Compare with Remote: (no upstream)
+    │   ├── multiple-projects/    # two blocks, lex order, blank separator
+    │   └── empty/                # exit 0, empty stdout
     ├── list/
     │   └── projects/
     │       ├── empty/            # wrk --projects empty → exit 0, no output
-    │       └── after-records/    # sorted paths one per line
+    │       └── after-records/    # sorted detailed blocks after auto-record
     ├── add/
     │   ├── manual/
     │   │   ├── main-repo/        # wrk --add <mainRepo>
@@ -335,6 +347,10 @@ wrk tests
 | 86 | status/valid-git-cwd/dirty-counts | status counts one added, changed, renamed, and deleted entry |
 | 87 | status/invalid-git-cwd/non-git | `wrk --status` outside git fails with `is not a git repository` |
 | 88 | status/invalid-mode/with-list | `wrk --status --list` fails as mutually exclusive |
+| 88a | status/compare-with-master/linked-ahead | linked wt block shows `Compare with Master` (main newer) |
+| 88b | status/compare-with-master/linked-identical | linked wt block shows identical compare |
+| 88c | status/compare-with-master/main-no-compare | main checkout block has no compare line |
+| 88d | status/compare-with-master/nested-main-no-compare | nested independent repo has no compare line |
 | 90 | projects/auto-record/no-dir/main-cwd | `wrk --list` from main repo cwd records main repo |
 | 91 | projects/auto-record/no-dir/subdir-cwd | `wrk --list` from nested subdir records main repo |
 | 92 | projects/auto-record/dir-arg/main-repo | `wrk <mainRepo> --list` records main repo |
@@ -344,7 +360,13 @@ wrk tests
 | 96 | projects/auto-record/missing-dir | `wrk <nonexistent> --list` → no project record |
 | 97 | projects/auto-record/fail-after-record | dirty `--done` fails but project auto-recorded + event logged |
 | 98 | projects/list/projects/empty | `wrk --projects` empty → exit 0, no output |
-| 99 | projects/list/projects/after-records | `wrk --projects` prints sorted paths one per line |
+| 99 | projects/list/projects/after-records | `wrk --projects` prints sorted detailed blocks after auto-record |
+| 99a | projects/detailed-status/single-clean-no-wts | one project block with remote compare + `0 Clean, 0 Dirty` |
+| 99b | projects/detailed-status/with-linked-mixed | `Worktrees: 2 Clean, 1 Dirty` |
+| 99c | projects/detailed-status/ahead-of-upstream | `Compare with Remote` shows ahead of upstream |
+| 99d | projects/detailed-status/no-upstream | `Compare with Remote: (no upstream)` |
+| 99e | projects/detailed-status/multiple-projects | two lex-ordered blocks with blank separator |
+| 99f | projects/detailed-status/empty | empty projects → exit 0, no stdout |
 | 100 | projects/add/manual/main-repo | `wrk --add <mainRepo>` records + stdout path |
 | 101 | projects/add/manual/linked-worktree | `wrk --add <linkedWt>` resolves to main repo |
 | 102 | projects/add/idempotent | duplicate auto + manual → single entry (source stays auto) |
@@ -381,6 +403,8 @@ doctest test ./tests/list/main-only
 # Run status leaves
 doctest test ./tests/status
 doctest test ./tests/status/valid-git-cwd/dirty-counts
+doctest vet ./tests/status/compare-with-master
+doctest test ./tests/status/compare-with-master
 
 # Run a dep leaf
 doctest test ./tests/dep/basic
@@ -438,6 +462,8 @@ doctest vet ./tests/projects
 doctest test ./tests/projects
 doctest test ./tests/projects/auto-record/no-dir/main-cwd
 doctest test ./tests/projects/list/projects/after-records
+doctest vet ./tests/projects/detailed-status
+doctest test ./tests/projects/detailed-status
 doctest test ./tests/projects/add/manual/main-repo
 doctest test ./tests/projects/events/append-on-success
 

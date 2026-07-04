@@ -1,8 +1,9 @@
 ## Expected
 
 - Exit code 0.
-- Stdout contains two detailed status blocks (absolute `Dir`, `Compare with Remote`, `Worktrees`) in lexicographic order with a blank line separator.
-- `projects.json` still holds exactly two entries.
+- Two detailed status blocks in lexicographic order (`aaa` before `zzz`).
+- Blank line between blocks.
+- Stderr is empty.
 
 ## Exit Code
 
@@ -19,7 +20,10 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.ExitCode != 0 {
 		t.Fatalf("exit code %d stderr=%q", resp.ExitCode, resp.Stderr)
 	}
-	assertProjectsCount(t, req.WrkHome, 2)
+	if resp.Stderr != "" {
+		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
+	}
+	assertProjectsBlocksSeparated(t, resp.Stdout, 2)
 
 	paths := []string{resolvePath(t, req.MainRepo), resolvePath(t, req.SecondRepo)}
 	sort.Strings(paths)
@@ -31,8 +35,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	var blocks []string
 	for _, abs := range paths {
 		repo := repoByPath[abs]
-		block := projectListBlock(t, repo)
-		blocks = append(blocks, block)
+		remote := compareWithRemoteField(t, repo, "origin/main", "main")
+		blocks = append(blocks, projectStatusBlockExact(t, repo, "clean", remote, "0 Clean, 0 Dirty"))
 	}
 	want := strings.Join(blocks, "\n\n")
 	got := strings.TrimSpace(resp.Stdout)

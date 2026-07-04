@@ -274,8 +274,13 @@ func runProjects(wrkHome string) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range paths {
-		fmt.Println(p)
+	for i, p := range paths {
+		if i > 0 {
+			fmt.Println()
+		}
+		if err := printProjectStatusBlock(p); err != nil {
+			return err
+		}
 	}
 	return nil
 }
