@@ -60,7 +60,6 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var depPath string
 	var allDeps bool
 	var dryRun bool
-	var scanRoot string
 	var taskDesc string
 	var setTaskDesc string
 	// Detect if --task / --set-task were explicitly passed (even with empty value).
@@ -79,7 +78,6 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--all-deps", &allDeps).
 		Bool("--dry-run", &dryRun).
 		String("--dep", &depPath).
-		String("--scan-root", &scanRoot).
 		String("--task", &taskDesc).
 		String("--set-task", &setTaskDesc).
 		Help("-h, --help", usage()).
@@ -216,7 +214,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runDep(workDir, depPath, wrkHome)
 	}
 	if allDeps {
-		return runAllDeps(workDir, scanRoot, dryRun)
+		return runAllDeps(workDir, dryRun)
 	}
 	if list {
 		return runList(workDir)
@@ -259,6 +257,8 @@ Flags:
   --projects                      list recorded main repository paths
   --add <dir>                     manually record a main repository path
   --dep <path>                    spawn a dependency worktree under ./external
+  --all-deps                      link every required dep from registered projects
+  --dry-run                       with --all-deps: plan only, no writes
   --task <desc>                   append task slug to worktree/branch names
   --set-task <desc>               rename worktree/branch to match new task
   --help, -h                      show this help and exit
@@ -771,7 +771,7 @@ func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath st
 	return externalPath, nil
 }
 
-func runAllDeps(workDir string, scanRootFlag string, dryRun bool) error {
+func runAllDeps(workDir string, dryRun bool) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -826,22 +826,14 @@ func runAllDeps(workDir string, scanRootFlag string, dryRun bool) error {
 		consumerMods = append(consumerMods, info)
 	}
 
-	scanRoot, err := resolveScanRoot(scanRootFlag)
-	if err != nil {
-		return err
-	}
-
 	wrkHome, err := resolveWrkHome()
 	if err != nil {
 		return err
 	}
 
-	repos, err := scan_repo.Scan(context.Background(), scan_repo.Options{
-		Roots:      []string{scanRoot},
-		IgnoreDirs: []string{wrkHome},
-	})
+	projectPaths, err := storage.ListProjects(wrkHome)
 	if err != nil {
-		return fmt.Errorf("scan repos: %w", err)
+		return err
 	}
 
 	type linkedDep struct {
@@ -851,14 +843,20 @@ func runAllDeps(workDir string, scanRootFlag string, dryRun bool) error {
 	seen := make(map[string]bool)
 	var linked []linkedDep
 	tidied := make(map[string]bool)
-	for _, repo := range repos {
-		if repo.RepoType != scan_repo.RepoTypeMain {
+	for _, projectPath := range projectPaths {
+		if _, err := os.Stat(projectPath); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			continue
+		}
+		if !worktree.IsMainRepo(projectPath) {
 			continue
 		}
 		// mod/scan finds all modules in the repo (root + nested sub-modules) in
 		// process, with vendor/testdata/gitignore skips. On error (e.g. unreadable
 		// go.mod) skip the repo.
-		modules, err := scan.Scan(repo.Path, scan.Options{})
+		modules, err := scan.Scan(projectPath, scan.Options{})
 		if err != nil {
 			continue
 		}
@@ -883,7 +881,7 @@ func runAllDeps(workDir string, scanRootFlag string, dryRun bool) error {
 			// module replace targets, but write nothing (no
 			// createExternalWorktree, no GoModEditReplace, no tidy, no
 			// gitignore).
-			externalPath, err := planExternalWorktreePath(consumerTop, repo.Path)
+			externalPath, err := planExternalWorktreePath(consumerTop, projectPath)
 			if err != nil {
 				return err
 			}
@@ -898,7 +896,7 @@ func runAllDeps(workDir string, scanRootFlag string, dryRun bool) error {
 			continue
 		}
 		// Real run: materialize the planned external worktree.
-		externalPath, err := createExternalWorktreeForRepo(consumerTop, repo.Path)
+		externalPath, err := createExternalWorktreeForRepo(consumerTop, projectPath)
 		if err != nil {
 			return err
 		}
@@ -947,30 +945,6 @@ func runAllDeps(workDir string, scanRootFlag string, dryRun bool) error {
 	}
 	fmt.Printf("%swrk %d deps\n", prefix, len(linked))
 	return nil
-}
-
-// resolveScanRoot determines the scan root: the --scan-root flag value if
-// non-empty, else WRK_SCAN_ROOT env (with ~ expanded), else the user home dir.
-func resolveScanRoot(scanRootFlag string) (string, error) {
-	if scanRootFlag != "" {
-		abs, err := filepath.Abs(pathfmt.Expand(scanRootFlag))
-		if err != nil {
-			return "", fmt.Errorf("resolve scan-root: %w", err)
-		}
-		return abs, nil
-	}
-	if v := os.Getenv("WRK_SCAN_ROOT"); v != "" {
-		abs, err := filepath.Abs(pathfmt.Expand(v))
-		if err != nil {
-			return "", fmt.Errorf("resolve WRK_SCAN_ROOT: %w", err)
-		}
-		return abs, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home dir: %w", err)
-	}
-	return home, nil
 }
 
 // createExternalWorktree spawns the external dep worktree as a worktree of the

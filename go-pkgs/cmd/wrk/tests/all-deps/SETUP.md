@@ -1,24 +1,30 @@
 # Scenario
 
-**Feature**: wrk --all-deps scans consumer go.mod + local git repos and links every matched dependency
+**Feature**: wrk --all-deps discovers deps from registered projects in projects.json
 
 ```
-# consumer requires dep1+dep2; scan-root has matching repos -> wrk --all-deps links each, replaces, tidies once
-consumer (go.mod + git) + scan-root (mydep1, mydep2) -> wrk --all-deps --scan-root <root> -> stdout one line per dep + summary
+# consumer requires deps; registered projects in WRK_HOME/projects.json -> wrk --all-deps links each match
+consumer (go.mod + git) + projects.json (dep main repos) -> wrk --all-deps -> stdout one line per dep + summary
 ```
 
 ## Preconditions
 
 - Git and Go must be available.
-- Consumer cwd must be inside a git work tree with a `go.mod`.
-- Dep repos under the scan root must be `RepoTypeMain` on branch `main` with a committed `go.mod`.
+- Consumer cwd must be inside a git work tree with a `go.mod` (or sub-module go.mod).
+- Dep repos registered in `projects.json` must be git main repos on branch `main` with committed module trees.
 
 ## Steps
 
-- Tests build an isolated consumer git repo plus named dep repos under a temp scan root.
+- Tests build an isolated consumer git repo plus dep repos at arbitrary paths under `{WorkRoot}`.
+- Dep repos are registered via `wrk --add` or pre-seeded `projects.json` (never via `--scan-root`).
 - `req.RepoDir` is the consumer cwd for `wrk --all-deps`.
-- `req.Args = []string{"--all-deps", "--scan-root", scanRoot}`.
-- Dep repos use distinct module paths (`example.com/dep1`, `example.com/dep2`) so multiple can coexist under one scan root.
+- `req.Args = []string{"--all-deps"}` (or with `--dry-run` for planning leaves).
+
+## Context
+
+- Output order follows **lexicographic project path order** (same as `wrk --projects`).
+- Empty or absent `projects.json` → `wrk 0 deps`, exit 0, no `external/`, no replaces.
+- `--scan-root` and `WRK_SCAN_ROOT` are removed; passing `--scan-root` must error.
 
 ```go
 import (
@@ -27,8 +33,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // allDepsGoModJSON mirrors the go.mod structure read via `go mod edit -json`.
@@ -51,12 +59,89 @@ type allDepsGoModJSON struct {
 	} `json:"Replace"`
 }
 
+type allDepsProjectEntry struct {
+	Path    string `json:"path"`
+	AddedAt string `json:"added_at"`
+	Source  string `json:"source"`
+}
+
+type allDepsProjectsFile struct {
+	Version  int                   `json:"version"`
+	Projects []allDepsProjectEntry `json:"projects"`
+}
+
 func Setup(t *testing.T, req *Request) error {
 	skipIfNoGit(t)
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("go not found in PATH: %w", err)
 	}
 	return nil
+}
+
+func allDepsProjectsJSONPath(wrkHome string) string {
+	return filepath.Join(wrkHome, "projects.json")
+}
+
+func allDepsResolvePath(t *testing.T, path string) string {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("abs %s: %v", path, err)
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs
+	}
+	return resolved
+}
+
+// registerAllDepsProject records a main repo in projects.json via wrk --add.
+func registerAllDepsProject(t *testing.T, req *Request, repoPath string) {
+	t.Helper()
+	runWrkWithArgs(t, req, req.WorkRoot, "--add", repoPath)
+}
+
+// registerAllDepsProjects registers multiple repos in lexicographic path order
+// (registration order does not affect runtime order; ListProjects sorts).
+func registerAllDepsProjects(t *testing.T, req *Request, repoPaths ...string) {
+	t.Helper()
+	sorted := append([]string(nil), repoPaths...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return allDepsResolvePath(t, sorted[i]) < allDepsResolvePath(t, sorted[j])
+	})
+	for _, p := range sorted {
+		registerAllDepsProject(t, req, p)
+	}
+}
+
+// writeAllDepsProjectsJSON seeds projects.json with the given paths (for missing-path
+// or non-git scenarios where wrk --add would fail or is inappropriate).
+func writeAllDepsProjectsJSON(t *testing.T, wrkHome string, paths ...string) {
+	t.Helper()
+	var projects []allDepsProjectEntry
+	for _, p := range paths {
+		projects = append(projects, allDepsProjectEntry{
+			Path:    p,
+			AddedAt: time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			Source:  "manual",
+		})
+	}
+	pf := allDepsProjectsFile{Version: 1, Projects: projects}
+	data, err := json.MarshalIndent(pf, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal projects.json: %v", err)
+	}
+	if err := os.MkdirAll(wrkHome, 0755); err != nil {
+		t.Fatalf("mkdir WRK_HOME: %v", err)
+	}
+	if err := os.WriteFile(allDepsProjectsJSONPath(wrkHome), append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write projects.json: %v", err)
+	}
+}
+
+// allDepsDepDir returns the conventional dep repo path under workRoot/deps/<name>.
+func allDepsDepDir(workRoot, name string) string {
+	return filepath.Join(workRoot, "deps", name)
 }
 
 // allDepsReadGoMod reads a directory's go.mod via `go mod edit -json`.
@@ -141,9 +226,6 @@ func allDepsExternalRelPath(depBasename string) string {
 }
 
 // allDepsExternalAbsPath returns the absolute external worktree path for a dep basename.
-// consumerTop is resolved via EvalSymlinks because on macOS t.TempDir() returns an
-// unresolved /var/folders/... path while wrk resolves to /private/var/folders/...;
-// EvalSymlinks is a no-op on Linux where there is no symlink.
 func allDepsExternalAbsPath(consumerTop, depBasename string) string {
 	resolved, err := filepath.EvalSymlinks(consumerTop)
 	if err != nil {
@@ -152,16 +234,11 @@ func allDepsExternalAbsPath(consumerTop, depBasename string) string {
 	return filepath.Join(resolved, "external", fmt.Sprintf("%s-main-%s", depBasename, wrkDate))
 }
 
-// allDepsDepMainRepo returns the resolved main-repo path of a dep repo created
-// under {workRoot}/scan-root/<depBasename>. The external dep worktree is owned
-// by the dep repo (registered under its .git/worktrees/), so ownership checks
-// must run against this path, not the consumer. EvalSymlinks-resolved to match
-// git's resolved paths on macOS (/var -> /private/var).
-func allDepsDepMainRepo(workRoot, depBasename string) string {
-	dep := filepath.Join(workRoot, "scan-root", depBasename)
-	resolved, err := filepath.EvalSymlinks(dep)
+// allDepsDepMainRepo returns the resolved main-repo path of a dep repo.
+func allDepsDepMainRepo(depPath string) string {
+	resolved, err := filepath.EvalSymlinks(depPath)
 	if err != nil {
-		return dep
+		return depPath
 	}
 	return resolved
 }
@@ -176,8 +253,7 @@ func allDepsRunGo(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// allDepsRunGit runs a git command in dir with hooks disabled (-c core.hooksPath=)
-// so local pre-commit hooks don't interfere with test repos.
+// allDepsRunGit runs a git command in dir with hooks disabled.
 func allDepsRunGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	fullArgs := append([]string{"-c", "core.hooksPath="}, args...)
@@ -225,14 +301,39 @@ func initAllDepsConsumer(t *testing.T, workRoot string, requires []string, extra
 	writeFile(t, filepath.Join(consumer, "main.go"), "package main\n")
 	allDepsRunGit(t, consumer, "add", "go.mod", "main.go")
 	allDepsRunGit(t, consumer, "commit", "-m", "init consumer")
-	return consumer
+	resolved, err := filepath.EvalSymlinks(consumer)
+	if err != nil {
+		return consumer
+	}
+	return resolved
 }
 
-// allDepsEnsureHelpersUsed keeps the prefixed helpers referenced even when a
-// given leaf does not call every one (avoids unused-symbol compile errors in
-// the inlined per-leaf test func).
+// nestedExternalAbsSubPath returns the resolved absolute path to a sub-module
+// directory inside the external worktree of repoBasename.
+func nestedExternalAbsSubPath(consumerTop, repoBasename, subdir string) string {
+	resolved, err := filepath.EvalSymlinks(consumerTop)
+	if err != nil {
+		resolved = consumerTop
+	}
+	return filepath.Join(resolved, "external", fmt.Sprintf("%s-main-%s", repoBasename, wrkDate), subdir)
+}
+
+// nestedExternalRelSubPath returns the relative ./external/.../<subdir> form
+// printed by wrk for a nested sub-module.
+func nestedExternalRelSubPath(repoBasename, subdir string) string {
+	return fmt.Sprintf("./external/%s-main-%s/%s", repoBasename, wrkDate, subdir)
+}
+
 func allDepsEnsureHelpersUsed() {
 	_ = allDepsGoModJSON{}
+	_ = allDepsProjectEntry{}
+	_ = allDepsProjectsFile{}
+	_ = allDepsProjectsJSONPath
+	_ = allDepsResolvePath
+	_ = registerAllDepsProject
+	_ = registerAllDepsProjects
+	_ = writeAllDepsProjectsJSON
+	_ = allDepsDepDir
 	_ = allDepsReadGoMod
 	_ = allDepsHasReplaceForModule
 	_ = allDepsReplacePathForModule
@@ -245,5 +346,7 @@ func allDepsEnsureHelpersUsed() {
 	_ = allDepsRunGit
 	_ = initAllDepsRepo
 	_ = initAllDepsConsumer
+	_ = nestedExternalAbsSubPath
+	_ = nestedExternalRelSubPath
 }
 ```

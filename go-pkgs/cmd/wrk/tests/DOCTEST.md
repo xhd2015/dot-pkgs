@@ -31,12 +31,11 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **deps/** — manually linked worktrees may also live under `{consumerTop}/deps/...` (or any path under the checkout); created via `git -C <depMain> worktree add` into the consumer tree. `--done` cascade discovers them via `scan_repo.Scan`, same as `external/*`.
 - **gitWorktreeList** — helper capturing raw `git worktree list` stdout from a directory for list-test comparison.
 - **Request.StdinInput** — when non-empty, piped to wrk stdin before wait (mvd merge-back pattern).
-- **wrk --all-deps** — automates `--dep` for every dependency that has a local git repo: scans the consumer tree (`gotool/mod/scan.Scan`) for all Go modules and builds the union of required-module sets and existing local `Replace` sets; scans scan roots (`scan_repo.Scan`, `RepoTypeMain` only, sorted by path) for git repos whose module path matches a required module; skips self, modules not required, already-replaced modules (tolerated, not errored — unlike `--done`), and already-seen modules; for each match links an external worktree under `{consumerTop}/external/` via the shared `linkExternalDep` core and records a `replace` in every consumer module that requires it; runs `go mod tidy` in each affected consumer module (skipped when zero deps linked). Consumers without a root `go.mod` (module lives in a subdirectory) are supported via module scanning. Stdout: one line per linked dep in scan (path-sorted) order `wrk <module-path> at ./external/<name>` (path relative to `consumerTop`), then a final summary `wrk <N> deps`. Zero deps → single line `wrk 0 deps`, exit 0, no tidy, no `external/` created.
-- **WRK_SCAN_ROOT** — env var overriding the scan root for `wrk --all-deps` when `--scan-root` is not set (expanded via `pathfmt.Expand` / home expansion like `scan_repo`); precedence: `--scan-root` flag > `WRK_SCAN_ROOT` env > home dir (`~`). The resolved `WRK_HOME` directory is added to ignore dirs so the worktree store is not walked.
-- **--scan-root** — value-consuming flag for `wrk --all-deps` overriding the scan root; like `--dep` it consumes its following value argument and is not mistaken for the optional first positional `<dir>`.
+- **wrk --all-deps** — automates `--dep` for every dependency discoverable from registered projects: scans the consumer tree (`gotool/mod/scan.Scan`) for all Go modules and builds the union of required-module sets and existing local `Replace` sets; loads candidate dep repos from `{WRK_HOME}/projects.json` via `storage.ListProjects` (lexicographically sorted absolute main-repo paths — same order as `wrk --projects`); for each registered project path that is a git main repo, scans it with `gotool/mod/scan.Scan` and matches module paths against required modules; skips self, modules not required, already-replaced modules (tolerated, not errored — unlike `--done`), already-seen modules, missing project paths, and non-git project paths (all skipped silently); for each match links an external worktree under `{consumerTop}/external/` via the shared `linkExternalDep` core and records a `replace` in every consumer module that requires it (sub-module `Dir` when `m.Dir != "."`); runs `go mod tidy` in each affected consumer module (skipped when zero deps linked). Consumers without a root `go.mod` (module lives in a subdirectory) are supported via module scanning. Stdout: one line per linked dep in **registered project path order** (lexicographic), with matched modules within each project in `mod/scan` Dir order: `wrk <module-path> at ./external/<name>[/<subdir>]` (path relative to `consumerTop`), then a final summary `wrk <N> deps`. Empty or absent `projects.json` → single line `wrk 0 deps`, exit 0, no tidy, no `external/` created, no replaces.
+- **Removed from --all-deps** — `--scan-root` flag and `WRK_SCAN_ROOT` env var (and `resolveScanRoot()` / `scan_repo.Scan` in the `--all-deps` code path). Passing `--scan-root` → non-zero exit; stderr mentions unknown/unexpected flag or `scan-root` removed.
 - **--all-deps mutual exclusion** — `--all-deps` is mutually exclusive with `--dep`, `--done`, `--list`, and no-args create; `--all-deps --dep <x>` → non-zero exit, stderr mentions "mutually exclusive"; no positional args allowed.
-- **wrk --all-deps --dry-run** — runs the full read-only discovery/planning of `--all-deps` but writes nothing. Same cwd/git/go.mod validation, same `required`/`alreadyReplaced`/`consumerModule` sets, same scan-root resolution (`--scan-root` > `WRK_SCAN_ROOT` > home), same `scan_repo.Scan` + `modscan.Scan`, same self / not-required / already-replaced / seen skips, and the SAME external-path naming + collision logic as the real run — but it does NOT `MkdirAll(external/)`, does NOT `ensureGitignoreExternal`, does NOT `createExternalWorktree` (no `git worktree add`/branch/remote/fetch), does NOT `GoModEditReplace`, and does NOT `GoModTidy`. stdout: one line per planned module in scan order `would: wrk <module-path> at ./external/<name>[/<subdir>]`, then a final `would: wrk <N> deps` (zero → single `would: wrk 0 deps`). Core guarantee: after a dry run `{consumerTop}/external/` does NOT exist, consumer `go.mod` is unchanged (no new replaces), and `.gitignore` is unchanged (no `/external` line). Errors that occur during planning (non-git cwd, unreadable go.mod) still surface as errors — the process "actually runs".
-- **--dry-run** — bool flag (no value); valid ONLY with `--all-deps` (and `--scan-root`). Bare `wrk --dry-run`, or `--dry-run` with any other mode (`--dep`/`--done`/`--list`/no-args create) → non-zero exit, stderr `wrk: --dry-run is only valid with --all-deps`. It does NOT relax `--all-deps`'s mutual exclusion with `--dep`/`--done`/`--list` — `--dry-run --all-deps --dep <x>` still errors as mutually exclusive (the `--all-deps` mutual-exclusion check runs first). `extractDir` in `cmd/wrk/main.go` needs no change (its `strings.HasPrefix(arg, "-")` branch already treats `--dry-run` as a flag).
+- **wrk --all-deps --dry-run** — runs the full read-only discovery/planning of `--all-deps` but writes nothing. Same cwd/git/go.mod validation, same `required`/`alreadyReplaced`/`consumerModule` sets, same registered-project discovery (`storage.ListProjects` + `modscan.Scan` per project), same self / not-required / already-replaced / seen / missing-path / non-git skips, and the SAME external-path naming + collision logic as the real run — but it does NOT `MkdirAll(external/)`, does NOT `ensureGitignoreExternal`, does NOT `createExternalWorktree` (no `git worktree add`/branch/remote/fetch), does NOT `GoModEditReplace`, and does NOT `GoModTidy`. stdout: one line per planned module in registered project path order `would: wrk <module-path> at ./external/<name>[/<subdir>]`, then a final `would: wrk <N> deps` (empty projects → single `would: wrk 0 deps`). Core guarantee: after a dry run `{consumerTop}/external/` does NOT exist, consumer `go.mod` is unchanged (no new replaces), and `.gitignore` is unchanged (no `/external` line). Errors that occur during planning (non-git cwd, unreadable go.mod) still surface as errors — the process "actually runs".
+- **--dry-run** — bool flag (no value); valid ONLY with `--all-deps`. Bare `wrk --dry-run`, or `--dry-run` with any other mode (`--dep`/`--done`/`--list`/no-args create) → non-zero exit, stderr `wrk: --dry-run is only valid with --all-deps`. It does NOT relax `--all-deps`'s mutual exclusion with `--dep`/`--done`/`--list` — `--dry-run --all-deps --dep <x>` still errors as mutually exclusive (the `--all-deps` mutual-exclusion check runs first).
 - **wrk --task <desc>** — flag valid only in create mode (no `--done`/`--list`/`--dep`/`--all-deps`). Derives a sanitized slug from `<desc>` (lowercase, non-letter-digit → `-`, collapse, trim, truncate 64 runes). Appends slug after the date in both dir and branch names: `{basename}-{token}-{date}-{slug}[-N]` for dir, `{branchBase}-{date}-{slug}[-N]` for branch. Empty `<desc>` or slug → non-zero exit. No metadata file stored — the slug is embedded in the name.
 - **wrk --set-task <desc>** — flag valid alone (mutually exclusive with all other flags). When run from inside a linked worktree (no `<dir>`), renames that worktree. When run as `wrk <dir> --set-task <desc>`, renames the worktree at `<dir>`. Parses the worktree's branch name to extract `branchBase` and `date` (branch must match `{branchBase}-{YYYY-MM-DD}[-slug][-N]`; non-wrk worktrees → error). Computes new dir and branch names with the new slug. If slug is unchanged → no-op. Before `git worktree move`, checks stdout: TTY → warns (old→new path + branch) and prompts `Proceed? [Y/n]`; confirmation executes the move. Non-TTY → non-zero exit `wrk: --set-task requires a terminal (tty)`. When run with `WRK_SET_TASK_CONFIRM=1` env → auto-confirms without TTY (test escape hatch). `<dir>` resolves to the effective working directory; empty `<dir>` (or absent) defaults to cwd.
 - **Request.TaskDesc** — when set, used by test assertions to compute expected dir/branch names with task slug.
@@ -87,7 +86,7 @@ wrk tests
 │   ├── both-sub-modules/         # both consumer + dep go.mod in subdirs → replace => <external>/sub
 │   ├── cwd-in-sub-module/        # cwd inside sub-module dir, not repo root → success
 │   ├── external-wt-owned-by-dep-repo/  # external wt .git gitdir points into dep main, not consumer
-│   └── external-wt-from-linked-consumer/ # --dep from inside a linked consumer wt → owned by dep main, not consumer main
+│   ├── external-wt-from-linked-consumer/ # --dep from inside a linked consumer wt → owned by dep main, not consumer main
 │   └── basename-fallback/        # wrk --dep <basename> → saved projects.json lookup (same core as create)
 │       ├── single-match/
 │       │   └── basic/            # one saved dep match → external wt + replace
@@ -100,21 +99,27 @@ wrk tests
 │       └── ambiguous/
 │           ├── tty-select/       # WRK_BASENAME_CONFIRM + stdin selects dep
 │           └── non-tty/          # error listing candidates
-├── all-deps/                     # wrk --all-deps scan consumer go.mod + local repos → link each matched dep
-│   ├── basic/                    # dep1+dep2 both present → both linked, 2 deps
-│   ├── partial-local/            # only dep1 present → dep1 linked, dep2 not replaced, 1 deps
-│   ├── already-replaced/         # dep1 pre-replaced → skipped; dep2 linked, 1 deps
-│   ├── no-local-deps/            # scan-root empty → 0 deps, no replaces, no external/
-│   ├── self-skip/                # consumer inside scan-root alongside dep1 → dep1 only, self skipped
-│   ├── mutually-exclusive/       # wrk --all-deps --dep <x> → non-zero, mutually exclusive
-│   ├── not-git-cwd/              # cwd not a git repo → non-zero, is not a git repository
-│   ├── nested-submodule/         # required module nested in a larger repo → linked via sub-module discovery
-│   ├── multi-module-same-repo/   # two required sub-modules in one repo → one shared worktree, two replaces
-│   ├── consumer-sub-module/      # consumer has no root go.mod; module in subdir → scan + link all deps
-│   └── dry-run/                  # wrk --all-deps --dry-run: plan only, write nothing
-│       ├── basic/                # dep1+dep2 present → would: lines for both, no side effects
-│       ├── no-matches/           # scan-root empty → would: wrk 0 deps, no side effects
-│       └── without-all-deps/     # wrk --dry-run (no --all-deps) → non-zero, only valid with --all-deps
+├── all-deps/                     # wrk --all-deps: registered projects.json → link each matched dep
+│   ├── registered/               # dep discovery from projects.json (not blind scan)
+│   │   ├── basic/              # dep1+dep2 registered → both linked, project-path order, 2 deps
+│   │   ├── partial/            # only dep1 registered → dep1 linked, 1 deps
+│   │   ├── nested-submodule/   # nested sub-module in registered repo → one wt, replace at sub-dir
+│   │   ├── multi-module-same-repo/ # two sub-modules same repo → one wt, two replaces, 2 deps
+│   │   ├── self-skip/          # consumer also registered → dep linked, self skipped, 1 deps
+│   │   ├── not-a-dep/          # registered project not required → skipped, 0 deps
+│   │   ├── empty-projects/     # no projects.json → 0 deps, no external/, no replaces
+│   │   ├── already-replaced/   # dep1 pre-replaced → skipped; dep2 linked, 1 deps
+│   │   ├── missing-project-path/ # projects.json path missing → skip silently, 0 deps
+│   │   ├── non-git-project/    # registered non-git dir → skip silently, 0 deps
+│   │   ├── consumer-sub-module/  # consumer module in subdir → scan + link works
+│   │   ├── removed-scan-root/  # --scan-root flag → non-zero error
+│   │   └── dry-run/            # --dry-run with registered projects
+│   │       ├── basic/          # registered deps → would: lines, no side effects
+│   │       └── empty/        # empty projects → would: wrk 0 deps
+│   ├── mutually-exclusive/     # wrk --all-deps --dep <x> → non-zero, mutually exclusive
+│   ├── not-git-cwd/            # cwd not a git repo → non-zero, is not a git repository
+│   └── dry-run/
+│       └── without-all-deps/   # wrk --dry-run (no --all-deps) → non-zero
 ├── done/                         # wrk --done merge-back --rm from linked worktree
 │   ├── already-included/         # branch already merged into main; remove only
 │   ├── ahead-confirm/            # ahead + --confirm-from-stdin + Enter
@@ -293,19 +298,23 @@ wrk tests
 | 32 | dep/cwd-in-sub-module | Cwd is inside sub-module dir, not repo root → success |
 | 33 | dep/external-wt-owned-by-dep-repo | External dep worktree's `.git` gitdir resolves to the DEP main repo, not the consumer; dep owns the worktree |
 | 34 | dep/external-wt-from-linked-consumer | `--dep` from inside a linked consumer worktree → external wt owned by dep main repo, not consumer main |
-| 35 | all-deps/basic | dep1+dep2 both in scan-root → both linked, `wrk 2 deps` |
-| 36 | all-deps/partial-local | only dep1 in scan-root → dep1 linked, dep2 not replaced, `wrk 1 deps` |
-| 37 | all-deps/already-replaced | dep1 pre-replaced `=> ./external/preexisting` → skipped; dep2 linked, `wrk 1 deps` |
-| 38 | all-deps/no-local-deps | scan-root empty → `wrk 0 deps`, no replaces, no `external/` |
-| 39 | all-deps/self-skip | consumer inside scan-root alongside dep1 → dep1 linked, self skipped, `wrk 1 deps` |
+| 35 | all-deps/registered/basic | dep1+dep2 registered in projects.json → both linked in project-path order, `wrk 2 deps` |
+| 36 | all-deps/registered/partial | only dep1 registered → dep1 linked, dep2 not replaced, `wrk 1 deps` |
+| 37 | all-deps/registered/already-replaced | dep1 pre-replaced `=> ./external/preexisting` → skipped; dep2 linked, `wrk 1 deps` |
+| 38 | all-deps/registered/empty-projects | no projects.json → `wrk 0 deps`, no replaces, no `external/` |
+| 39 | all-deps/registered/self-skip | consumer also in projects.json → dep1 linked, self skipped, `wrk 1 deps` |
 | 40 | all-deps/mutually-exclusive | `wrk --all-deps --dep <x>` → non-zero, mutually exclusive |
 | 41 | all-deps/not-git-cwd | cwd not a git repo → non-zero, is not a git repository |
-| 42 | all-deps/nested-submodule | required module nested in a larger repo → linked via sub-module discovery, replace at sub-dir, `wrk 1 deps` |
-| 43 | all-deps/multi-module-same-repo | two required sub-modules in one repo → ONE shared worktree, two replaces, `wrk 2 deps` |
-| 44 | all-deps/consumer-sub-module | consumer has no root go.mod; module in subdir → scan + link all deps |
-| 45 | all-deps/dry-run/basic | dep1+dep2 in scan-root → `would:` lines for both, `would: wrk 2 deps`, NO `external/`, NO replaces, NO `.gitignore` change |
-| 46 | all-deps/dry-run/no-matches | scan-root empty → `would: wrk 0 deps`, NO `external/`, NO replaces, NO `.gitignore` change |
+| 42 | all-deps/registered/nested-submodule | nested sub-module in registered repo → linked, replace at sub-dir, `wrk 1 deps` |
+| 43 | all-deps/registered/multi-module-same-repo | two sub-modules in one registered repo → ONE worktree, two replaces, `wrk 2 deps` |
+| 44 | all-deps/registered/consumer-sub-module | consumer module in subdir → scan + link all registered deps |
+| 45 | all-deps/registered/dry-run/basic | registered dep1+dep2 → `would:` lines, `would: wrk 2 deps`, NO side effects |
+| 46 | all-deps/registered/dry-run/empty | empty projects → `would: wrk 0 deps`, NO side effects |
 | 47 | all-deps/dry-run/without-all-deps | `wrk --dry-run` (no `--all-deps`) → non-zero, stderr `--dry-run is only valid with --all-deps` |
+| 47a | all-deps/registered/not-a-dep | registered project not required by consumer → skipped, `wrk 0 deps` |
+| 47b | all-deps/registered/missing-project-path | projects.json missing path → skip silently, `wrk 0 deps` |
+| 47c | all-deps/registered/non-git-project | registered non-git dir → skip silently, `wrk 0 deps` |
+| 47d | all-deps/registered/removed-scan-root | `wrk --all-deps --scan-root X` → non-zero, stderr mentions scan-root |
 | 48 | done/external-cascade | `--done` cascades to `external/*` dep wt first; parent errors on local replace (names go.mod + directive) |
 | 49 | done/local-replace-blocks | extra-repo `replace => ./external/foo` (non-existent) blocks `--done` at guard (names go.mod + directive) |
 | 50 | dir-arg/create/basic | `wrk <repoDir>` from WorkRoot creates worktree |
@@ -434,10 +443,10 @@ doctest test ./tests/dep/basename-fallback/single-match/basic
 doctest test ./tests/dep/basename-fallback/ambiguous/tty-select
 
 # Run an all-deps leaf
-doctest test ./tests/all-deps/basic
+doctest test ./tests/all-deps/registered/basic
 
 # Run a dry-run leaf
-doctest test ./tests/all-deps/dry-run/basic
+doctest test ./tests/all-deps/registered/dry-run/basic
 
 # Run a done cascade leaf
 doctest test ./tests/done/external-cascade

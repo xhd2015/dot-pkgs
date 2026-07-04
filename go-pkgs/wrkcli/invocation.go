@@ -85,7 +85,6 @@ func resolveCommand(projects, addFlagSet, setTaskFlagSet, done, list, status, re
 
 var flagValueArgs = map[string]struct{}{
 	"--dep":       {},
-	"--scan-root": {},
 	"--task":      {},
 	"--set-task":  {},
 	"--add":       {},
