@@ -52,6 +52,8 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
 - **Request.BasenameEnv** — basename-fallback tests: extra env var appended when running wrk (e.g. `WRK_BASENAME_CONFIRM=1`).
 - **Request.SelectedSavedRepo** — basename-fallback tty-select: absolute path of the saved project chosen via stdin index.
+- **Request.FakeHome** — git-lfs-hook tests: temp home directory holding `$HOME/.local/bin/git-lfs` shim.
+- **Request.UseMinimalPath** — when true, wrk runs with `PATH=/usr/bin:/bin` and `HOME={FakeHome}`; git-lfs hook failure is expected (exit 1).
 
 ## Tree Overview
 
@@ -65,7 +67,10 @@ wrk tests
 │   │   └── slash-branch/         # branch with / sanitized in path token
 │   ├── from-linked-worktree/     # cwd is linked worktree; basename from main repo
 │   ├── from-git-subpath/         # cwd is nested subdir inside checkout; basename from repo root
-│   └── detached-head/            # cwd on detached HEAD → 7-char hash token
+│   ├── detached-head/            # cwd on detached HEAD → 7-char hash token
+│   └── git-lfs-hooks/            # LFS post-checkout hook requires git-lfs on PATH
+│       ├── minimal-path-succeeds/  # stripped PATH; git-lfs in $HOME/.local/bin → create fails
+│       └── from-other-cwd/         # wrk <repo> from foreign cwd + stripped PATH → create fails
 ├── dep/                          # wrk --dep external dependency worktree
 │   ├── basic/                    # require + --dep → external wt, replace, tidy, gitignore
 │   ├── gitignore-already/        # /external already in .gitignore → no duplicate
@@ -231,6 +236,8 @@ wrk tests
 | 6 | create-worktree/detached-head | cwd on detached HEAD uses 7-char hash token |
 | 7 | create-worktree/main-checkout/slash-branch | Branch `feature/foo` |
 | 8 | create-worktree/from-git-subpath | cwd is nested subdir inside checkout; basename from repo root |
+| 8a | create-worktree/git-lfs-hooks/minimal-path-succeeds | LFS hook + stripped PATH; git-lfs in $HOME/.local/bin → create fails (expected) |
+| 8b | create-worktree/git-lfs-hooks/from-other-cwd | wrk \<repo\> from foreign cwd + stripped PATH → create fails (expected) |
 | 9 | done/already-included | wt branch merged into main; `--done` removes wt + branch |
 | 10 | done/ahead-confirm | wt ahead; `--done --confirm-from-stdin` + `\n` → ff-merge + remove |
 | 11 | done/ahead-decline | wt ahead; `--confirm-from-stdin` + `n\n` → aborted, wt remains |
@@ -465,6 +472,8 @@ type Request struct {
 	SecondRepo         string // projects tests: second main repo path
 	BasenameEnv        string // basename-fallback tests: e.g. WRK_BASENAME_CONFIRM=1
 	SelectedSavedRepo  string // basename-fallback tty-select: chosen saved project path
+	FakeHome           string // git-lfs-hook tests: temp home with .local/bin/git-lfs
+	UseMinimalPath     bool   // git-lfs-hook tests: run wrk with PATH=/usr/bin:/bin
 }
 
 type Response struct {
@@ -493,14 +502,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = req.RepoDir
-	env := append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
-	if req.SetTaskEnv != "" {
-		env = append(env, req.SetTaskEnv)
-	}
-	if req.BasenameEnv != "" {
-		env = append(env, req.BasenameEnv)
-	}
-	cmd.Env = env
+	cmd.Env = wrkEnv(req)
 
 	if req.StdinInput != "" {
 		stdin, err := cmd.StdinPipe()
