@@ -385,6 +385,39 @@ func branchNameWithTask(baseBranch, date, slug string, suffix int) string {
 }
 
 // createWorktreeWithTask is like setupWrkWorktreeFromMain but with a task description.
+func wrkEnv(req *Request) []string {
+	if req.UseMinimalPath {
+		home := req.FakeHome
+		if home == "" {
+			home = req.WorkRoot
+		}
+		env := []string{
+			"HOME=" + home,
+			"PATH=/usr/bin:/bin",
+			"WRK_HOME=" + req.WrkHome,
+			"WRK_DATE=" + wrkDate,
+		}
+		if req.SetTaskEnv != "" {
+			env = append(env, req.SetTaskEnv)
+		}
+		if req.BasenameEnv != "" {
+			env = append(env, req.BasenameEnv)
+		}
+		return env
+	}
+	env := append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
+	if req.FakeHome != "" {
+		env = append(env, "HOME="+req.FakeHome)
+	}
+	if req.SetTaskEnv != "" {
+		env = append(env, req.SetTaskEnv)
+	}
+	if req.BasenameEnv != "" {
+		env = append(env, req.BasenameEnv)
+	}
+	return env
+}
+
 func createWorktreeWithTask(t *testing.T, req *Request, taskDesc string) (mainRepo, wtDir, branch string) {
 	t.Helper()
 	mainRepo = filepath.Join(req.WorkRoot, "myrepo")
@@ -433,5 +466,6 @@ func ensureHelpersUsed() {
 	_ = worktreePathWithTask
 	_ = branchNameWithTask
 	_ = createWorktreeWithTask
+	_ = wrkEnv
 }
 ```

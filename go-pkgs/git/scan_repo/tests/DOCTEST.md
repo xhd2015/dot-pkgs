@@ -16,7 +16,8 @@ Optional enrichment lists remotes and worktrees via git subprocesses.
 - **Scan** — validates roots, walks each tree, discovers repos, optionally enriches.
 - **Walk** — `filepath.WalkDir` from each root; applies ignore config (full paths
   and basenames); on permission errors skips the directory (`SkipDir`) instead of
-  aborting; stops descending into a discovered repo (`SkipDir` boundary).
+  aborting; after recording a repo continues into its working tree to discover
+  nested checkouts (`.git` basename dirs are still skipped via ignore config).
 - **Ignore config** — `IgnoreDirs` are normalized full paths (exact match);
   `IgnoreDirBasenames` union default basenames (`.git`, `node_modules`, …) for
   directory name matches anywhere in the tree.
@@ -75,6 +76,9 @@ scan-repo
 │   ├── remote-root-skip/         [CloudStorage root → empty result]
 │   ├── gitlink-worktree/
 │   ├── main-and-linked/
+│   ├── nested-under-checkout/    [scan root IS a checkout — nested repos inside must be found]
+│   │   ├── external-linked/      # wt root + external/mydep linked wt → 2 rows
+│   │   └── nested-main/          # wt root + vendor/nested main repo → 2 rows
 │   ├── empty-roots-error/
 │   ├── missing-root-error/
 │   └── not-a-directory-error/
@@ -103,7 +107,7 @@ scan-repo
 | `scan/single-repo` | Scan | One main repo discovered |
 | `scan/sibling-repos` | Scan | Two sibling repos, path-sorted |
 | `scan/no-repos` | Scan | Empty tree → empty slice |
-| `scan/repo-boundary` | Scan | Nested `.git` inside found repo skipped |
+| `scan/repo-boundary` | Scan | Nested `.git` inside found repo discovered |
 | `scan/max-depth` | Scan | Deep repo excluded by MaxDepth |
 | `scan/ignore-dirs` | Scan | `node_modules` default basename ignore |
 | `scan/ignore-dir-basename` | Scan | Custom `IgnoreDirBasenames` skips tree |
@@ -113,6 +117,8 @@ scan-repo
 | `scan/remote-root-skip` | Scan | CloudStorage scan root yields no repos |
 | `scan/gitlink-worktree` | Scan | Gitlink → RepoTypeWorktree |
 | `scan/main-and-linked` | Scan | Main + linked worktree as two rows |
+| `scan/nested-under-checkout/external-linked` | Scan | Scan from wt root finds nested `external/mydep` linked wt |
+| `scan/nested-under-checkout/nested-main` | Scan | Scan from wt root finds nested `vendor/nested` main repo |
 | `scan/empty-roots-error` | Scan | No roots → error |
 | `scan/missing-root-error` | Scan | Missing root path → error |
 | `scan/not-a-directory-error` | Scan | File root → error |

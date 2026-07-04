@@ -3,8 +3,6 @@ package wrkcli
 import (
 	"context"
 	"fmt"
-	"io/fs"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -81,57 +79,7 @@ func runRepos(workDir string) error {
 }
 
 func discoverStatusRepos(ctx context.Context, root string) ([]scan_repo.Repo, error) {
-	repos, err := scan_repo.Scan(ctx, scan_repo.Options{
-		Roots: []string{root},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	seen := make(map[string]struct{}, len(repos))
-	for _, repo := range repos {
-		seen[filepath.Clean(repo.Path)] = struct{}{}
-	}
-
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if !d.IsDir() {
-			return nil
-		}
-		if d.Name() == ".git" {
-			return filepath.SkipDir
-		}
-		if path == root {
-			return nil
-		}
-
-		if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
-			return nil
-		}
-
-		found, err := scan_repo.Scan(ctx, scan_repo.Options{
-			Roots: []string{path},
-		})
-		if err != nil {
-			return err
-		}
-		for _, repo := range found {
-			clean := filepath.Clean(repo.Path)
-			if _, ok := seen[clean]; ok {
-				continue
-			}
-			seen[clean] = struct{}{}
-			repos = append(repos, repo)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return repos, nil
+	return scan_repo.Scan(ctx, scan_repo.Options{Roots: []string{root}})
 }
 
 func printStatusBlock(root, repoPath string) error {

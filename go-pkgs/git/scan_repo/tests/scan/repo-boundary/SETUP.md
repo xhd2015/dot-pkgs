@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: nested repo inside discovered repo is skipped (SkipDir boundary)
+**Feature**: nested repo inside discovered repo is found when scanning from parent
 
 ```
-outer/.git found -> do not descend into outer/ -> inner/.git not reported
+outer/.git found -> descend into outer/ -> inner/.git reported as second row
 ```
 
 ## Steps

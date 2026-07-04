@@ -60,37 +60,4 @@ func initNeutralCwd(t *testing.T, workRoot, name string) string {
 	mkdirAll(t, dir)
 	return dir
 }
-
-func wrkEnv(req *Request) []string {
-	if req.UseMinimalPath {
-		home := req.FakeHome
-		if home == "" {
-			home = req.WorkRoot
-		}
-		env := []string{
-			"HOME=" + home,
-			"PATH=/usr/bin:/bin",
-			"WRK_HOME=" + req.WrkHome,
-			"WRK_DATE=" + wrkDate,
-		}
-		if req.SetTaskEnv != "" {
-			env = append(env, req.SetTaskEnv)
-		}
-		if req.BasenameEnv != "" {
-			env = append(env, req.BasenameEnv)
-		}
-		return env
-	}
-	env := append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
-	if req.FakeHome != "" {
-		env = append(env, "HOME="+req.FakeHome)
-	}
-	if req.SetTaskEnv != "" {
-		env = append(env, req.SetTaskEnv)
-	}
-	if req.BasenameEnv != "" {
-		env = append(env, req.BasenameEnv)
-	}
-	return env
-}
 ```

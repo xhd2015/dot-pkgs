@@ -23,6 +23,7 @@ wrk --set-task "new slug" (inside consumer wt with external dep)
 
 ```go
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -114,5 +115,39 @@ func readWorktreeMainRepo(wtDir string) (string, error) {
 		mainRepo = resolved
 	}
 	return mainRepo, nil
+}
+
+type propagateGoModJSON struct {
+	Replace []struct {
+		Old struct {
+			Path string `json:"Path"`
+		} `json:"Old"`
+		New struct {
+			Path string `json:"Path"`
+		} `json:"New"`
+	} `json:"Replace"`
+}
+
+func propagateReadGoMod(modDir string) (*propagateGoModJSON, error) {
+	cmd := exec.Command("go", "mod", "edit", "-json")
+	cmd.Dir = modDir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var mod propagateGoModJSON
+	if err := json.Unmarshal(out, &mod); err != nil {
+		return nil, err
+	}
+	return &mod, nil
+}
+
+func propagateReplacePathForModule(mod *propagateGoModJSON, modulePath string) string {
+	for _, repl := range mod.Replace {
+		if repl.Old.Path == modulePath {
+			return repl.New.Path
+		}
+	}
+	return ""
 }
 ```

@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
+
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -351,7 +351,7 @@ func runDone(workDir string, confirmFromStdin, noInModuleReplace bool) error {
 	if err != nil {
 		return err
 	}
-	if err := cascadeExternalWorktrees(consumerTop, confirmFromStdin); err != nil {
+	if err := cascadeLinkedWorktrees(consumerTop, checkoutRoot, confirmFromStdin); err != nil {
 		return err
 	}
 
@@ -415,25 +415,30 @@ func runMergeBack(workDir string, confirmFromStdin bool) error {
 	return nil
 }
 
-func cascadeExternalWorktrees(consumerTop string, confirmFromStdin bool) error {
-	externalDir := filepath.Join(consumerTop, "external")
-	entries, err := os.ReadDir(externalDir)
+func cascadeLinkedWorktrees(consumerTop, checkoutRoot string, confirmFromStdin bool) error {
+	repos, err := discoverStatusRepos(context.Background(), consumerTop)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read external dir: %w", err)
+		return err
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	cleanCheckout := filepath.Clean(checkoutRoot)
+	for _, repo := range repos {
+		if repo.RepoType == scan_repo.RepoTypeMain {
+			if filepath.Clean(repo.Path) != filepath.Clean(consumerTop) {
+				fmt.Fprintf(os.Stderr, "warning: skipping nested main repo %s\n", repo.Path)
+			}
 			continue
 		}
-		externalPath := filepath.Join(externalDir, entry.Name())
-		if !worktree.IsLinked(externalPath) {
+		if repo.RepoType != scan_repo.RepoTypeWorktree {
 			continue
 		}
-		if err := mergeBackExternalWorktree(externalPath, confirmFromStdin); err != nil {
+		if !worktree.IsLinked(repo.Path) {
+			continue
+		}
+		if filepath.Clean(repo.Path) == cleanCheckout {
+			continue
+		}
+		if err := mergeBackExternalWorktree(repo.Path, confirmFromStdin); err != nil {
 			return err
 		}
 	}
@@ -1513,39 +1518,33 @@ func runSetTask(workDir string, taskDesc string) error {
 	}
 
 	// Before renaming: discover nested linked worktrees under cwd so we can
-	// update their gitdir metadata after the move. scan_repo.Scan stops at
-	// repo boundaries, so we do a manual walk similar to discoverStatusRepos
-	// to find nested repos that the root scan would miss.
+	// update their gitdir metadata after the move.
 	type nestedWT struct {
 		oldPath string
 		relPath string // relative to cwd
 	}
 	var nested []nestedWT
-	_ = filepath.WalkDir(cwd, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return filepath.SkipDir
+	repos, err := discoverStatusRepos(context.Background(), cwd)
+	if err != nil {
+		return fmt.Errorf("discover nested worktrees: %w", err)
+	}
+	cleanCwd := filepath.Clean(cwd)
+	for _, repo := range repos {
+		if repo.RepoType != scan_repo.RepoTypeWorktree {
+			continue
 		}
-		if !d.IsDir() {
-			return nil
+		if !worktree.IsLinked(repo.Path) {
+			continue
 		}
-		if d.Name() == ".git" {
-			return filepath.SkipDir
+		if filepath.Clean(repo.Path) == cleanCwd {
+			continue
 		}
-		if path == cwd {
-			return nil
-		}
-		gitFile := filepath.Join(path, ".git")
-		info, err := os.Stat(gitFile)
-		if err != nil || !info.Mode().IsRegular() {
-			return nil
-		}
-		rel, err := filepath.Rel(cwd, path)
+		rel, err := filepath.Rel(cwd, repo.Path)
 		if err != nil {
-			return nil
+			continue
 		}
-		nested = append(nested, nestedWT{oldPath: path, relPath: rel})
-		return filepath.SkipDir // nested repo found, don't recurse deeper
-	})
+		nested = append(nested, nestedWT{oldPath: repo.Path, relPath: rel})
+	}
 
 	// TTY check (escape hatch for testing via WRK_SET_TASK_CONFIRM=1)
 	if os.Getenv("WRK_SET_TASK_CONFIRM") != "1" {
@@ -1596,6 +1595,10 @@ func runSetTask(workDir string, taskDesc string) error {
 		gitdirFile := filepath.Join(gitdirBase, "gitdir")
 		newGitdirContent := filepath.Join(newWtPath, ".git") + "\n"
 		_ = os.WriteFile(gitdirFile, []byte(newGitdirContent), 0644)
+	}
+
+	if err := rewriteConsumerReplacePaths(cwd, newPath); err != nil {
+		return fmt.Errorf("rewrite go.mod replace paths: %w", err)
 	}
 
 	fmt.Println(newPath)

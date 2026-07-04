@@ -22,6 +22,7 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 	}
 
 	var repos []Repo
+	var repoRoots []string
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -47,7 +48,7 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 			if _, skip := ignore.fullPaths[cleanPath]; skip {
 				return filepath.SkipDir
 			}
-			if _, skip := ignore.basenames[d.Name()]; skip {
+			if shouldSkipDirBasename(path, d.Name(), repoRoots, ignore) {
 				return filepath.SkipDir
 			}
 			if maxDepth > 0 && depthFromRoot(root, path) > maxDepth {
@@ -86,8 +87,9 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 		} else {
 			repos = append(repos, repo)
 		}
+		repoRoots = append(repoRoots, path)
 
-		return filepath.SkipDir
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -118,6 +120,35 @@ func stderrWriter(stderr io.Writer) io.Writer {
 		return stderr
 	}
 	return os.Stderr
+}
+
+func shouldSkipDirBasename(path, name string, repoRoots []string, ignore ignoreConfig) bool {
+	if isInsideRepoCheckout(path, repoRoots) {
+		return name == ".git"
+	}
+	_, skip := ignore.basenames[name]
+	return skip
+}
+
+func isInsideRepoCheckout(path string, repoRoots []string) bool {
+	clean := filepath.Clean(path)
+	sep := string(filepath.Separator)
+	for _, root := range repoRoots {
+		root = filepath.Clean(root)
+		if clean == root {
+			return true
+		}
+		rel, err := filepath.Rel(root, clean)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+sep) {
+			continue
+		}
+		gitDir := filepath.Join(root, ".git")
+		if clean == gitDir || strings.HasPrefix(clean, gitDir+sep) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func depthFromRoot(root, path string) int {
