@@ -48,6 +48,10 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
+- **Basename fallback (create mode)** — when first positional `<dir>` is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as `workDir` and proceed with create; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); `<dir>` contains a path separator; or mode is not create (`--list`, `--done`, `--dep`, `--all-deps`, `--status`, `--projects`, `--add`, `--set-task`, `--merge-back`). Applies to `wrk <dir>` and `wrk <dir> <target-dir>` create paths only.
+- **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
+- **Request.BasenameEnv** — basename-fallback tests: extra env var appended when running wrk (e.g. `WRK_BASENAME_CONFIRM=1`).
+- **Request.SelectedSavedRepo** — basename-fallback tty-select: absolute path of the saved project chosen via stdin index.
 
 ## Tree Overview
 
@@ -195,9 +199,23 @@ wrk tests
     ├── events/
     │   ├── append-on-success/    # create → event exit_code 0
     │   └── append-on-failure/    # failed command → event exit_code != 0
-    └── invalid-mode/
-        ├── projects-with-list/   # wrk --projects --list → mutual exclusion
-        └── add-missing-path/     # wrk --add without path → error
+    ├── invalid-mode/
+    │   ├── projects-with-list/   # wrk --projects --list → mutual exclusion
+    │   └── add-missing-path/     # wrk --add without path → error
+    └── basename-fallback/        # create-mode basename → saved projects.json lookup
+        ├── single-match/
+        │   └── create/           # one match → worktree from saved path
+        ├── cwd-exists/
+        │   └── no-fallback/      # ./basename in cwd (non-git) → no lookup
+        ├── no-match/
+        │   └── error/            # zero matches → does not exist
+        ├── path-with-separator/
+        │   └── no-fallback/      # sub/foo → no lookup
+        ├── ambiguous/
+        │   ├── tty-select/       # WRK_BASENAME_CONFIRM + stdin index
+        │   └── non-tty/          # error listing candidates
+        └── other-mode/
+            └── no-fallback/      # wrk basename --list → no lookup
 ```
 
 ## Test Case Index
@@ -316,6 +334,13 @@ wrk tests
 | 104 | projects/events/append-on-failure | failed command appends event with `exit_code` != 0 |
 | 105 | projects/invalid-mode/projects-with-list | `wrk --projects --list` → mutually exclusive error |
 | 106 | projects/invalid-mode/add-missing-path | `wrk --add` without path → error |
+| 107 | projects/basename-fallback/single-match/create | Saved project; cwd elsewhere; `wrk myrepo` creates wt from saved path |
+| 108 | projects/basename-fallback/cwd-exists/no-fallback | `./myrepo` exists in cwd (not git); `wrk myrepo` → git error, no fallback |
+| 109 | projects/basename-fallback/no-match/error | No cwd entry, no saved project → `does not exist` |
+| 110 | projects/basename-fallback/path-with-separator/no-fallback | `wrk sub/foo` missing → no fallback, normal error |
+| 111 | projects/basename-fallback/ambiguous/tty-select | Two saved projects same basename; TTY + stdin selects one |
+| 112 | projects/basename-fallback/ambiguous/non-tty | Two saved projects same basename; non-TTY → error listing candidates |
+| 113 | projects/basename-fallback/other-mode/no-fallback | `wrk myrepo --list` with saved project → no fallback, `does not exist` |
 
 ## How to Run
 
@@ -394,6 +419,12 @@ doctest test ./tests/projects/auto-record/no-dir/main-cwd
 doctest test ./tests/projects/list/projects/after-records
 doctest test ./tests/projects/add/manual/main-repo
 doctest test ./tests/projects/events/append-on-success
+
+# Run basename-fallback leaves (expect RED until basename fallback is implemented)
+doctest vet ./tests/projects/basename-fallback
+doctest test ./tests/projects/basename-fallback
+doctest test ./tests/projects/basename-fallback/single-match/create
+doctest test ./tests/projects/basename-fallback/ambiguous/tty-select
 ```
 
 ```go
@@ -429,6 +460,8 @@ type Request struct {
 	OldExternalGitdir  string // propagate tests: old gitdir content before rename
 	ExternalWtDir2    string // propagate tests: second external worktree path
 	SecondRepo         string // projects tests: second main repo path
+	BasenameEnv        string // basename-fallback tests: e.g. WRK_BASENAME_CONFIRM=1
+	SelectedSavedRepo  string // basename-fallback tty-select: chosen saved project path
 }
 
 type Response struct {
@@ -460,6 +493,9 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	env := append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
 	if req.SetTaskEnv != "" {
 		env = append(env, req.SetTaskEnv)
+	}
+	if req.BasenameEnv != "" {
+		env = append(env, req.BasenameEnv)
 	}
 	cmd.Env = env
 

@@ -113,30 +113,19 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		spawnTarget = remaining[1]
 	}
 
-	// Resolve sourceDir to absolute; default to process cwd when absent.
-	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
-	workDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-	if sourceDir != "" {
-		workDir, err = filepath.Abs(sourceDir)
-		if err != nil {
-			return fmt.Errorf("resolve dir: %w", err)
-		}
-		if _, err := os.Stat(workDir); err != nil {
-			if os.IsNotExist(err) {
-				return fmt.Errorf("wrk: %s does not exist", workDir)
-			}
-			return fmt.Errorf("stat dir: %w", err)
-		}
-	}
-	ctx.workDir = workDir
-
 	wrkHome, err := resolveWrkHome()
 	if err != nil {
 		return err
 	}
+
+	// Resolve sourceDir to absolute; default to process cwd when absent.
+	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
+	createMode := isCreateMode(projects, addFlagSet, setTaskFlagSet, repos, status, depPath, allDeps, list, done, mergeBack)
+	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode, wrkHome)
+	if err != nil {
+		return err
+	}
+	ctx.workDir = workDir
 	ctx.wrkHome = wrkHome
 	if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
 		return err
