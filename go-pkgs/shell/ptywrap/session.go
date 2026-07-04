@@ -171,6 +171,7 @@ func (s *session) unregisterConn(conn *websocket.Conn) {
 	defer s.mu.Unlock()
 	if s.writerConn == conn {
 		s.writerConn = nil
+		s.writeClaimed = false
 	}
 	delete(s.observers, conn)
 }
@@ -198,9 +199,12 @@ func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
 }
 
 func (s *session) sendRoleHandshake(conn *websocket.Conn, role attachRole) {
-	payload, _ := json.Marshal(map[string]string{
+	_, cols, rows := s.snapshotInput()
+	payload, _ := json.Marshal(map[string]any{
 		"type":        "attach_role",
 		"attach_role": string(role),
+		"cols":        cols,
+		"rows":        rows,
 	})
 	_ = conn.WriteMessage(websocket.TextMessage, payload)
 }
