@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- Stdout contains two detailed status blocks (absolute `Dir`, `Compare with Remote`, `Worktrees`) in lexicographic order with a blank line separator.
+- Stdout contains two detailed status blocks (absolute `Dir`, `Remote`, `Worktrees`) in lexicographic order with a blank line separator.
 - `projects.json` still holds exactly two entries.
 
 ## Exit Code

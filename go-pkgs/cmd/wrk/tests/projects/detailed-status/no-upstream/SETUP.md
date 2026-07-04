@@ -3,7 +3,7 @@
 **Feature**: branch without upstream shows (no upstream)
 
 ```
-main repo without tracking branch -> Compare with Remote: (no upstream)
+main repo without tracking branch -> Remote: (no upstream)
 ```
 
 ## Steps

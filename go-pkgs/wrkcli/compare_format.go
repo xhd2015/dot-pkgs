@@ -51,6 +51,34 @@ func FormatCompareBranches(refA, refB string, result *git.CompareBranchesResult)
 	return fmt.Sprintf("unknown branch relation %v", result.Relation)
 }
 
+// FormatRemoteBrief returns a one-line remote sync summary for --projects.
+func FormatRemoteBrief(result *git.CompareBranchesResult) string {
+	switch result.Relation {
+	case git.BranchRelationSame:
+		return "Up to date"
+
+	case git.BranchRelationAIsAncestorOfB:
+		commitWord := "commit"
+		if result.CommitsAheadB != 1 {
+			commitWord = "commits"
+		}
+		return fmt.Sprintf("Needs Push(+%d %s)", result.CommitsAheadB, commitWord)
+
+	case git.BranchRelationBIsAncestorOfA:
+		return "Needs Pull"
+
+	case git.BranchRelationDiverged:
+		diverged := result.CommitsAheadA + result.CommitsAheadB
+		commitWord := "commit"
+		if diverged != 1 {
+			commitWord = "commits"
+		}
+		return fmt.Sprintf("Needs Merge(%d %s diverged)", diverged, commitWord)
+	}
+
+	return fmt.Sprintf("unknown branch relation %v", result.Relation)
+}
+
 func formatCompareField(label, refA, refB string, result *git.CompareBranchesResult) string {
 	body := FormatCompareBranches(refA, refB, result)
 	lines := strings.Split(body, "\n")

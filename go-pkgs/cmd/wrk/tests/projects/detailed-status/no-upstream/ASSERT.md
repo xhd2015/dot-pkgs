@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Compare with Remote: (no upstream)`.
+- `Remote:       (no upstream)`.
 - `Worktrees: 0 Clean, 0 Dirty`.
 - Stderr is empty.
 
@@ -22,7 +22,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
 
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", "Compare with Remote: (no upstream)", "0 Clean, 0 Dirty")
+	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", "Remote:       (no upstream)", "0 Clean, 0 Dirty")
 	assert.Output(t, resp.Stdout, block)
 }
 ```

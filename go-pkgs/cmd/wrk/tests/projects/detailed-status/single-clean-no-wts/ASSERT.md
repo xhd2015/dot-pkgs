@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- One detailed status block with absolute `Dir`, `Compare with Remote:`, and `Worktrees: 0 Clean, 0 Dirty`.
+- One detailed status block with absolute `Dir`, `Remote:`, and `Worktrees: 0 Clean, 0 Dirty`.
 - Stderr is empty.
 
 ## Exit Code

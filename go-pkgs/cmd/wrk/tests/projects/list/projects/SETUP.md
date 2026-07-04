@@ -12,7 +12,7 @@ wrk --projects -> one detailed status block per recorded main repo (lexicographi
 
 ## Context
 
-- Each block uses absolute `Dir`, standard status fields, `Compare with Remote`, and `Worktrees: N Clean, N Dirty`.
+- Each block uses absolute `Dir`, standard status fields, `Remote`, and `Worktrees: N Clean, N Dirty`.
 
 ```go
 import (
@@ -51,7 +51,7 @@ func projectListCompareRemoteField(t *testing.T, mainRepo string) string {
 	t.Helper()
 	upstream := gitOutput(t, mainRepo, "rev-parse", "--abbrev-ref", "@{upstream}")
 	if upstream == "" {
-		return "Compare with Remote: (no upstream)"
+		return "Remote:       (no upstream)"
 	}
 	result, err := git.CompareBranches(mainRepo, upstream, "main")
 	if err != nil {
@@ -60,7 +60,7 @@ func projectListCompareRemoteField(t *testing.T, mainRepo string) string {
 	if result.Relation != git.BranchRelationSame {
 		t.Fatalf("expected identical upstream, got relation %v", result.Relation)
 	}
-	return fmt.Sprintf("Compare with Remote: %s and %s are identical", upstream, "main")
+	return "Remote:       Up to date"
 }
 
 func projectListBlock(t *testing.T, mainRepo string) string {

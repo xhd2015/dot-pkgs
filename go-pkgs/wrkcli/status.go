@@ -183,14 +183,14 @@ func printCompareWithRemote(mainRepoPath, currentBranch string) error {
 		return err
 	}
 	if upstream == "" {
-		fmt.Println("Compare with Remote: (no upstream)")
+		fmt.Println("Remote:       (no upstream)")
 		return nil
 	}
 	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
 	if err != nil {
 		return err
 	}
-	fmt.Println(formatCompareField("Compare with Remote: ", upstream, currentBranch, result))
+	fmt.Printf("Remote:       %s\n", FormatRemoteBrief(result))
 	return nil
 }
 
@@ -210,6 +210,9 @@ func linkedWorktreeSummary(mainRepo string) (string, error) {
 	}
 	clean, dirty := 0, 0
 	for _, entry := range linked {
+		if worktree.IsDead(entry.Path) {
+			continue
+		}
 		counts, err := gitWorktreeStatusCounts(entry.Path)
 		if err != nil {
 			return "", err

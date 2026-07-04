@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: Compare with Remote shows branch ahead of upstream
+**Feature**: Remote shows branch ahead of upstream
 
 ```
-main tracked to origin/main -> commit on main -> Compare with Remote: main is newer(...)
+main tracked to origin/main -> commit on main -> Remote: Needs Push(+1 commit)
 ```
 
 ## Steps

@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Compare with Remote: main is newer(origin/main +1 commit -> main)`.
+- `Remote:       Needs Push(+1 commit)`.
 - `Worktrees: 0 Clean, 0 Dirty`.
 - Stderr is empty.
 
@@ -10,11 +10,7 @@
 - 0
 
 ```go
-import (
-	"strings"
-
-	"github.com/xhd2015/doctest/assert"
-)
+import "github.com/xhd2015/doctest/assert"
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
@@ -27,8 +23,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
 
 	remote := compareWithRemoteField(t, req.MainRepo, "origin/main", "main")
-	if !strings.Contains(remote, "main is newer(origin/main +1 commit -> main)") {
-		t.Fatalf("Compare with Remote: want ahead message, got %q", remote)
+	if remote != "Remote:       Needs Push(+1 commit)" {
+		t.Fatalf("Remote: want Needs Push(+1 commit), got %q", remote)
 	}
 	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 Clean, 0 Dirty")
 	assert.Output(t, resp.Stdout, block)

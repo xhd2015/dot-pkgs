@@ -7,7 +7,7 @@
 wrk --projects -> status block per project (lexicographic order)
 
 # extra fields vs wrk --status on main repo
-Compare with Remote: <kool compare upstream vs current branch>
+Remote: <brief upstream sync summary>
 Worktrees: N Clean, N Dirty  (linked worktrees only, always shown)
 ```
 
@@ -24,7 +24,7 @@ Worktrees: N Clean, N Dirty  (linked worktrees only, always shown)
 ## Context
 
 - `Dir` is the **absolute** normalized main-repo path.
-- `Compare with Remote:` uses `CompareBranches(mainRepo, upstreamRef, currentBranch)`; no upstream → `(no upstream)`.
+- `Remote:` uses brief sync summary from `CompareBranches(mainRepo, upstreamRef, currentBranch)`; no upstream → `(no upstream)`.
 - `Worktrees:` counts linked worktrees only (`worktree.ListLinked`); clean when all porcelain counts are zero.
 - Blocks are separated by a blank line; project order is lexicographic by absolute path.
 
@@ -83,13 +83,37 @@ func formatCompareRemoteField(t *testing.T, label, upstreamRef, currentBranch st
 func compareWithRemoteField(t *testing.T, mainRepo, upstreamRef, currentBranch string) string {
 	t.Helper()
 	if upstreamRef == "" {
-		return "Compare with Remote: (no upstream)"
+		return "Remote:       (no upstream)"
 	}
 	result, err := git.CompareBranches(mainRepo, upstreamRef, currentBranch)
 	if err != nil {
 		t.Fatalf("CompareBranches(%q, %q, %q): %v", mainRepo, upstreamRef, currentBranch, err)
 	}
-	return formatCompareRemoteField(t, "Compare with Remote: ", upstreamRef, currentBranch, result)
+	return "Remote:       " + remoteBriefFromResult(result)
+}
+
+func remoteBriefFromResult(result *git.CompareBranchesResult) string {
+	switch result.Relation {
+	case git.BranchRelationSame:
+		return "Up to date"
+	case git.BranchRelationAIsAncestorOfB:
+		commitWord := "commit"
+		if result.CommitsAheadB != 1 {
+			commitWord = "commits"
+		}
+		return fmt.Sprintf("Needs Push(+%d %s)", result.CommitsAheadB, commitWord)
+	case git.BranchRelationBIsAncestorOfA:
+		return "Needs Pull"
+	case git.BranchRelationDiverged:
+		diverged := result.CommitsAheadA + result.CommitsAheadB
+		commitWord := "commit"
+		if diverged != 1 {
+			commitWord = "commits"
+		}
+		return fmt.Sprintf("Needs Merge(%d %s diverged)", diverged, commitWord)
+	default:
+		return fmt.Sprintf("unknown branch relation %v", result.Relation)
+	}
 }
 
 func projectStatusBlockExact(t *testing.T, mainRepo, statusLine, compareRemoteField, worktreesSummary string) string {

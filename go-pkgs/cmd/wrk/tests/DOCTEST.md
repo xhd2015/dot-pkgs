@@ -45,7 +45,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos) and `events.jsonl` (append-only event log); tests isolate at `{WorkRoot}/.wrk`.
 - **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
 - **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
-- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Compare with Remote:` (kool-style compare of upstream tracking branch vs current branch via `git.CompareBranches`; `(no upstream)` when the branch has no upstream), and `Worktrees: N Clean, N Dirty` (counts of **linked** worktrees only via `worktree.ListLinked` + porcelain status; always shown, e.g. `0 Clean, 0 Dirty`). No `<dir>` required; exit 0 when empty (no output).
+- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `Up to date`, `Needs Push(+N commits)`, `Needs Pull`, `Needs Merge(N commits diverged)`, or `(no upstream)` when the branch has no upstream), and `Worktrees: N Clean, N Dirty` (counts of **linked** worktrees with existing paths only via `worktree.ListLinked` + porcelain status; dead/missing worktrees are skipped; always shown, e.g. `0 Clean, 0 Dirty`). No `<dir>` required; exit 0 when empty (no output).
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
@@ -206,8 +206,8 @@ wrk tests
     ├── detailed-status/          # wrk --projects detailed status blocks
     │   ├── single-clean-no-wts/  # one project, clean, no linked wts
     │   ├── with-linked-mixed/    # Worktrees: 2 Clean, 1 Dirty
-    │   ├── ahead-of-upstream/    # Compare with Remote ahead message
-    │   ├── no-upstream/          # Compare with Remote: (no upstream)
+    │   ├── ahead-of-upstream/    # Remote: Needs Push(+N commits)
+    │   ├── no-upstream/          # Remote: (no upstream)
     │   ├── multiple-projects/    # two blocks, lex order, blank separator
     │   └── empty/                # exit 0, empty stdout
     ├── list/
@@ -363,8 +363,8 @@ wrk tests
 | 99 | projects/list/projects/after-records | `wrk --projects` prints sorted detailed blocks after auto-record |
 | 99a | projects/detailed-status/single-clean-no-wts | one project block with remote compare + `0 Clean, 0 Dirty` |
 | 99b | projects/detailed-status/with-linked-mixed | `Worktrees: 2 Clean, 1 Dirty` |
-| 99c | projects/detailed-status/ahead-of-upstream | `Compare with Remote` shows ahead of upstream |
-| 99d | projects/detailed-status/no-upstream | `Compare with Remote: (no upstream)` |
+| 99c | projects/detailed-status/ahead-of-upstream | `Remote:` shows `Needs Push(+N commits)` |
+| 99d | projects/detailed-status/no-upstream | `Remote: (no upstream)` |
 | 99e | projects/detailed-status/multiple-projects | two lex-ordered blocks with blank separator |
 | 99f | projects/detailed-status/empty | empty projects → exit 0, no stdout |
 | 100 | projects/add/manual/main-repo | `wrk --add <mainRepo>` records + stdout path |
