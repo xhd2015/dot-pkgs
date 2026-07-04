@@ -2,7 +2,7 @@
 
 - Exit code 0.
 - `Remote:       (no upstream)`.
-- `Worktrees: 0 Clean, 0 Dirty`.
+- `Worktrees: 0 total, 0 dirty`.
 - Stderr is empty.
 
 ## Exit Code
@@ -22,7 +22,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
 
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", "Remote:       (no upstream)", "0 Clean, 0 Dirty")
+	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", "Remote:       (no upstream)", "0 total, 0 dirty")
 	assert.Output(t, resp.Stdout, block)
 }
 ```

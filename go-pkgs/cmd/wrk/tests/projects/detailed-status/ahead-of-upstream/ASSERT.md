@@ -2,7 +2,7 @@
 
 - Exit code 0.
 - `Remote:       Needs Push(+1 commit)`.
-- `Worktrees: 0 Clean, 0 Dirty`.
+- `Worktrees: 0 total, 0 dirty`.
 - Stderr is empty.
 
 ## Exit Code
@@ -26,7 +26,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if remote != "Remote:       Needs Push(+1 commit)" {
 		t.Fatalf("Remote: want Needs Push(+1 commit), got %q", remote)
 	}
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 Clean, 0 Dirty")
+	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
 	assert.Output(t, resp.Stdout, block)
 }
 ```

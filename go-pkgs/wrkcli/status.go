@@ -223,7 +223,7 @@ func linkedWorktreeSummary(mainRepo string) (string, error) {
 			dirty++
 		}
 	}
-	return fmt.Sprintf("%d Clean, %d Dirty", clean, dirty), nil
+	return fmt.Sprintf("%d total, %d dirty", clean+dirty, dirty), nil
 }
 
 func gitWorktreeStatusCounts(repoPath string) (statusCounts, error) {

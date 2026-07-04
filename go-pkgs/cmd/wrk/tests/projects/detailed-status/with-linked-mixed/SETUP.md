@@ -3,7 +3,7 @@
 **Feature**: project block reports linked worktree clean/dirty counts
 
 ```
-main repo + 2 clean linked wts + 1 dirty linked wt -> Worktrees: 2 Clean, 1 Dirty
+main repo + 2 clean linked wts + 1 dirty linked wt -> Worktrees: 3 total, 1 dirty
 ```
 
 ## Steps

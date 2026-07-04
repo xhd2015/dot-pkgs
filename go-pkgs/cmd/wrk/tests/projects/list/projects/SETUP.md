@@ -12,7 +12,7 @@ wrk --projects -> one detailed status block per recorded main repo (lexicographi
 
 ## Context
 
-- Each block uses absolute `Dir`, standard status fields, `Remote`, and `Worktrees: N Clean, N Dirty`.
+- Each block uses absolute `Dir`, standard status fields, `Remote`, and `Worktrees: N total, M dirty`.
 
 ```go
 import (
@@ -65,7 +65,7 @@ func projectListCompareRemoteField(t *testing.T, mainRepo string) string {
 
 func projectListBlock(t *testing.T, mainRepo string) string {
 	t.Helper()
-	return fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       clean\n%s\nWorktrees: 0 Clean, 0 Dirty",
+	return fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       clean\n%s\nWorktrees: 0 total, 0 dirty",
 		resolvePath(t, mainRepo),
 		projectListBranchLine(t, mainRepo),
 		projectListCommitLine(t, mainRepo),

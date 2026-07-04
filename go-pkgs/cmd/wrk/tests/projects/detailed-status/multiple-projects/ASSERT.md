@@ -36,7 +36,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	for _, abs := range paths {
 		repo := repoByPath[abs]
 		remote := compareWithRemoteField(t, repo, "origin/main", "main")
-		blocks = append(blocks, projectStatusBlockExact(t, repo, "clean", remote, "0 Clean, 0 Dirty"))
+		blocks = append(blocks, projectStatusBlockExact(t, repo, "clean", remote, "0 total, 0 dirty"))
 	}
 	want := strings.Join(blocks, "\n\n")
 	got := strings.TrimSpace(resp.Stdout)

@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- One detailed status block with absolute `Dir`, `Remote:`, and `Worktrees: 0 Clean, 0 Dirty`.
+- One detailed status block with absolute `Dir`, `Remote:`, and `Worktrees: 0 total, 0 dirty`.
 - Stderr is empty.
 
 ## Exit Code
@@ -22,7 +22,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
 
 	remote := compareWithRemoteField(t, req.MainRepo, "origin/main", "main")
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 Clean, 0 Dirty")
+	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
 	assert.Output(t, resp.Stdout, block)
 }
 ```

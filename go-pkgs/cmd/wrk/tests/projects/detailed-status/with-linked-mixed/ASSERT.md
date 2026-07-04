@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Worktrees: 2 Clean, 1 Dirty` in the project block.
+- `Worktrees: 3 total, 1 dirty` in the project block.
 - Stderr is empty.
 
 ## Exit Code
@@ -22,8 +22,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
 
 	wantSummary := linkedWorktreeSummary(t, req.MainRepo)
-	if wantSummary != "2 Clean, 1 Dirty" {
-		t.Fatalf("helper summary: want 2 Clean, 1 Dirty, got %q", wantSummary)
+	if wantSummary != "3 total, 1 dirty" {
+		t.Fatalf("helper summary: want 3 total, 1 dirty, got %q", wantSummary)
 	}
 	remote := compareWithRemoteField(t, req.MainRepo, "origin/main", "main")
 	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, wantSummary)

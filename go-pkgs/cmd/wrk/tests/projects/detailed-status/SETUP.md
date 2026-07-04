@@ -8,7 +8,7 @@ wrk --projects -> status block per project (lexicographic order)
 
 # extra fields vs wrk --status on main repo
 Remote: <brief upstream sync summary>
-Worktrees: N Clean, N Dirty  (linked worktrees only, always shown)
+Worktrees: N total, M dirty  (linked worktrees only, always shown)
 ```
 
 ## Preconditions
@@ -190,7 +190,7 @@ func linkedWorktreeSummary(t *testing.T, mainRepo string) string {
 			dirty++
 		}
 	}
-	return fmt.Sprintf("%d Clean, %d Dirty", clean, dirty)
+	return fmt.Sprintf("%d total, %d dirty", clean+dirty, dirty)
 }
 
 type porcelainCounts struct {
