@@ -37,18 +37,10 @@ func isCreateMode(projects, addFlagSet, setTaskFlagSet, repos, status bool, depP
 	return true
 }
 
-// resolveSourceWorkDir resolves the effective workDir from an optional sourceDir
-// positional. When sourceDir is absent, returns the process cwd.
-func resolveSourceWorkDir(origWd, sourceDir string, createMode bool, wrkHome string) (string, error) {
-	if sourceDir == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("get cwd: %w", err)
-		}
-		return wd, nil
-	}
-
-	absCandidate, err := filepath.Abs(sourceDir)
+// resolveDirArg resolves dir to an absolute path: Abs → stat → optional basename
+// fallback via resolveBasenameFromProjects when allowBasenameFallback is true.
+func resolveDirArg(dir string, allowBasenameFallback bool, wrkHome string) (string, error) {
+	absCandidate, err := filepath.Abs(dir)
 	if err != nil {
 		return "", fmt.Errorf("resolve dir: %w", err)
 	}
@@ -58,8 +50,8 @@ func resolveSourceWorkDir(origWd, sourceDir string, createMode bool, wrkHome str
 		return "", fmt.Errorf("stat dir: %w", err)
 	}
 
-	if createMode && isBasename(sourceDir) {
-		resolved, fallbackErr := resolveBasenameFromProjects(wrkHome, sourceDir)
+	if allowBasenameFallback && isBasename(dir) {
+		resolved, fallbackErr := resolveBasenameFromProjects(wrkHome, dir)
 		if fallbackErr != nil {
 			return "", fallbackErr
 		}
@@ -74,8 +66,22 @@ func resolveSourceWorkDir(origWd, sourceDir string, createMode bool, wrkHome str
 		}
 	}
 
-	_ = origWd // absCandidate already resolves relative paths against process cwd.
 	return "", fmt.Errorf("wrk: %s does not exist", absCandidate)
+}
+
+// resolveSourceWorkDir resolves the effective workDir from an optional sourceDir
+// positional. When sourceDir is absent, returns the process cwd.
+func resolveSourceWorkDir(origWd, sourceDir string, createMode bool, wrkHome string) (string, error) {
+	if sourceDir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("get cwd: %w", err)
+		}
+		return wd, nil
+	}
+
+	_ = origWd // resolveDirArg already resolves relative paths against process cwd.
+	return resolveDirArg(sourceDir, createMode, wrkHome)
 }
 
 func resolveBasenameFromProjects(wrkHome, basename string) (string, error) {

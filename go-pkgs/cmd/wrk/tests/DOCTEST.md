@@ -49,7 +49,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
-- **Basename fallback (create mode)** — when first positional `<dir>` is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as `workDir` and proceed with create; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); `<dir>` contains a path separator; or mode is not create (`--list`, `--done`, `--dep`, `--all-deps`, `--status`, `--projects`, `--add`, `--set-task`, `--merge-back`). Applies to `wrk <dir>` and `wrk <dir> <target-dir>` create paths only.
+- **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; and `--dep <dir>` via `runDep` with `allowBasenameFallback=true`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--status`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup.
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
 - **Request.BasenameEnv** — basename-fallback tests: extra env var appended when running wrk (e.g. `WRK_BASENAME_CONFIRM=1`).
 - **Request.SelectedSavedRepo** — basename-fallback tty-select: absolute path of the saved project chosen via stdin index.
@@ -88,6 +88,18 @@ wrk tests
 │   ├── cwd-in-sub-module/        # cwd inside sub-module dir, not repo root → success
 │   ├── external-wt-owned-by-dep-repo/  # external wt .git gitdir points into dep main, not consumer
 │   └── external-wt-from-linked-consumer/ # --dep from inside a linked consumer wt → owned by dep main, not consumer main
+│   └── basename-fallback/        # wrk --dep <basename> → saved projects.json lookup (same core as create)
+│       ├── single-match/
+│       │   └── basic/            # one saved dep match → external wt + replace
+│       ├── cwd-exists/
+│       │   └── no-fallback/        # ./mydep in consumer cwd → local path, no lookup
+│       ├── path-with-separator/
+│       │   └── no-fallback/        # --dep sub/mydep missing → no lookup
+│       ├── no-match/
+│       │   └── error/            # zero matches → does not exist
+│       └── ambiguous/
+│           ├── tty-select/       # WRK_BASENAME_CONFIRM + stdin selects dep
+│           └── non-tty/          # error listing candidates
 ├── all-deps/                     # wrk --all-deps scan consumer go.mod + local repos → link each matched dep
 │   ├── basic/                    # dep1+dep2 both present → both linked, 2 deps
 │   ├── partial-local/            # only dep1 present → dep1 linked, dep2 not replaced, 1 deps
@@ -381,6 +393,12 @@ wrk tests
 | 111 | projects/basename-fallback/ambiguous/tty-select | Two saved projects same basename; TTY + stdin selects one |
 | 112 | projects/basename-fallback/ambiguous/non-tty | Two saved projects same basename; non-TTY → error listing candidates |
 | 113 | projects/basename-fallback/other-mode/no-fallback | `wrk myrepo --list` with saved project → no fallback, `does not exist` |
+| 114 | dep/basename-fallback/single-match/basic | Saved dep; consumer requires module; `wrk --dep mydep` → external wt from saved path |
+| 115 | dep/basename-fallback/cwd-exists/no-fallback | `./mydep` in consumer cwd (non-git); saved dep exists → local path, `not a git repository` |
+| 116 | dep/basename-fallback/path-with-separator/no-fallback | `wrk --dep sub/mydep` missing → no fallback, `does not exist` |
+| 117 | dep/basename-fallback/no-match/error | No saved dep, no local path → `does not exist` |
+| 118 | dep/basename-fallback/ambiguous/tty-select | Two saved deps same basename; TTY + stdin selects one; `--dep` succeeds |
+| 119 | dep/basename-fallback/ambiguous/non-tty | Two saved deps same basename; non-TTY → error listing candidates |
 
 ## How to Run
 
@@ -408,6 +426,12 @@ doctest test ./tests/status/compare-with-master
 
 # Run a dep leaf
 doctest test ./tests/dep/basic
+
+# Run --dep basename-fallback leaves (expect RED until resolveDirArg wired in runDep)
+doctest vet ./tests/dep/basename-fallback
+doctest test ./tests/dep/basename-fallback
+doctest test ./tests/dep/basename-fallback/single-match/basic
+doctest test ./tests/dep/basename-fallback/ambiguous/tty-select
 
 # Run an all-deps leaf
 doctest test ./tests/all-deps/basic

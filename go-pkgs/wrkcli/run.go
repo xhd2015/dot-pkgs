@@ -213,7 +213,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runStatus(workDir)
 	}
 	if depPath != "" {
-		return runDep(workDir, depPath)
+		return runDep(workDir, depPath, wrkHome)
 	}
 	if allDeps {
 		return runAllDeps(workDir, scanRoot, dryRun)
@@ -503,7 +503,7 @@ func forceRemoveWorktree(wtPath string) error {
 	return nil
 }
 
-func runDep(workDir string, depArg string) error {
+func runDep(workDir string, depArg string, wrkHome string) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -517,19 +517,11 @@ func runDep(workDir string, depArg string) error {
 	if err != nil {
 		return err
 	}
-	depPath, err := filepath.Abs(depArg)
-	if err != nil {
-		return fmt.Errorf("resolve dep path: %w", err)
-	}
-	if !worktree.IsInsideWorkTree(depPath) {
-		return fmt.Errorf("%s is not a git repository", depPath)
-	}
-
-	depSource, err := worktree.ShowToplevel(depPath)
+	depPath, err := resolveDirArg(depArg, true, wrkHome)
 	if err != nil {
 		return err
 	}
-	depMain, err := worktree.ResolveMainRepo(depSource)
+	depMain, err := worktree.ResolveMainRepo(depPath)
 	if err != nil {
 		return err
 	}
