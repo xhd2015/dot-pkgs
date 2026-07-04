@@ -23,7 +23,7 @@ func Setup(t *testing.T, req *Request) error {
 	if err := writeAndStage(req.RepoDir, "main.go", "package main\n"); err != nil {
 		return err
 	}
-	if err := runGit(req.RepoDir, "commit", "-m", "initial"); err != nil {
+	if err := runGit(req.RepoDir, "commit", "--no-verify", "-m", "initial"); err != nil {
 		return err
 	}
 	// Delete and stage the deletion

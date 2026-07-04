@@ -44,7 +44,7 @@ func initGitRepoWithCommit(repoDir string) error {
 	if err := writeAndStage(repoDir, ".gitkeep", ""); err != nil {
 		return err
 	}
-	return runGit(repoDir, "commit", "-m", "initial")
+	return runGit(repoDir, "commit", "--no-verify", "-m", "initial")
 }
 
 func getStagedFileNames(repoDir string) ([]string, error) {

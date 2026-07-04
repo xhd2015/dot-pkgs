@@ -129,9 +129,25 @@ func parseArgs(args []string) (config, error) {
 
 func matchesAny(name string, patterns []string) (bool, error) {
 	for _, pattern := range patterns {
-		matched, err := path.Match(pattern, name)
+		matched, err := matchesPattern(pattern, name)
 		if err != nil {
 			return false, fmt.Errorf("invalid pattern %q: %w", pattern, err)
+		}
+		if matched {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func matchesPattern(pattern, name string) (bool, error) {
+	if strings.Contains(pattern, "/") {
+		return path.Match(pattern, name)
+	}
+	for _, segment := range strings.Split(name, "/") {
+		matched, err := path.Match(pattern, segment)
+		if err != nil {
+			return false, err
 		}
 		if matched {
 			return true, nil
