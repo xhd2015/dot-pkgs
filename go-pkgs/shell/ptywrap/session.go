@@ -17,8 +17,22 @@ type attachRole string
 const (
 	roleWriter   attachRole = "writer"
 	roleObserver attachRole = "observer"
+	roleAttacher attachRole = "attacher"
 	roleSnapshot attachRole = "snapshot"
 )
+
+type inputEventKind int
+
+const (
+	inputEventBytes inputEventKind = iota
+	inputEventResize
+)
+
+type inputEvent struct {
+	kind       inputEventKind
+	data       []byte
+	cols, rows int
+}
 
 type session struct {
 	id        string
@@ -42,6 +56,10 @@ type session struct {
 	writeClaimed bool
 	writerConn   *websocket.Conn
 	observers    map[*websocket.Conn]struct{}
+	attachers    map[*websocket.Conn]struct{}
+
+	inputCh   chan inputEvent
+	inputOnce sync.Once
 }
 
 func (s *session) readLoop() {
@@ -61,9 +79,13 @@ func (s *session) readLoop() {
 			for conn := range s.observers {
 				observerSet = append(observerSet, conn)
 			}
+			attacherSet := make([]*websocket.Conn, 0, len(s.attachers))
+			for conn := range s.attachers {
+				attacherSet = append(attacherSet, conn)
+			}
 			s.mu.Unlock()
 
-			s.broadcastOutput(data, writer, observerSet)
+			s.broadcastOutput(data, writer, observerSet, attacherSet)
 		}
 		if err != nil {
 			s.markExited()
@@ -77,27 +99,37 @@ func (s *session) readLoop() {
 			for conn := range s.observers {
 				observerSet = append(observerSet, conn)
 			}
+			attacherSet := make([]*websocket.Conn, 0, len(s.attachers))
+			for conn := range s.attachers {
+				attacherSet = append(attacherSet, conn)
+			}
 			s.mu.Unlock()
-			s.broadcastText(exitMsg, writer, observerSet)
+			s.broadcastText(exitMsg, writer, observerSet, attacherSet)
 			return
 		}
 	}
 }
 
-func (s *session) broadcastOutput(data []byte, writer *websocket.Conn, observers []*websocket.Conn) {
+func (s *session) broadcastOutput(data []byte, writer *websocket.Conn, observers, attachers []*websocket.Conn) {
 	if writer != nil {
 		_ = writer.WriteMessage(websocket.BinaryMessage, data)
 	}
 	for _, conn := range observers {
 		_ = conn.WriteMessage(websocket.BinaryMessage, data)
 	}
+	for _, conn := range attachers {
+		_ = conn.WriteMessage(websocket.BinaryMessage, data)
+	}
 }
 
-func (s *session) broadcastText(data []byte, writer *websocket.Conn, observers []*websocket.Conn) {
+func (s *session) broadcastText(data []byte, writer *websocket.Conn, observers, attachers []*websocket.Conn) {
 	if writer != nil {
 		_ = writer.WriteMessage(websocket.TextMessage, data)
 	}
 	for _, conn := range observers {
+		_ = conn.WriteMessage(websocket.TextMessage, data)
+	}
+	for _, conn := range attachers {
 		_ = conn.WriteMessage(websocket.TextMessage, data)
 	}
 }
@@ -133,10 +165,12 @@ func (s *session) claimRole(attachMode string) attachRole {
 		return roleObserver
 	case "snapshot":
 		return roleSnapshot
+	case "attach":
+		return roleAttacher
 	case "screen", "interactive", "":
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		if !s.writeClaimed {
+		if !s.writeClaimed || s.writerConn == nil {
 			s.writeClaimed = true
 			return roleWriter
 		}
@@ -144,7 +178,7 @@ func (s *session) claimRole(attachMode string) attachRole {
 	default:
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		if !s.writeClaimed {
+		if !s.writeClaimed || s.writerConn == nil {
 			s.writeClaimed = true
 			return roleWriter
 		}
@@ -163,6 +197,11 @@ func (s *session) registerConn(conn *websocket.Conn, role attachRole) {
 			s.observers = make(map[*websocket.Conn]struct{})
 		}
 		s.observers[conn] = struct{}{}
+	case roleAttacher:
+		if s.attachers == nil {
+			s.attachers = make(map[*websocket.Conn]struct{})
+		}
+		s.attachers[conn] = struct{}{}
 	}
 }
 
@@ -171,9 +210,9 @@ func (s *session) unregisterConn(conn *websocket.Conn) {
 	defer s.mu.Unlock()
 	if s.writerConn == conn {
 		s.writerConn = nil
-		s.writeClaimed = false
 	}
 	delete(s.observers, conn)
+	delete(s.attachers, conn)
 }
 
 func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
@@ -213,6 +252,57 @@ func (s *session) isWriter(conn *websocket.Conn) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.writerConn == conn
+}
+
+func (s *session) ensureInputLoop() {
+	s.inputOnce.Do(func() {
+		s.inputCh = make(chan inputEvent, 256)
+		go s.inputLoop()
+	})
+}
+
+func (s *session) enqueueBytes(data []byte) {
+	s.ensureInputLoop()
+	payload := append([]byte(nil), data...)
+	s.inputCh <- inputEvent{kind: inputEventBytes, data: payload}
+}
+
+func (s *session) enqueueResize(cols, rows int) {
+	s.ensureInputLoop()
+	s.inputCh <- inputEvent{kind: inputEventResize, cols: cols, rows: rows}
+}
+
+func (s *session) inputLoop() {
+	for event := range s.inputCh {
+		switch event.kind {
+		case inputEventBytes:
+			_, _ = s.ptmx.Write(event.data)
+		case inputEventResize:
+			cols, rows := event.cols, event.rows
+			for {
+				select {
+				case next, ok := <-s.inputCh:
+					if !ok {
+						s.resize(cols, rows)
+						return
+					}
+					if next.kind == inputEventResize {
+						cols, rows = next.cols, next.rows
+						continue
+					}
+					s.resize(cols, rows)
+					if next.kind == inputEventBytes {
+						_, _ = s.ptmx.Write(next.data)
+					}
+					goto nextEvent
+				default:
+					s.resize(cols, rows)
+					goto nextEvent
+				}
+			}
+		}
+	nextEvent:
+	}
 }
 
 func (s *session) status() string {
@@ -261,6 +351,10 @@ func (s *session) close() {
 			conn.Close()
 		}
 		s.observers = nil
+		for conn := range s.attachers {
+			conn.Close()
+		}
+		s.attachers = nil
 		s.mu.Unlock()
 
 		if s.ptmx != nil {
@@ -278,10 +372,10 @@ func (s *session) info(connected bool) SessionInfo {
 	defer s.mu.Unlock()
 	writerConnected := s.writerConn != nil
 	observerCount := len(s.observers)
+	attacherCount := len(s.attachers)
 	if !connected {
 		writerConnected = s.writerConn != nil
 	}
-	_ = observerCount
 	return SessionInfo{
 		ID:        s.id,
 		Name:      s.name,
@@ -289,7 +383,11 @@ func (s *session) info(connected bool) SessionInfo {
 		Cwd:       s.cwd,
 		CreatedAt: s.createdAt,
 		Status:    s.status(),
-		Connected: connected || writerConnected || observerCount > 0,
+		Connected: connected || writerConnected || observerCount > 0 || attacherCount > 0,
+
+		ObserverCount:   observerCount,
+		AttacherCount:   attacherCount,
+		WriterConnected: writerConnected,
 	}
 }
 

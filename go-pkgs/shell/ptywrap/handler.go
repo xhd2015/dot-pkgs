@@ -128,6 +128,7 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 	wsCloseCh := make(chan wsCloseResult, 1)
 	deleteOnClose := false
 	isWriter := role == roleWriter
+	canWrite := isWriter || role == roleAttacher
 
 	go func() {
 		var closeCode int
@@ -143,7 +144,7 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 				return
 			}
 
-			if !isWriter {
+			if !canWrite {
 				continue
 			}
 
@@ -152,16 +153,18 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 				if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
 					switch msg.Type {
 					case "resize":
-						s.resize(msg.Cols, msg.Rows)
+						s.enqueueResize(msg.Cols, msg.Rows)
 						continue
 					case "close_delete":
-						deleteOnClose = true
+						if isWriter {
+							deleteOnClose = true
+						}
 						continue
 					}
 				}
 			}
 
-			s.ptmx.Write(message)
+			s.enqueueBytes(message)
 		}
 	}()
 

@@ -153,8 +153,8 @@ func (m *Manager) WriteInput(id string, data []byte) error {
 	if s.exited {
 		return fmt.Errorf("session exited: %s", id)
 	}
-	_, err := s.ptmx.Write(data)
-	return err
+	s.enqueueBytes(data)
+	return nil
 }
 
 // Wait blocks until the session process exits.
@@ -217,7 +217,7 @@ func (m *Manager) listPaginated(page, pageSize int) *SessionsResponse {
 	sessions := make([]SessionInfo, 0, len(pagedSessions))
 	for _, s := range pagedSessions {
 		s.mu.Lock()
-		connected := s.writerConn != nil || len(s.observers) > 0
+		connected := s.writerConn != nil || len(s.observers) > 0 || len(s.attachers) > 0
 		s.mu.Unlock()
 		sessions = append(sessions, s.info(connected))
 	}

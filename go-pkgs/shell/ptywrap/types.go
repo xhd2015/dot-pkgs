@@ -11,6 +11,10 @@ type SessionInfo struct {
 	CreatedAt time.Time `json:"created_at"`
 	Status    string    `json:"status"`
 	Connected bool      `json:"connected"`
+
+	ObserverCount   int  `json:"observer_count"`
+	AttacherCount   int  `json:"attacher_count"`
+	WriterConnected bool `json:"writer_connected"`
 }
 
 // SessionsResponse holds paginated terminal sessions response.
