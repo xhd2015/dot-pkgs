@@ -1,8 +1,7 @@
 ## Expected
 
 - Non-zero exit code (extra-repo filesystem replace blocks done).
-- Stderr names the offending go.mod file under the linked worktree.
-- Stderr names the replace directive with the absolute path to mainRepo submod.
+- Stderr contains `go.mod: => <mainRepo>/submod`.
 - Stderr mentions the block.
 - Consumer linked worktree still exists (merge-back did not run).
 
@@ -22,8 +21,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	submodAbs := filepath.Join(req.MainRepo, "submod")
-	assertContains(t, resp.Stderr, filepath.Join(req.WtDir, "go.mod"))
-	assertContains(t, resp.Stderr, "replace example.com/foo => "+submodAbs)
+	assertContains(t, resp.Stderr, "go.mod: => "+submodAbs)
 	assertContains(t, resp.Stderr, "blocks wrk --done")
 
 	assertFileExists(t, req.WtDir)

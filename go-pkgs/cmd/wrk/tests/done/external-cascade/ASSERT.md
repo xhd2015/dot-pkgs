@@ -1,9 +1,7 @@
 ## Expected
 
 - Non-zero exit code (local filesystem replace remains after cascade).
-- Stderr names the offending go.mod file: `<wtDir>/go.mod`.
-- Stderr names the offending directive: `replace example.com/dep => <external abs path>`
-  (asserted as the `example.com/dep =>` prefix to avoid abs-path symlink flakiness).
+- Stderr contains `go.mod: =>` and the external dep worktree abs path.
 - Stderr mentions the block (`blocks wrk --done`).
 - External dependency worktree under `external/` no longer exists (cascade merge-back).
 - Consumer linked worktree still exists (parent `--done` did not complete).
@@ -23,8 +21,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected non-zero exit (local replace guard), got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
 	}
 
-	assertContains(t, resp.Stderr, filepath.Join(req.WtDir, "go.mod"))
-	assertContains(t, resp.Stderr, "example.com/dep =>")
+	assertContains(t, resp.Stderr, "go.mod: => ")
+	assertContains(t, resp.Stderr, req.ExternalWtDir)
 	assertContains(t, resp.Stderr, "blocks wrk --done")
 	assertFileNotExists(t, req.ExternalWtDir)
 	assertWorktreeListNotContains(t, req.MainRepo, req.ExternalWtDir)

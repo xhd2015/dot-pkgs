@@ -1,8 +1,7 @@
 ## Expected
 
 - Exit code 0 (intra-repo replace is tolerated under the default lenient guard).
-- Stderr names the offending go.mod file: `<wtDir>/go.mod`.
-- Stderr names the offending directive: `replace example.com/foo => ./submod`.
+- Stderr contains `go.mod: => <wtDir>/submod`.
 - Stderr marks it as tolerated (contains `tolerated`).
 - Merge-back proceeded: the consumer linked worktree is removed and no longer
   registered.
@@ -22,8 +21,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected exit 0 (intra-repo warn + proceed), got %d stdout=%q stderr=%q", resp.ExitCode, resp.Stdout, resp.Stderr)
 	}
 
-	assertContains(t, resp.Stderr, filepath.Join(req.WtDir, "go.mod"))
-	assertContains(t, resp.Stderr, "replace example.com/foo => ./submod")
+	assertContains(t, resp.Stderr, "go.mod: => "+filepath.Join(req.WtDir, "submod"))
 	assertContains(t, resp.Stderr, "tolerated")
 
 	// Merge-back ran and removed the worktree.

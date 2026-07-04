@@ -42,6 +42,10 @@ has-go-mod/
 │   └── multi-module/
 │       ├── single-issue/   — root clean, sub has local replace → issue in sub
 │       └── mixed/          — root intra-repo, sub extra-repo → both found
+└── wrk-external/
+    ├── active-linked-abs/      — abs replace under worktree/external/ → within-worktree (0 issues)
+    ├── removed-after-done/     — abs replace path still under worktree after wt removed → 0 issues
+    └── stale-sibling-abs/      — abs replace to sibling worktree path → outside-worktree (1 issue)
 ```
 
 ## Test Index
@@ -59,6 +63,9 @@ has-go-mod/
 | `has-go-mod/local-replace/extra-repo/abs-path` | absolute path outside repo | 1 issue, IsIntraRepo=false |
 | `has-go-mod/local-replace/multi-module/single-issue` | root clean, sub has local replace | 1 issue in sub |
 | `has-go-mod/local-replace/multi-module/mixed` | root intra-repo, sub extra-repo | 2 issues, mixed flags |
+| `has-go-mod/local-replace/wrk-external/active-linked-abs` | abs replace under `worktree/external/` linked wt | 0 issues (within-worktree) |
+| `has-go-mod/local-replace/wrk-external/removed-after-done` | abs replace path under worktree after wt removed | 0 issues (within-worktree) |
+| `has-go-mod/local-replace/wrk-external/stale-sibling-abs` | abs replace to sibling worktree `external/` | 1 issue, IsIntraRepo=false |
 
 ```go
 import (

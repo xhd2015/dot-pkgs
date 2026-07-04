@@ -1,8 +1,7 @@
 ## Expected
 
 - Non-zero exit code (extra-repo filesystem replace blocks `--done`).
-- Stderr names the offending go.mod file: `<wtDir>/go.mod`.
-- Stderr names the offending directive: `replace example.com/foo => ./external/foo`.
+- Stderr contains `go.mod: => <wtDir>/external/foo`.
 - Stderr mentions the block (`blocks wrk --done`).
 - Consumer linked worktree still exists (merge-back did not run).
 
@@ -21,8 +20,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected non-zero exit, got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
 	}
 
-	assertContains(t, resp.Stderr, filepath.Join(req.WtDir, "go.mod"))
-	assertContains(t, resp.Stderr, "replace example.com/foo => ./external/foo")
+	assertContains(t, resp.Stderr, "go.mod: => "+filepath.Join(req.WtDir, "external", "foo"))
 	assertContains(t, resp.Stderr, "blocks wrk --done")
 	assertFileExists(t, req.WtDir)
 	assertWorktreeListContains(t, req.MainRepo, req.WtDir)

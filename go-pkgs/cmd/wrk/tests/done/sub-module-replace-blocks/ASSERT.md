@@ -1,8 +1,7 @@
 ## Expected
 
 - Non-zero exit code (sub-module local filesystem replace blocks `--done`).
-- Stderr names the offending go.mod file: `<wtDir>/sub/go.mod`.
-- Stderr names the offending directive: `replace example.com/foo => ./local-foo`.
+- Stderr contains `sub/go.mod: => <wtDir>/sub/local-foo`.
 - Stderr mentions the block (`blocks wrk --done`).
 - Stderr does NOT contain `no go.mod found` (the top-level go.mod exists; the
   block comes from the sub-module replace, not a missing go.mod).
@@ -23,8 +22,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected non-zero exit (sub-module replace guard), got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
 	}
 
-	assertContains(t, resp.Stderr, filepath.Join(req.WtDir, "sub", "go.mod"))
-	assertContains(t, resp.Stderr, "replace example.com/foo => ./local-foo")
+	assertContains(t, resp.Stderr, "sub/go.mod: => "+filepath.Join(req.WtDir, "sub", "local-foo"))
 	assertContains(t, resp.Stderr, "blocks wrk --done")
 	assertNotContains(t, resp.Stderr, "no go.mod found")
 	assertFileExists(t, req.WtDir)

@@ -1056,18 +1056,15 @@ func blockIfLocalReplace(top string, noInModuleReplace bool) error {
 
 		if hasExtra || noInModuleReplace {
 			var b strings.Builder
-			fmt.Fprintf(&b, "%s: local filesystem replace blocks wrk --done:", issue.GoModPath)
-			fmt.Fprintf(&b, "\n  replace %s => %s", issue.OldPath, issue.NewPath)
-			b.WriteString("\nresolve replace directives manually before running wrk --done")
+			b.WriteString("local filesystem replace blocks wrk --done:\n")
+			fmt.Fprintf(&b, "%s\n", replace.FormatIssueLine(top, issue))
+			b.WriteString("resolve replace directives manually before running wrk --done")
 			return errors.New(b.String())
 		}
 
 		// Only intra-repo offenders, default lenient mode: warn and proceed.
-		var b strings.Builder
-		fmt.Fprintf(&b, "%s: local filesystem replace (intra-repo) - tolerated, remove before pushing:", issue.GoModPath)
-		fmt.Fprintf(&b, "\n  replace %s => %s", issue.OldPath, issue.NewPath)
-		b.WriteString("\n")
-		fmt.Fprint(os.Stderr, b.String())
+		fmt.Fprintln(os.Stderr, replace.FormatIssueLine(top, issue))
+		fmt.Fprintln(os.Stderr, "local filesystem replace (intra-repo) - tolerated, remove before pushing:")
 	}
 	return nil
 }

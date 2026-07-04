@@ -11,7 +11,7 @@ Tests for the git hook that rejects local `replace` directives in go.mod files.
 - **Repository** — temp git repo with optional `origin` remote and one or more go.mod files.
 - **Scan** — the hook uses `gotool/mod/scan` to walk all go.mod files under the repo root.
 - **Replace detection** — for each module, the hook inspects `replace` directives. A replace is "local" when `NewVersion` is empty (Go modfile convention for path-based replaces such as `./xxx`, `../xxx`, or `/abs/path`). Version-only replaces (`old v1.0.0 => v2.0.0`) are not local.
-- **Streaming output** — each local replace is printed to stdout as soon as it is found.
+- **Streaming output** — each local replace is printed to stdout as `go.mod: => <target-dir>` (or `sub/go.mod: => <target-dir>` for nested modules).
 - **Exit code** — 0 when no local replaces are found; 1 when any local replace is found.
 
 ## How to Run
@@ -36,6 +36,7 @@ doctest test -v ./
 - `scan/local-replace/intra-repo-allowed`: go.mod with `./xxx` intra-repo replace, exit 0 (lenient default).
 - `scan/local-replace/strict-blocks`: go.mod with `./xxx` intra-repo replace + `--strict`, exit 1.
 - `scan/local-replace/strict-intra-repo`: multi-module with intra-repo replace + `--strict`, exit 1.
+- `scan/local-replace/wrk-external-allowed`: replace under `worktree/external/` (within-worktree), exit 0 (lenient).
 
 ```go
 import (

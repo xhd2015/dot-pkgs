@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/replace"
 )
 
@@ -63,7 +65,17 @@ func runWithOutput(args []string, out io.Writer) error {
 		return nil
 	}
 
-	issues, err := replace.CheckLocalReplaces(".")
+	cwd, err := filepath.Abs(".")
+	if err != nil {
+		return err
+	}
+
+	issues, err := replace.CheckLocalReplaces(cwd)
+	if err != nil {
+		return err
+	}
+
+	scanTop, err := worktree.ShowToplevel(cwd)
 	if err != nil {
 		return err
 	}
@@ -74,7 +86,7 @@ func runWithOutput(args []string, out io.Writer) error {
 		if issue.IsIntraRepo && !cfg.strict {
 			continue
 		}
-		fmt.Fprintln(out, issue.NewPath)
+		fmt.Fprintln(out, replace.FormatIssueLine(scanTop, issue))
 		found = true
 	}
 	if found {
