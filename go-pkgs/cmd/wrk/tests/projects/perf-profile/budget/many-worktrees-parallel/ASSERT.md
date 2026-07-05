@@ -1,3 +1,8 @@
+---
+label: slow, flaky
+explanation: 12 linked worktrees + bare remote; cold run ~45s; timing budget thresholds vary with machine load
+---
+
 ## Expected
 
 After parallel worktree gathering (fixed worker pool + single main-repo goroutine):

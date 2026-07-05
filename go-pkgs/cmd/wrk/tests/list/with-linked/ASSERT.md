@@ -1,3 +1,8 @@
+---
+label: slow
+explanation: git init + linked worktree add; cold run ~15s
+---
+
 ## Expected
 
 - Exit code 0.

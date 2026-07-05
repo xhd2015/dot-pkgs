@@ -1,3 +1,8 @@
+---
+label: slow
+explanation: bare origin + push + two linked worktrees; cold run ~25s
+---
+
 ## Expected
 
 - Exit code 0 (stale-gitdir linked worktrees surface as inline errors, not fatal).

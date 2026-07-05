@@ -1,3 +1,8 @@
+---
+label: slow
+explanation: 12 linked worktrees + bare remote + push; cold run ~30s
+---
+
 ## Expected
 
 - Exit code 0; stdout unchanged (one project block, `Worktrees:    12 total, 0 dirty`).

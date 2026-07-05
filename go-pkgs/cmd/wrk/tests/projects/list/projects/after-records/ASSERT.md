@@ -1,3 +1,8 @@
+---
+label: slow
+explanation: two tracked repos each with bare origin + push; cold run ~33s
+---
+
 ## Expected
 
 - Exit code 0.

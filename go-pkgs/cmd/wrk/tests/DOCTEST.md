@@ -51,6 +51,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **Stdout trailing newline** — all wrk modes that print non-empty stdout end with `\n` after the last content line (shell prompt stays on its own line). Empty stdout has no bytes.
 - **Stdout assertions** — doctest leaves use `assert.Output` with `version: 2` full-match templates only (no `<contains>` for stdout). Multi-block stdout (e.g. `--status` scan blocks, `--projects` project blocks) is asserted with one v2 template covering the entire stdout; blocks are joined with `\n\n`. Stderr error messages continue to use `<contains>` partial match.
+- **Run profile labels** — six leaves are labeled `slow` (>10s cold: 12-worktree perf fixtures, multi-repo `--projects`, linked `--list`); `many-worktrees-parallel` is also `flaky` (timing budget). Discovery runs (`doctest test ./tests`) skip labeled leaves; run them with `doctest test --label slow ./tests`.
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **wrk --rm `<dir>`** — standalone mode; `--rm <dir>` (no `--remove` alias); `--rm` consumes the next argument as `<dir>`; mutually exclusive with all other modes; requires non-empty path (`wrk: --rm requires a path argument`). Help text: `--rm <dir>  remove a recorded main repository path`. Resolves target: `filepath.Abs` + `storage.NormalizePath`; if path exists and is inside a git work tree → resolve to main repo via `worktree.ShowToplevel` + `worktree.ResolveMainRepo` (same as `--add`); if path does not exist → use normalized absolute path as-is (stale/moved entries). **Success (entry removed)**: exit 0; stdout = removed main-repo absolute path (single line, trimmed). **Idempotent (not in projects.json)**: exit 0; empty stdout; no error. Does not delete worktrees, git repos, or events.jsonl history. Appends event `command: "rm"`, `args: ["--rm", "<path-arg>"]`, `exit_code: 0`. Auto-record still runs before remove.
 - **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
@@ -508,8 +509,17 @@ wrk tests
 # Verify tree structure (no test execution)
 doctest vet ./tests
 
-# Run all tests (expect RED until wrk is implemented)
+# Fast discovery run (skips labeled leaves — slow perf/multi-repo fixtures)
 doctest test ./tests
+
+# Slow / perf leaves only (6 leaves: 12-worktree perf, multi-repo --projects, linked list)
+doctest test --label slow ./tests
+
+# Full CI: fast suite then slow suite
+doctest test ./tests && doctest test --label slow ./tests
+
+# Flaky timing budget (subset of slow)
+doctest test --label flaky ./tests/projects/perf-profile/budget/many-worktrees-parallel
 
 # Run a specific leaf
 doctest test ./tests/create-worktree/main-checkout/basic-create
