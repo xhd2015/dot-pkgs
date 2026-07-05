@@ -111,7 +111,12 @@ func masterField(t *testing.T, mainRepo, mainBranch, wtBranch string) string {
 
 func statusBlockWithMasterPlain(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
 	t.Helper()
-	block := statusBlockPlain(t, repoDir, relDir, statusLine)
+	var block string
+	if relDir == "." {
+		block = statusRootBlockPlain(t, repoDir, statusLine, statusNoUpstreamRemote())
+	} else {
+		block = statusBlockPlain(t, repoDir, relDir, statusLine)
+	}
 	if masterLine != "" {
 		block += "\n" + masterLine
 	}

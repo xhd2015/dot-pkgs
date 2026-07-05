@@ -352,7 +352,9 @@ func gitOutput(dir string, args ...string) (string, error) {
 }
 
 func runGit(dir string, args ...string) error {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	fullArgs := append([]string{"-C", dir}, args...)
+	logGitVerbose(fullArgs)
+	cmd := exec.Command("git", fullArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git %v: %w\n%s", args, err, combinedOutput(out))
@@ -403,8 +405,12 @@ func createTmpWorktree(mainRepo, sourceBranch, mergeRef string) (tmpPath, tmpBra
 }
 
 func cleanupTmpWorktree(mainRepo, tmpPath, tmpBranch string) {
-	exec.Command("git", "-C", mainRepo, "worktree", "remove", "--force", tmpPath).Run()
-	exec.Command("git", "-C", mainRepo, "branch", "-D", tmpBranch).Run()
+	removeArgs := []string{"-C", mainRepo, "worktree", "remove", "--force", tmpPath}
+	logGitVerbose(removeArgs)
+	exec.Command("git", removeArgs...).Run()
+	branchArgs := []string{"-C", mainRepo, "branch", "-D", tmpBranch}
+	logGitVerbose(branchArgs)
+	exec.Command("git", branchArgs...).Run()
 }
 
 func resolveWrkWorktreesDir() (string, error) {
@@ -580,7 +586,9 @@ func executePlan(plan MergeBackPlan) error {
 }
 
 func runPlannedCommand(cmd PlannedCommand, relation string) error {
-	gitCmd := exec.Command("git", append([]string{"-C", cmd.Dir}, cmd.Args...)...)
+	fullArgs := append([]string{"-C", cmd.Dir}, cmd.Args...)
+	logGitVerbose(fullArgs)
+	gitCmd := exec.Command("git", fullArgs...)
 	out, err := gitCmd.CombinedOutput()
 	if err != nil {
 		if relation == "diverged" && len(cmd.Args) > 0 && cmd.Args[0] == "rebase" {

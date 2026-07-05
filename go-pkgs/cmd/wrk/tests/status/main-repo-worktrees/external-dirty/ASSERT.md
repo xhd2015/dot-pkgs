@@ -21,7 +21,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	dirtyLine := statusLineForRepo(t, req.WtDir)
 	assertOutputExact(t, resp.Stdout, statusStdoutV2(t,
-		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", ""),
+		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", "", true),
 		appendedHealthyBlockPlain(t, req.MainRepo, req.WtDir, req.WtBranch, dirtyLine),
 	))
 }

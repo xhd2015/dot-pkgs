@@ -29,7 +29,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	assertOutputExact(t, resp.Stdout, statusStdoutV2(t,
-		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", ""),
+		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", "", true),
 		appendedHealthyBlockPlain(t, req.MainRepo, req.WtDir, req.WtBranch, "clean"),
 		appendedHealthyBlockPlain(t, req.MainRepo, req.WtDir2, req.WtBranch2, "clean"),
 	))

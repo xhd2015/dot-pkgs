@@ -19,7 +19,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 	assertStdoutBlocksSeparated(t, resp.Stdout, 1)
 	assertOutputExact(t, resp.Stdout, statusStdoutV2(t,
-		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", ""),
+		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", "", true),
 	))
 }
 ```

@@ -24,6 +24,7 @@ wrk --status + other mode -> error (mutually exclusive)
 
 - Successful status output is a sequence of blocks containing `Dir`, `Branch`, `Commit`, and `Status` lines.
 - The `Dir` line is relative to the current checkout toplevel; the checkout itself is `.`.
+- **Main repo checkout cwd only**: the root `Dir: .` block also includes `Remote:` (same brief labels as `--projects`; `(no upstream)` when no tracking remote). Linked worktree cwd and nested `RepoTypeMain` repos omit `Remote:`.
 - **Linked worktrees only** (`worktree.IsLinked`) also include one-line `Master:` — brief branch-relation label comparing the main repo's current branch vs the worktree's current branch (`git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs fast forward(+N commit(s))`, `diverged(N commit(s))`); main checkout and nested independent `RepoTypeMain` repos omit this field.
 - When stdout is a TTY or `--color` is set, `--status` colors `Status: clean` green and applies granular dirty-status coloring (same rules as `--projects`); `Master:` values use green/orange/red by relation. Without color: plain text.
 
@@ -53,15 +54,33 @@ func statusBranchLine(t *testing.T, repoDir string) string {
 	return "Branch:       " + branch
 }
 
+func statusNoUpstreamRemote() string {
+	return "Remote:       (no upstream)"
+}
+
 func statusBlockPlain(t *testing.T, repoDir, relDir, statusLine string) string {
 	t.Helper()
 	return fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       %s",
 		relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
 }
 
+func statusRootBlockPlain(t *testing.T, mainRepo, statusLine, remoteLine string) string {
+	t.Helper()
+	return fmt.Sprintf("Dir:          .\n%s\n%s\nStatus:       %s\n%s",
+		statusBranchLine(t, mainRepo), statusCommitLine(t, mainRepo), statusLine, remoteLine)
+}
+
 func statusBlockTemplate(t *testing.T, repoDir, relDir, statusLine string) string {
 	t.Helper()
+	if relDir == "." {
+		return v2StdoutTemplate(statusRootBlockPlain(t, repoDir, statusLine, statusNoUpstreamRemote()))
+	}
 	return v2StdoutTemplate(statusBlockPlain(t, repoDir, relDir, statusLine))
+}
+
+func statusRootBlockTemplate(t *testing.T, mainRepo, statusLine, remoteLine string) string {
+	t.Helper()
+	return v2StdoutTemplate(statusRootBlockPlain(t, mainRepo, statusLine, remoteLine))
 }
 
 func statusStdoutV2(t *testing.T, blocks ...string) string {

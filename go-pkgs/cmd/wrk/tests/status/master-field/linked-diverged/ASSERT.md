@@ -26,7 +26,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	master := masterField(t, req.MainRepo, "main", req.WtBranch)
 	assert.Output(t, resp.Stdout, statusStdoutV2(t,
-		statusBlockPlain(t, req.MainRepo, ".", "clean"),
+		statusRootBlockPlain(t, req.MainRepo, "clean", statusNoUpstreamRemote()),
 		statusBlockWithMasterPlain(t, req.WtDir, "wt-linked", "clean", master),
 	))
 }

@@ -21,7 +21,12 @@ type statusCounts struct {
 	deleted int
 }
 
-func runStatus(workDir string, colorEnabled bool) error {
+type statusBlockPrintOpts struct {
+	forceRel   string
+	showMaster *bool
+}
+
+func runStatus(workDir string, colorEnabled bool, fetchEnabled bool) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -34,6 +39,10 @@ func runStatus(workDir string, colorEnabled bool) error {
 	checkoutRoot, err := worktree.ShowToplevel(cwd)
 	if err != nil {
 		return err
+	}
+
+	if mainRepo, ok := linkedInTreeMainRepo(cwd); ok {
+		return runStatusLinkedInTreeCwd(cwd, mainRepo, colorEnabled)
 	}
 
 	repos, err := discoverStatusRepos(context.Background(), checkoutRoot)
@@ -61,13 +70,15 @@ func runStatus(workDir string, colorEnabled bool) error {
 	}
 
 	scanColorEnabled := colorEnabled && len(appendEntries) == 0
+	showRemote := worktree.IsMainRepo(checkoutRoot)
+	effectiveFetch := fetchEnabled && showRemote
 
 	blocksPrinted := 0
 	for _, repo := range repos {
 		if blocksPrinted > 0 {
 			fmt.Println()
 		}
-		if err := printStatusBlock(checkoutRoot, repo.Path, scanColorEnabled); err != nil {
+		if err := printStatusBlock(checkoutRoot, repo.Path, scanColorEnabled, showRemote, effectiveFetch, statusBlockPrintOpts{}); err != nil {
 			return err
 		}
 		blocksPrinted++
@@ -79,6 +90,61 @@ func runStatus(workDir string, colorEnabled bool) error {
 		}
 		printAppendedLinkedBlock(checkoutRoot, entry.Path, colorEnabled)
 		blocksPrinted++
+	}
+	return nil
+}
+
+func linkedInTreeMainRepo(cwd string) (string, bool) {
+	if !worktree.IsLinked(cwd) {
+		return "", false
+	}
+	mainRepo, err := worktree.ReadMainRepo(cwd)
+	if err != nil {
+		return "", false
+	}
+	cleanMain := filepath.Clean(mainRepo)
+	cleanCwd := filepath.Clean(cwd)
+	if cleanCwd == cleanMain {
+		return "", false
+	}
+	rel, err := filepath.Rel(cleanMain, cleanCwd)
+	if err != nil {
+		return "", false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return mainRepo, true
+}
+
+func runStatusLinkedInTreeCwd(cwd, mainRepo string, colorEnabled bool) error {
+	repos, err := discoverStatusRepos(context.Background(), mainRepo)
+	if err != nil {
+		return err
+	}
+
+	blocksPrinted := 0
+	printBlock := func(repoPath string, opts statusBlockPrintOpts) error {
+		if blocksPrinted > 0 {
+			fmt.Println()
+		}
+		blocksPrinted++
+		return printStatusBlock(mainRepo, repoPath, colorEnabled, false, false, opts)
+	}
+
+	showMasterFalse := false
+	if err := printBlock(cwd, statusBlockPrintOpts{forceRel: ".", showMaster: &showMasterFalse}); err != nil {
+		return err
+	}
+
+	showMasterTrue := true
+	for _, repo := range repos {
+		if worktree.IsMainRepo(repo.Path) || !worktree.IsLinked(repo.Path) {
+			continue
+		}
+		if err := printBlock(repo.Path, statusBlockPrintOpts{showMaster: &showMasterTrue}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -167,13 +233,17 @@ func printAppendedBrokenBlock(dirLine, msg string, colorEnabled bool) {
 	fmt.Printf("Status:       %s\n", statusVal)
 }
 
-func printStatusBlock(root, repoPath string, colorEnabled bool) error {
-	rel, err := filepath.Rel(root, repoPath)
-	if err != nil {
-		return fmt.Errorf("resolve relative repo path: %w", err)
-	}
-	if rel == "." {
-		rel = "."
+func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool, fetchEnabled bool, opts statusBlockPrintOpts) error {
+	rel := opts.forceRel
+	if rel == "" {
+		var err error
+		rel, err = filepath.Rel(root, repoPath)
+		if err != nil {
+			return fmt.Errorf("resolve relative repo path: %w", err)
+		}
+		if rel == "." {
+			rel = "."
+		}
 	}
 
 	branch, err := gitOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
@@ -194,6 +264,9 @@ func printStatusBlock(root, repoPath string, colorEnabled bool) error {
 	}
 
 	hasMaster := worktree.IsLinked(repoPath)
+	if opts.showMaster != nil {
+		hasMaster = *opts.showMaster
+	}
 	var masterBrief string
 	if hasMaster {
 		masterBrief, _, err = masterBriefForRepo(repoPath, branch, colorEnabled)
@@ -207,13 +280,39 @@ func printStatusBlock(root, repoPath string, colorEnabled bool) error {
 	fmt.Printf("Commit:       %s  %s\n", short, subject)
 
 	statusLine := formatStatusCounts(counts, colorEnabled, true)
+	fmt.Printf("Status:       %s\n", statusLine)
 	if hasMaster {
-		fmt.Printf("Status:       %s\n", statusLine)
 		fmt.Printf("Master:       %s\n", masterBrief)
-	} else {
-		fmt.Printf("Status:       %s\n", statusLine)
+	} else if showRemote && rel == "." {
+		remoteLine, err := formatStatusRemoteLine(repoPath, branch, colorEnabled, fetchEnabled, counts)
+		if err != nil {
+			return err
+		}
+		fmt.Println(remoteLine)
 	}
 	return nil
+}
+
+func formatStatusRemoteLine(mainRepoPath, currentBranch string, colorEnabled bool, fetchEnabled bool, counts statusCounts) (string, error) {
+	upstream, err := gitUpstreamRef(mainRepoPath)
+	if err != nil {
+		return "", err
+	}
+	if upstream == "" {
+		return "Remote:       (no upstream)", nil
+	}
+	if fetchEnabled {
+		if err := gitFetchUpstreamQuietNoOptionalLocks(mainRepoPath, upstream); err != nil {
+			return "Remote:       error: " + err.Error(), nil
+		}
+	}
+	isClean := counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0
+	remoteColor := colorEnabled && isClean
+	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
+	if err != nil {
+		return "Remote:       error: " + err.Error(), nil
+	}
+	return "Remote:       " + FormatRemoteBrief(result, remoteColor), nil
 }
 
 func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelation git.BranchRelation, dirtyWorktrees, worktreeErrors int) bool {
@@ -272,7 +371,7 @@ func masterBriefForRepo(repoPath, wtBranch string, colorEnabled bool) (string, g
 	return FormatMasterBrief(result, colorEnabled), result.Relation, nil
 }
 
-func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bool) (string, error) {
+func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bool, fetchEnabled bool) (string, error) {
 	upstream, err := gitUpstreamRef(mainRepoPath)
 	if err != nil {
 		return "", err
@@ -280,8 +379,10 @@ func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bo
 	if upstream == "" {
 		return "Remote:       (no upstream)", nil
 	}
-	if err := gitFetchQuiet(mainRepoPath); err != nil {
-		return "", err
+	if fetchEnabled {
+		if err := gitFetchUpstreamQuietNoOptionalLocks(mainRepoPath, upstream); err != nil {
+			return "", err
+		}
 	}
 	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
 	if err != nil {
@@ -291,8 +392,7 @@ func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bo
 }
 
 func gitUpstreamRef(repoPath string) (string, error) {
-	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "@{upstream}")
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	cmd := gitCommandWithEnv(repoPath, []string{"GIT_OPTIONAL_LOCKS=0"}, "rev-parse", "--abbrev-ref", "@{upstream}")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", nil
@@ -310,8 +410,7 @@ func gitWorktreeIsClean(repoPath string) (bool, error) {
 }
 
 func gitCombinedOutput(repoPath string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repoPath
+	cmd := gitCommandDir(repoPath, args...)
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	return cmd.CombinedOutput()
 }
@@ -340,8 +439,7 @@ func gitOutputNoOptionalLocks(repoPath string, args ...string) (string, error) {
 }
 
 func gitOutput(repoPath string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	cmd := gitCommandWithEnv(repoPath, []string{"GIT_OPTIONAL_LOCKS=0"}, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
@@ -390,7 +488,7 @@ func parseStatusCounts(out string) statusCounts {
 }
 
 func gitFetchQuiet(repoPath string) error {
-	cmd := exec.Command("git", "-C", repoPath, "fetch", "--quiet")
+	cmd := gitCommand("-C", repoPath, "fetch", "--quiet")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if len(out) > 0 {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
@@ -401,8 +499,7 @@ func gitFetchQuiet(repoPath string) error {
 }
 
 func gitFetchQuietNoOptionalLocks(repoPath string) error {
-	cmd := exec.Command("git", "-C", repoPath, "fetch", "--quiet")
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	cmd := gitCommandWithEnv(repoPath, []string{"GIT_OPTIONAL_LOCKS=0"}, "fetch", "--quiet")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if len(out) > 0 {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
@@ -417,8 +514,7 @@ func gitFetchUpstreamQuietNoOptionalLocks(repoPath, upstream string) error {
 	if !ok || remote == "" || branch == "" {
 		return gitFetchQuietNoOptionalLocks(repoPath)
 	}
-	cmd := exec.Command("git", "-C", repoPath, "fetch", "--quiet", remote, branch)
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	cmd := gitCommandWithEnv(repoPath, []string{"GIT_OPTIONAL_LOCKS=0"}, "fetch", "--quiet", remote, branch)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if len(out) > 0 {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))

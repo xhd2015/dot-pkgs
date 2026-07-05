@@ -23,8 +23,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	inTreeMaster := masterField(t, req.MainRepo, "main", req.InTreeWtBranch)
 	assertOutputExact(t, resp.Stdout, statusStdoutV2(t,
-		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", ""),
-		scanStatusBlockPlain(t, req.InTreeWtDir, req.InTreeWtRel, "clean", inTreeMaster),
+		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", "", true),
+		scanStatusBlockPlain(t, req.InTreeWtDir, req.InTreeWtRel, "clean", inTreeMaster, false),
 		appendedHealthyBlockPlain(t, req.MainRepo, req.WtDir, req.WtBranch, "clean"),
 	))
 }

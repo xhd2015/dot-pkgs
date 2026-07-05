@@ -22,7 +22,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	errStatus := appendedErrorStatusColored(t, req.WtDir)
 	assertOutputExact(t, resp.Stdout, statusStdoutV2(t,
-		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", ""),
+		scanStatusBlockPlain(t, req.MainRepo, ".", "clean", "", true),
 		appendedDirLine(t, req.WtDir)+"\nStatus:       "+errStatus,
 	))
 }

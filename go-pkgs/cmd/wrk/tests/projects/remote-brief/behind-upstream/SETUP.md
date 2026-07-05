@@ -18,6 +18,7 @@ func Setup(t *testing.T, req *Request) error {
 	origin := setupRemoteBriefBareOrigin(t, req.WorkRoot, "origin")
 	repo := setupRemoteBriefTrackedRepo(t, req.WorkRoot, "behind", origin, "behind base")
 	pushCommitToRemoteBriefOrigin(t, req.WorkRoot, origin, "remote-only.txt", "remote\n", "on origin only")
+	runGitIsolated(t, repo, "fetch", "origin")
 	recordRemoteBriefProject(t, req, repo)
 	req.MainRepo = repo
 	return nil

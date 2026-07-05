@@ -56,6 +56,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var repos bool
 	var projects bool
 	var colorFlag bool
+	var fetchFlag bool
+	var verbose bool
 	var addPath string
 	var removePath string
 	var confirmFromStdin bool
@@ -76,6 +78,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--status", &status).
 		Bool("--repos", &repos).
 		Bool("--projects", &projects).
+		Bool("--fetch", &fetchFlag).
+		Bool("-v,--verbose", &verbose).
 		Bool("--color", &colorFlag).
 		String("--add", &addPath).
 		String("--rm", &removePath).
@@ -100,6 +104,17 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 
 	ctx.command = resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, done, list, status, repos, mergeBack, depPath, allDeps)
 	ctx.eventArgs = extractEventArgs(args, remaining)
+
+	setInvocationVerbose(verbose)
+	worktree.GitVerboseLogger = logGitCommand
+	defer func() {
+		setInvocationVerbose(false)
+		worktree.GitVerboseLogger = nil
+	}()
+
+	if fetchFlag && !projects && !status {
+		return fmt.Errorf("wrk: --fetch is only valid with --projects or --status")
+	}
 
 	// remaining holds 0, 1, or 2 positionals:
 	//   remaining[0] = sourceDir (valid for ALL modes — cwd when absent)
@@ -212,7 +227,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 
 	if projects {
 		colorEnabled := term.IsTerminal(int(os.Stdout.Fd())) || colorFlag
-		return runProjects(wrkHome, colorEnabled)
+		return runProjects(wrkHome, colorEnabled, fetchFlag)
 	}
 	if addFlagSet {
 		return runAdd(wrkHome, addPath)
@@ -225,7 +240,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	}
 	if status {
 		colorEnabled := term.IsTerminal(int(os.Stdout.Fd())) || colorFlag
-		return runStatus(workDir, colorEnabled)
+		return runStatus(workDir, colorEnabled, fetchFlag)
 	}
 	if depPath != "" {
 		return runDep(workDir, depPath, wrkHome)
@@ -272,6 +287,8 @@ Flags:
   --status                        show status for git repos under this checkout
   --repos                         list git repos under this checkout
   --projects                      list recorded main repository paths
+  --fetch                         with --projects or --status: fetch upstream before Remote: compare
+  -v, --verbose                   log major git commands to stderr
   --add <dir>                     manually record a main repository path
   --rm <dir>                      remove a recorded main repository path
   --dep <path>                    spawn a dependency worktree under ./external
@@ -287,7 +304,7 @@ Environment:
 `
 }
 
-func runProjects(wrkHome string, colorEnabled bool) error {
+func runProjects(wrkHome string, colorEnabled bool, fetchEnabled bool) error {
 	endPerf := beginProjectsPerfRun()
 	defer endPerf()
 
@@ -331,7 +348,7 @@ func runProjects(wrkHome string, colorEnabled bool) error {
 			for i := range jobs {
 				p := paths[i]
 				endProject := beginProjectPerf(p)
-				data, _ := gatherProjectStatus(p, colorEnabled)
+				data, _ := gatherProjectStatus(p, colorEnabled, fetchEnabled)
 				endProject()
 
 				mu.Lock()
@@ -418,7 +435,7 @@ func runList(workDir string) error {
 		return fmt.Errorf("%s is not a git repository", cwd)
 	}
 
-	cmd := exec.Command("git", "-C", cwd, "worktree", "list")
+	cmd := gitCommand("-C", cwd, "worktree", "list")
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
@@ -587,12 +604,12 @@ func forceRemoveWorktree(wtPath string) error {
 		return err
 	}
 
-	removeCmd := exec.Command("git", "-C", mainRepo, "worktree", "remove", "--force", wtPath)
+	removeCmd := gitCommand("-C", mainRepo, "worktree", "remove", "--force", wtPath)
 	if out, err := removeCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree remove: %w\n%s", err, out)
 	}
 	if branch != "" && branch != "HEAD" {
-		branchCmd := exec.Command("git", "-C", mainRepo, "branch", "-D", branch)
+		branchCmd := gitCommand("-C", mainRepo, "branch", "-D", branch)
 		if out, err := branchCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git branch -D: %w\n%s", err, out)
 		}
@@ -1062,7 +1079,7 @@ func createExternalWorktree(depMain, depPath, externalPath, branch string) error
 	}
 
 	if !branchExists(depMain, branch) {
-		cmd := exec.Command("git", "-C", depMain, "worktree", "add", "-b", branch, externalPath, depBranch)
+		cmd := gitCommand("-C", depMain, "worktree", "add", "-b", branch, externalPath, depBranch)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git worktree add: %w\n%s", err, out)
 		}
@@ -1071,13 +1088,13 @@ func createExternalWorktree(depMain, depPath, externalPath, branch string) error
 
 	// Branch already exists in the dep repo (e.g. an earlier --dep created it):
 	// add a linked worktree on that branch without checkout, then check it out.
-	cmd := exec.Command("git", "-C", depMain, "worktree", "add", "--no-checkout", externalPath)
+	cmd := gitCommand("-C", depMain, "worktree", "add", "--no-checkout", externalPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree add: %w\n%s", err, out)
 	}
-	checkout := exec.Command("git", "-C", externalPath, "checkout", "--ignore-other-worktrees", branch)
+	checkout := gitCommand("-C", externalPath, "checkout", "--ignore-other-worktrees", branch)
 	if out, err := checkout.CombinedOutput(); err != nil {
-		_ = exec.Command("git", "-C", depMain, "worktree", "remove", "--force", externalPath).Run()
+		_ = gitCommand("-C", depMain, "worktree", "remove", "--force", externalPath).Run()
 		return fmt.Errorf("git checkout: %w\n%s", err, out)
 	}
 	return nil
@@ -1357,7 +1374,7 @@ func resolveNamingInputs(cwd, baseBranch string) (branchBase, pathToken string, 
 }
 
 func shortHEAD(repo string) (string, error) {
-	cmd := exec.Command("git", "-C", repo, "rev-parse", "--short=7", "HEAD")
+	cmd := gitCommand("-C", repo, "rev-parse", "--short=7", "HEAD")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse --short=7 HEAD: %w", err)
@@ -1393,27 +1410,27 @@ func candidateBlocked(mainRepo, wtPath, branch string) bool {
 }
 
 func branchExists(repo, branch string) bool {
-	cmd := exec.Command("git", "-C", repo, "rev-parse", "--verify", "refs/heads/"+branch)
+	cmd := gitCommand("-C", repo, "rev-parse", "--verify", "refs/heads/"+branch)
 	return cmd.Run() == nil
 }
 
 func createWorktree(sourceDir, wtPath, branch string, branchPreExists bool) error {
 	if !branchPreExists {
-		cmd := exec.Command("git", "-C", sourceDir, "worktree", "add", "-b", branch, wtPath)
+		cmd := gitCommand("-C", sourceDir, "worktree", "add", "-b", branch, wtPath)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git worktree add: %w\n%s", err, out)
 		}
 		return nil
 	}
 
-	cmd := exec.Command("git", "-C", sourceDir, "worktree", "add", "--no-checkout", wtPath)
+	cmd := gitCommand("-C", sourceDir, "worktree", "add", "--no-checkout", wtPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree add: %w\n%s", err, out)
 	}
 
-	checkout := exec.Command("git", "-C", wtPath, "checkout", "--ignore-other-worktrees", branch)
+	checkout := gitCommand("-C", wtPath, "checkout", "--ignore-other-worktrees", branch)
 	if out, err := checkout.CombinedOutput(); err != nil {
-		_ = exec.Command("git", "-C", sourceDir, "worktree", "remove", "--force", wtPath).Run()
+		_ = gitCommand("-C", sourceDir, "worktree", "remove", "--force", wtPath).Run()
 		return fmt.Errorf("git checkout: %w\n%s", err, out)
 	}
 	return nil
@@ -1630,14 +1647,14 @@ func runSetTask(workDir string, taskDesc string) error {
 	}
 
 	// Execute git worktree move
-	cmd := exec.Command("git", "-C", mainRepo, "worktree", "move", cwd, newPath)
+	cmd := gitCommand("-C", mainRepo, "worktree", "move", cwd, newPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git worktree move: %w\n%s", err, out)
 	}
 
 	// Also rename the branch
-	branchCmd := exec.Command("git", "-C", mainRepo, "branch", "-m", branch, newBranch)
+	branchCmd := gitCommand("-C", mainRepo, "branch", "-m", branch, newBranch)
 	out, err = branchCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git branch rename: %w\n%s", err, out)

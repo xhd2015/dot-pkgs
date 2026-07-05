@@ -104,7 +104,7 @@ func minInt(a, b int) int {
 	return b
 }
 
-func startFetchAsync(mainRepoPath string) chan fetchAsyncResult {
+func startFetchAsync(mainRepoPath string, fetchEnabled bool) chan fetchAsyncResult {
 	ch := make(chan fetchAsyncResult, 1)
 	go func() {
 		upstream, err := gitUpstreamRef(mainRepoPath)
@@ -113,7 +113,7 @@ func startFetchAsync(mainRepoPath string) chan fetchAsyncResult {
 			return
 		}
 		hasUpstream := upstream != ""
-		if hasUpstream {
+		if hasUpstream && fetchEnabled {
 			if err := gitFetchUpstreamQuietNoOptionalLocks(mainRepoPath, upstream); err != nil {
 				ch <- fetchAsyncResult{err: err}
 				return
@@ -165,7 +165,7 @@ func startRemoteCompareAsync(mainRepoPath string, fetchCh chan fetchAsyncResult,
 	return ch
 }
 
-func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusData, error) {
+func gatherProjectStatus(mainRepoPath string, colorEnabled bool, fetchEnabled bool) (projectStatusData, error) {
 	mainRepoPath = storage.NormalizePath(mainRepoPath)
 
 	type linkedResult struct {
@@ -209,7 +209,7 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusD
 	branchReady.Add(1)
 	mainStatusReady.Add(1)
 
-	fetchCh := startFetchAsync(mainRepoPath)
+	fetchCh := startFetchAsync(mainRepoPath, fetchEnabled)
 	remoteCh := startRemoteCompareAsync(mainRepoPath, fetchCh, &branchReady, &mainStatusReady, branchFailed, func() string { return data.branch }, func() statusCounts { return data.counts }, colorEnabled)
 
 	preludeWG.Add(4)
@@ -445,8 +445,8 @@ func formatWorktreeErrorDetailLine(path, msg string, colorEnabled bool) string {
 	return fmt.Sprintf("  %s  %s", path, errVal)
 }
 
-func printProjectStatusBlock(mainRepoPath string, colorEnabled bool) error {
-	data, err := gatherProjectStatus(mainRepoPath, colorEnabled)
+func printProjectStatusBlock(mainRepoPath string, colorEnabled bool, fetchEnabled bool) error {
+	data, err := gatherProjectStatus(mainRepoPath, colorEnabled, fetchEnabled)
 	if err != nil {
 		return err
 	}

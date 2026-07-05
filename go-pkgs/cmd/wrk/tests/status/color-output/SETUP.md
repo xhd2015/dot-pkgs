@@ -160,8 +160,13 @@ func colorStatusFormatDirtyCounts(added, changed, renamed, deleted int) string {
 
 func colorStatusBlockPlain(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
 	t.Helper()
-	block := fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       %s",
-		relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
+	var block string
+	if relDir == "." {
+		block = statusRootBlockPlain(t, repoDir, statusLine, statusNoUpstreamRemote())
+	} else {
+		block = fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       %s",
+			relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
+	}
 	if masterLine != "" {
 		block += "\n" + masterLine
 	}

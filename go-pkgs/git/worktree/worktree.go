@@ -11,6 +11,16 @@ import (
 	gitops "github.com/xhd2015/gitops/git"
 )
 
+// GitVerboseLogger is invoked before major git subprocesses when wrk -v is set.
+// args are the full git argv including -C <dir> when applicable.
+var GitVerboseLogger func(args []string)
+
+func logGitVerbose(args []string) {
+	if GitVerboseLogger != nil {
+		GitVerboseLogger(args)
+	}
+}
+
 // Entry represents one row from `git worktree list --porcelain`.
 type Entry struct {
 	Path   string

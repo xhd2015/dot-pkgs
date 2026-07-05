@@ -19,6 +19,7 @@ func Setup(t *testing.T, req *Request) error {
 	origin := setupColorBareOrigin(t, req.WorkRoot, "origin")
 	repo := setupColorTrackedMainRepo(t, req.WorkRoot, "behind-main", origin, "behind main base")
 	pushCommitToBareOrigin(t, req.WorkRoot, origin, "remote-only.txt", "remote\n", "on origin only")
+	runGitIsolated(t, repo, "fetch", "origin")
 	recordColorProject(t, req, repo)
 	req.MainRepo = repo
 	return nil

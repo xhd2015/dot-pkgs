@@ -5,6 +5,7 @@ Dir:          .
 Branch:       main
 Commit:       <short hash>  initial status root
 Status:       clean
+Remote:       (no upstream)
 ```
 
 ## Expected

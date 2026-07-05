@@ -330,10 +330,20 @@ func statusLineForRepo(t *testing.T, repoPath string) string {
 	return formatStatusLine(gitStatusCounts(t, repoPath))
 }
 
-func scanStatusBlockPlain(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
+func statusNoUpstreamRemote() string {
+	return "Remote:       (no upstream)"
+}
+
+func scanStatusBlockPlain(t *testing.T, repoDir, relDir, statusLine, masterLine string, withRemote bool) string {
 	t.Helper()
-	block := fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       %s",
-		relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
+	var block string
+	if relDir == "." && withRemote {
+		block = fmt.Sprintf("Dir:          .\n%s\n%s\nStatus:       %s\n%s",
+			statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine, statusNoUpstreamRemote())
+	} else {
+		block = fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       %s",
+			relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
+	}
 	if masterLine != "" {
 		block += "\n" + masterLine
 	}

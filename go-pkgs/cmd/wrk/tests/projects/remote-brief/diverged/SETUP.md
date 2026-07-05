@@ -24,6 +24,7 @@ func Setup(t *testing.T, req *Request) error {
 	runGitIsolated(t, repo, "add", "local.txt")
 	runGitIsolated(t, repo, "commit", "-m", "local only")
 	pushCommitToRemoteBriefOrigin(t, req.WorkRoot, origin, "remote.txt", "remote\n", "remote only")
+	runGitIsolated(t, repo, "fetch", "origin")
 	recordRemoteBriefProject(t, req, repo)
 	req.MainRepo = repo
 	return nil

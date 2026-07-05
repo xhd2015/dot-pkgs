@@ -22,7 +22,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	master := masterField(t, req.MainRepo, "main", req.WtBranch)
 	assertOutputExact(t, resp.Stdout, statusStdoutV2(t,
-		scanStatusBlockPlain(t, req.WtDir, ".", "clean", master),
+		scanStatusBlockPlain(t, req.WtDir, ".", "clean", master, false),
 	))
 
 	assertStdoutHasNoAppendedAbsDir(t, resp.Stdout, resolvePath(t, req.WtDir))
