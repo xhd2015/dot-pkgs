@@ -1,7 +1,8 @@
 ## Expected
 
 - Exit code 0.
-- One detailed status block with absolute `Dir`, `Remote:`, and `Worktrees:    0 total, 0 dirty`.
+- Stdout has no ANSI escape sequences (`\x1b[`).
+- One aligned project block including `Worktrees:    0 total, 0 dirty`.
 - Stderr is empty.
 
 ## Exit Code
@@ -19,10 +20,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stderr != "" {
 		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
 	}
-	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
+	assertNoANSI(t, resp.Stdout)
+	assertColorProjectsBlocksSeparated(t, resp.Stdout, 1)
 
-	remote := compareWithRemoteField(t, req.MainRepo, "origin/main", "main")
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
+	remote := colorCompareWithRemoteField(t, req.MainRepo, "origin/main", "main")
+	block := colorProjectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
 	assert.Output(t, resp.Stdout, block)
 }
 ```

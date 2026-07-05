@@ -2,7 +2,7 @@
 
 - Exit code 0.
 - `Remote:       Needs Push(+1 commit)`.
-- `Worktrees: 0 total, 0 dirty`.
+- `Worktrees:    0 total, 0 dirty`.
 - Stderr is empty.
 
 ## Exit Code

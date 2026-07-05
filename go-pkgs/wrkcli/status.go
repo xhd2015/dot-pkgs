@@ -113,7 +113,7 @@ func printStatusBlock(root, repoPath string) error {
 	fmt.Printf("Dir:          %s\n", filepath.ToSlash(rel))
 	fmt.Printf("Branch:       %s\n", branch)
 	fmt.Printf("Commit:       %s  %s\n", short, subject)
-	fmt.Printf("Status:       %s\n", formatStatusCounts(counts))
+	fmt.Printf("Status:       %s\n", formatStatusCounts(counts, false))
 
 	if worktree.IsLinked(repoPath) {
 		if err := printCompareWithMaster(repoPath, branch); err != nil {
@@ -123,7 +123,7 @@ func printStatusBlock(root, repoPath string) error {
 	return nil
 }
 
-func printProjectStatusBlock(mainRepoPath string) error {
+func printProjectStatusBlock(mainRepoPath string, colorEnabled bool) error {
 	mainRepoPath = storage.NormalizePath(mainRepoPath)
 
 	branch, err := gitOutput(mainRepoPath, "rev-parse", "--abbrev-ref", "HEAD")
@@ -138,7 +138,7 @@ func printProjectStatusBlock(mainRepoPath string) error {
 	if err != nil {
 		return err
 	}
-	counts, err := gitStatusCounts(mainRepoPath)
+	counts, err := gitProjectStatusCounts(mainRepoPath)
 	if err != nil {
 		return err
 	}
@@ -146,17 +146,20 @@ func printProjectStatusBlock(mainRepoPath string) error {
 	fmt.Printf("Dir:          %s\n", mainRepoPath)
 	fmt.Printf("Branch:       %s\n", branch)
 	fmt.Printf("Commit:       %s  %s\n", short, subject)
-	fmt.Printf("Status:       %s\n", formatStatusCounts(counts))
+	statusLine := formatStatusCounts(counts, colorEnabled)
+	fmt.Printf("Status:       %s\n", statusLine)
 
-	if err := printCompareWithRemote(mainRepoPath, branch); err != nil {
-		return err
-	}
-
-	summary, err := linkedWorktreeSummary(mainRepoPath)
+	remoteLine, err := formatCompareWithRemote(mainRepoPath, branch, colorEnabled)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Worktrees: %s\n", summary)
+	fmt.Println(remoteLine)
+
+	summary, err := linkedWorktreeSummary(mainRepoPath, colorEnabled)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Worktrees:    %s\n", summary)
 	return nil
 }
 
@@ -177,21 +180,22 @@ func printCompareWithMaster(repoPath, wtBranch string) error {
 	return nil
 }
 
-func printCompareWithRemote(mainRepoPath, currentBranch string) error {
+func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bool) (string, error) {
 	upstream, err := gitUpstreamRef(mainRepoPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if upstream == "" {
-		fmt.Println("Remote:       (no upstream)")
-		return nil
+		return "Remote:       (no upstream)", nil
+	}
+	if err := gitFetchQuiet(mainRepoPath); err != nil {
+		return "", err
 	}
 	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
 	if err != nil {
-		return err
+		return "", err
 	}
-	fmt.Printf("Remote:       %s\n", FormatRemoteBrief(result))
-	return nil
+	return "Remote:       " + FormatRemoteBrief(result, colorEnabled), nil
 }
 
 func gitUpstreamRef(repoPath string) (string, error) {
@@ -203,7 +207,7 @@ func gitUpstreamRef(repoPath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func linkedWorktreeSummary(mainRepo string) (string, error) {
+func linkedWorktreeSummary(mainRepo string, colorEnabled bool) (string, error) {
 	linked, err := worktree.ListLinked(mainRepo)
 	if err != nil {
 		return "", err
@@ -223,7 +227,11 @@ func linkedWorktreeSummary(mainRepo string) (string, error) {
 			dirty++
 		}
 	}
-	return fmt.Sprintf("%d total, %d dirty", clean+dirty, dirty), nil
+	total := clean + dirty
+	if colorEnabled && dirty > 0 {
+		return fmt.Sprintf("%d total, %s", total, colorize(fmt.Sprintf("%d dirty", dirty), ansiRed)), nil
+	}
+	return fmt.Sprintf("%d total, %d dirty", total, dirty), nil
 }
 
 func gitWorktreeStatusCounts(repoPath string) (statusCounts, error) {
@@ -259,7 +267,60 @@ func gitStatusCounts(repoPath string) (statusCounts, error) {
 	if err != nil {
 		return statusCounts{}, err
 	}
+	return parseStatusCounts(out), nil
+}
 
+func gitProjectStatusCounts(repoPath string) (statusCounts, error) {
+	skipUntracked, err := linkedWorktreeRelPaths(repoPath)
+	if err != nil {
+		return statusCounts{}, err
+	}
+	out, err := gitOutput(repoPath, "status", "--porcelain")
+	if err != nil {
+		return statusCounts{}, err
+	}
+	return parseProjectStatusCounts(out, skipUntracked), nil
+}
+
+func linkedWorktreeRelPaths(mainRepo string) (map[string]struct{}, error) {
+	linked, err := worktree.ListLinked(mainRepo)
+	if err != nil {
+		return nil, err
+	}
+	skip := make(map[string]struct{})
+	for _, entry := range linked {
+		if worktree.IsDead(entry.Path) {
+			continue
+		}
+		rel, err := filepath.Rel(mainRepo, entry.Path)
+		if err != nil {
+			continue
+		}
+		rel = filepath.ToSlash(rel)
+		skip[rel] = struct{}{}
+	}
+	return skip, nil
+}
+
+func parseProjectStatusCounts(out string, skipUntracked map[string]struct{}) statusCounts {
+	var counts statusCounts
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "??") && len(skipUntracked) > 0 {
+			path := strings.TrimSpace(line[3:])
+			path = strings.TrimSuffix(path, "/")
+			if _, ok := skipUntracked[path]; ok {
+				continue
+			}
+		}
+		countStatusLine(&counts, line)
+	}
+	return counts
+}
+
+func parseStatusCounts(out string) statusCounts {
 	var counts statusCounts
 	for _, line := range strings.Split(out, "\n") {
 		if line == "" {
@@ -267,7 +328,18 @@ func gitStatusCounts(repoPath string) (statusCounts, error) {
 		}
 		countStatusLine(&counts, line)
 	}
-	return counts, nil
+	return counts
+}
+
+func gitFetchQuiet(repoPath string) error {
+	cmd := exec.Command("git", "-C", repoPath, "fetch", "--quiet")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if len(out) > 0 {
+			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		}
+		return fmt.Errorf("git fetch: %w", err)
+	}
+	return nil
 }
 
 func countStatusLine(counts *statusCounts, line string) {
@@ -294,10 +366,14 @@ func countStatusLine(counts *statusCounts, line string) {
 	}
 }
 
-func formatStatusCounts(counts statusCounts) string {
+func formatStatusCounts(counts statusCounts, colorEnabled bool) string {
 	if counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0 {
 		return "clean"
 	}
-	return fmt.Sprintf("dirty (%d added, %d changed, %d renamed, %d deleted)",
+	s := fmt.Sprintf("dirty (%d added, %d changed, %d renamed, %d deleted)",
 		counts.added, counts.changed, counts.renamed, counts.deleted)
+	if colorEnabled {
+		return colorize(s, ansiRed)
+	}
+	return s
 }

@@ -1,8 +1,8 @@
 ## Expected
 
 - Exit code 0.
-- `Remote:       (no upstream)`.
-- `Worktrees:    0 total, 0 dirty`.
+- Stdout matches `git -C repo worktree list` exactly.
+- No ANSI escape sequences in stdout.
 - Stderr is empty.
 
 ## Exit Code
@@ -10,8 +10,6 @@
 - 0
 
 ```go
-import "github.com/xhd2015/doctest/assert"
-
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
 	if resp.ExitCode != 0 {
@@ -20,9 +18,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stderr != "" {
 		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
 	}
-	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
+	assertNoANSI(t, resp.Stdout)
 
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", "Remote:       (no upstream)", "0 total, 0 dirty")
-	assert.Output(t, resp.Stdout, block)
+	want := gitWorktreeList(t, req.RepoDir)
+	if resp.Stdout != want {
+		t.Fatalf("stdout mismatch:\nwant:\n%q\ngot:\n%q", want, resp.Stdout)
+	}
 }
 ```

@@ -8,7 +8,7 @@ wrk --projects -> status block per project (lexicographic order)
 
 # extra fields vs wrk --status on main repo
 Remote: <brief upstream sync summary>
-Worktrees: N total, M dirty  (linked worktrees only, always shown)
+Worktrees:    N total, M dirty  (linked worktrees only, always shown; four spaces after colon)
 ```
 
 ## Preconditions
@@ -118,7 +118,7 @@ func remoteBriefFromResult(result *git.CompareBranchesResult) string {
 
 func projectStatusBlockExact(t *testing.T, mainRepo, statusLine, compareRemoteField, worktreesSummary string) string {
 	t.Helper()
-	return fmt.Sprintf("%s\n%s\n%s\nStatus:       %s\n%s\nWorktrees: %s",
+	return fmt.Sprintf("%s\n%s\n%s\nStatus:       %s\n%s\nWorktrees:    %s",
 		projectDirLine(t, mainRepo),
 		statusBranchLine(t, mainRepo),
 		statusCommitLine(t, mainRepo),

@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Worktrees: 3 total, 1 dirty` in the project block.
+- `Worktrees:    3 total, 1 dirty` in the project block.
 - Stderr is empty.
 
 ## Exit Code

@@ -44,7 +44,8 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos) and `events.jsonl` (append-only event log); tests isolate at `{WorkRoot}/.wrk`.
 - **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
 - **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
-- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `Up to date`, `Needs Push(+N commits)`, `Needs Pull`, `Needs Merge(N commits diverged)`, or `(no upstream)` when the branch has no upstream), and `Worktrees: N total, M dirty` (counts of **linked** worktrees with existing paths only via `worktree.ListLinked` + porcelain status; dead/missing worktrees are skipped; always shown, e.g. `0 total, 0 dirty`). No `<dir>` required; exit 0 when empty (no output).
+- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `Up to date`, `Needs Push(+N commits)`, `Needs Pull`, `Needs Merge(N commits diverged)`, or `(no upstream)` when the branch has no upstream), and `Worktrees:    N total, M dirty` (four spaces after colon, aligned with other fields; counts of **linked** worktrees with existing paths only via `worktree.ListLinked` + porcelain status; dead/missing worktrees are skipped; always shown, e.g. `0 total, 0 dirty`). When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for dirty `Status:`, diverged `Needs Merge(...)`, and `N dirty` when N > 0; orange (`#33`) for `Needs Push(...)` and `Needs Pull`; clean/up-to-date/no-upstream/zero-dirty stay plain. No `<dir>` required; exit 0 when empty (no output).
+- **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
@@ -220,13 +221,22 @@ wrk tests
     │   ├── non-git/              # non-git cwd → no record
     │   ├── missing-dir/          # wrk <nonexistent> → no record
     │   └── fail-after-record/    # dirty --done fails but project recorded
-    ├── detailed-status/          # wrk --projects detailed status blocks
+    ├── detailed-status/          # wrk --projects detailed status blocks (plain pipe output)
     │   ├── single-clean-no-wts/  # one project, clean, no linked wts
-    │   ├── with-linked-mixed/    # Worktrees: 3 total, 1 dirty
+    │   ├── with-linked-mixed/    # Worktrees:    3 total, 1 dirty
     │   ├── ahead-of-upstream/    # Remote: Needs Push(+N commits)
     │   ├── no-upstream/          # Remote: (no upstream)
     │   ├── multiple-projects/    # two blocks, lex order, blank separator
     │   └── empty/                # exit 0, empty stdout
+    ├── color-output/             # wrk --projects alignment + conditional ANSI (--color)
+    │   ├── no-color-pipe/        # pipe without --color → no ANSI, aligned Worktrees
+    │   ├── force-color-dirty-status/   # red dirty Status value
+    │   ├── force-color-needs-push/     # orange Needs Push(...)
+    │   ├── force-color-needs-pull/     # orange Needs Pull
+    │   ├── force-color-diverged/       # red Needs Merge(...)
+    │   ├── force-color-worktrees-dirty/ # red N dirty portion only
+    │   ├── clean-no-color/       # all clean + --color → no highlights
+    │   └── color-with-list/      # --list --color → list unchanged, no ANSI
     ├── list/
     │   └── projects/
     │       ├── empty/            # wrk --projects empty → exit 0, no output
@@ -388,6 +398,14 @@ wrk tests
 | 99d | projects/detailed-status/no-upstream | `Remote: (no upstream)` |
 | 99e | projects/detailed-status/multiple-projects | two lex-ordered blocks with blank separator |
 | 99f | projects/detailed-status/empty | empty projects → exit 0, no stdout |
+| 99g | projects/color-output/no-color-pipe | pipe `--projects` → no ANSI, aligned `Worktrees:    ` |
+| 99h | projects/color-output/force-color-dirty-status | `--color` → red around dirty `Status:` value |
+| 99i | projects/color-output/force-color-needs-push | `--color` → orange around `Needs Push(...)` |
+| 99j | projects/color-output/force-color-needs-pull | `--color` → orange around `Needs Pull` |
+| 99k | projects/color-output/force-color-diverged | `--color` → red around `Needs Merge(...)` |
+| 99l | projects/color-output/force-color-worktrees-dirty | `--color` → red on `N dirty` only |
+| 99m | projects/color-output/clean-no-color | all clean + `--color` → no red/orange on values |
+| 99n | projects/color-output/color-with-list | `--list --color` → git worktree list unchanged |
 | 100 | projects/add/manual/main-repo | `wrk --add <mainRepo>` records + stdout path |
 | 101 | projects/add/manual/linked-worktree | `wrk --add <linkedWt>` resolves to main repo |
 | 102 | projects/add/idempotent | duplicate auto + manual → single entry (source stays auto) |
@@ -497,6 +515,8 @@ doctest test ./tests/projects/auto-record/no-dir/main-cwd
 doctest test ./tests/projects/list/projects/after-records
 doctest vet ./tests/projects/detailed-status
 doctest test ./tests/projects/detailed-status
+doctest vet ./tests/projects/color-output
+doctest test ./tests/projects/color-output
 doctest test ./tests/projects/add/manual/main-repo
 doctest test ./tests/projects/events/append-on-success
 

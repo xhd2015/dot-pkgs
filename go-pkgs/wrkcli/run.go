@@ -54,6 +54,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var status bool
 	var repos bool
 	var projects bool
+	var colorFlag bool
 	var addPath string
 	var confirmFromStdin bool
 	var noInModuleReplace bool
@@ -72,6 +73,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--status", &status).
 		Bool("--repos", &repos).
 		Bool("--projects", &projects).
+		Bool("--color", &colorFlag).
 		String("--add", &addPath).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
 		Bool("--no-in-module-replace", &noInModuleReplace).
@@ -199,7 +201,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	}
 
 	if projects {
-		return runProjects(wrkHome)
+		colorEnabled := term.IsTerminal(int(os.Stdout.Fd())) || colorFlag
+		return runProjects(wrkHome, colorEnabled)
 	}
 	if addFlagSet {
 		return runAdd(wrkHome, addPath)
@@ -269,7 +272,7 @@ Environment:
 `
 }
 
-func runProjects(wrkHome string) error {
+func runProjects(wrkHome string, colorEnabled bool) error {
 	paths, err := storage.ListProjects(wrkHome)
 	if err != nil {
 		return err
@@ -278,7 +281,7 @@ func runProjects(wrkHome string) error {
 		if i > 0 {
 			fmt.Println()
 		}
-		if err := printProjectStatusBlock(p); err != nil {
+		if err := printProjectStatusBlock(p, colorEnabled); err != nil {
 			return err
 		}
 	}

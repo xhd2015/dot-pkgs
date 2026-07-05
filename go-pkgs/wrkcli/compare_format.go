@@ -52,7 +52,7 @@ func FormatCompareBranches(refA, refB string, result *git.CompareBranchesResult)
 }
 
 // FormatRemoteBrief returns a one-line remote sync summary for --projects.
-func FormatRemoteBrief(result *git.CompareBranchesResult) string {
+func FormatRemoteBrief(result *git.CompareBranchesResult, colorEnabled bool) string {
 	switch result.Relation {
 	case git.BranchRelationSame:
 		return "Up to date"
@@ -62,9 +62,16 @@ func FormatRemoteBrief(result *git.CompareBranchesResult) string {
 		if result.CommitsAheadB != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("Needs Push(+%d %s)", result.CommitsAheadB, commitWord)
+		s := fmt.Sprintf("Needs Push(+%d %s)", result.CommitsAheadB, commitWord)
+		if colorEnabled {
+			return colorize(s, ansiOrange)
+		}
+		return s
 
 	case git.BranchRelationBIsAncestorOfA:
+		if colorEnabled {
+			return colorize("Needs Pull", ansiOrange)
+		}
 		return "Needs Pull"
 
 	case git.BranchRelationDiverged:
@@ -73,7 +80,11 @@ func FormatRemoteBrief(result *git.CompareBranchesResult) string {
 		if diverged != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("Needs Merge(%d %s diverged)", diverged, commitWord)
+		s := fmt.Sprintf("Needs Merge(%d %s diverged)", diverged, commitWord)
+		if colorEnabled {
+			return colorize(s, ansiRed)
+		}
+		return s
 	}
 
 	return fmt.Sprintf("unknown branch relation %v", result.Relation)
