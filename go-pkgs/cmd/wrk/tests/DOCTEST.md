@@ -51,7 +51,8 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **Stdout trailing newline** — all wrk modes that print non-empty stdout end with `\n` after the last content line (shell prompt stays on its own line). Empty stdout has no bytes.
 - **Stdout assertions** — doctest leaves use `assert.Output` with `version: 2` full-match templates only (no `<contains>` for stdout). Multi-block stdout (e.g. `--status` scan blocks, `--projects` project blocks) is asserted with one v2 template covering the entire stdout; blocks are joined with `\n\n`. Stderr error messages continue to use `<contains>` partial match.
-- **Run profile labels** — six leaves are labeled `slow` (>10s cold: 12-worktree perf fixtures, multi-repo `--projects`, linked `--list`); `many-worktrees-parallel` is also `flaky` (timing budget). Discovery runs (`doctest test ./tests`) skip labeled leaves; run them with `doctest test --label slow ./tests`.
+- **wrk --projects streaming** — stdout must flush each lex-ordered project block as soon as that project's gather completes (not after all projects finish). `output-streaming/fast-before-slow-gather` probes pipe timing: first bytes are the fast `aaa` block while the slow `zzz` project (12 worktrees) is still gathering.
+- **Run profile labels** — seven leaves are labeled `slow` (>10s cold: 12-worktree perf fixtures, multi-repo `--projects`, linked `--list`, output-streaming probe); `many-worktrees-parallel` is also `flaky` (timing budget). Discovery runs (`doctest test ./tests`) skip labeled leaves; run them with `doctest test --label slow ./tests`.
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **wrk --rm `<dir>`** — standalone mode; `--rm <dir>` (no `--remove` alias); `--rm` consumes the next argument as `<dir>`; mutually exclusive with all other modes; requires non-empty path (`wrk: --rm requires a path argument`). Help text: `--rm <dir>  remove a recorded main repository path`. Resolves target: `filepath.Abs` + `storage.NormalizePath`; if path exists and is inside a git work tree → resolve to main repo via `worktree.ShowToplevel` + `worktree.ResolveMainRepo` (same as `--add`); if path does not exist → use normalized absolute path as-is (stale/moved entries). **Success (entry removed)**: exit 0; stdout = removed main-repo absolute path (single line, trimmed). **Idempotent (not in projects.json)**: exit 0; empty stdout; no error. Does not delete worktrees, git repos, or events.jsonl history. Appends event `command: "rm"`, `args: ["--rm", "<path-arg>"]`, `exit_code: 0`. Auto-record still runs before remove.
 - **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
@@ -292,6 +293,8 @@ wrk tests
     ├── invalid-mode/
     │   ├── projects-with-list/   # wrk --projects --list → mutual exclusion
     │   └── add-missing-path/     # wrk --add without path → error
+    ├── output-streaming/         # wrk --projects incremental stdout (per-project as ready)
+    │   └── fast-before-slow-gather/ # fast aaa block streams before slow zzz gather ends
     ├── perf-profile/             # WRK_PROJECTS_PERF_LOG instrumentation + parallel budgets
     │   ├── emits-events/
     │   │   └── many-worktrees/   # JSONL lifecycle + 12 worktree_status events
@@ -457,6 +460,7 @@ wrk tests
 | 99c | projects/detailed-status/ahead-of-upstream | `Remote:` shows `needs merge back(+N commit)` |
 | 99d | projects/detailed-status/no-upstream | `Remote: (no upstream)` |
 | 99e | projects/detailed-status/multiple-projects | two lex-ordered blocks with blank separator |
+| 99e2 | projects/output-streaming/fast-before-slow-gather | fast project stdout before slow project gather completes |
 | 99f | projects/detailed-status/empty | empty projects → exit 0, no stdout |
 | 99g | projects/color-output/no-color-pipe | pipe `--projects` → no ANSI, aligned `Worktrees:    ` |
 | 99h | projects/color-output/force-color-dirty-status | `--color` → granular red/grey dirty status segments |
@@ -512,7 +516,7 @@ doctest vet ./tests
 # Fast discovery run (skips labeled leaves — slow perf/multi-repo fixtures)
 doctest test ./tests
 
-# Slow / perf leaves only (6 leaves: 12-worktree perf, multi-repo --projects, linked list)
+# Slow / perf leaves only (7 leaves: 12-worktree perf, multi-repo --projects, linked list, output-streaming)
 doctest test --label slow ./tests
 
 # Full CI: fast suite then slow suite

@@ -300,6 +300,21 @@ func runProjects(wrkHome string, colorEnabled bool) error {
 	}
 
 	results := make([]projectStatusData, len(paths))
+	done := make([]bool, len(paths))
+
+	nextPrint := 0
+	printedAny := false
+	var mu sync.Mutex
+	flush := func() {
+		for nextPrint < len(paths) && done[nextPrint] {
+			if printedAny {
+				fmt.Println()
+			}
+			printProjectStatusFromData(results[nextPrint], colorEnabled)
+			printedAny = true
+			nextPrint++
+		}
+	}
 
 	workers := minInt(projectsProjectWorkers(), len(paths))
 	jobs := make(chan int, len(paths))
@@ -316,19 +331,19 @@ func runProjects(wrkHome string, colorEnabled bool) error {
 			for i := range jobs {
 				p := paths[i]
 				endProject := beginProjectPerf(p)
-				results[i], _ = gatherProjectStatus(p, colorEnabled)
+				data, _ := gatherProjectStatus(p, colorEnabled)
 				endProject()
+
+				mu.Lock()
+				results[i] = data
+				done[i] = true
+				flush()
+				mu.Unlock()
 			}
 		}()
 	}
 	wg.Wait()
 
-	for i := range paths {
-		if i > 0 {
-			fmt.Println()
-		}
-		printProjectStatusFromData(results[i], colorEnabled)
-	}
 	return nil
 }
 
