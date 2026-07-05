@@ -3,13 +3,13 @@ package wrkcli
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
-	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/storage"
 	"github.com/xhd2015/gitops/git"
 )
 
@@ -140,101 +140,6 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, isLast bool) err
 	return nil
 }
 
-func printProjectStatusBlock(mainRepoPath string, colorEnabled bool, isLast bool) error {
-	mainRepoPath = storage.NormalizePath(mainRepoPath)
-
-	branch, err := gitOutput(mainRepoPath, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return err
-	}
-	short, err := gitOutput(mainRepoPath, "rev-parse", "--short=7", "HEAD")
-	if err != nil {
-		return err
-	}
-	subject, err := gitOutput(mainRepoPath, "log", "-1", "--pretty=%s")
-	if err != nil {
-		return err
-	}
-	counts, err := gitProjectStatusCounts(mainRepoPath)
-	if err != nil {
-		return err
-	}
-	isClean := counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0
-	remoteColor := colorEnabled && isClean
-
-	remoteRelation, err := projectRemoteRelation(mainRepoPath, branch)
-	if err != nil {
-		return err
-	}
-	dirtyWorktrees, err := linkedWorktreeDirtyCount(mainRepoPath)
-	if err != nil {
-		return err
-	}
-	blockUsesColor := projectBlockUsesColor(colorEnabled, counts, remoteRelation, dirtyWorktrees)
-
-	fmt.Printf("Dir:          %s\n", mainRepoPath)
-	fmt.Printf("Branch:       %s\n", branch)
-	fmt.Printf("Commit:       %s  %s\n", short, subject)
-	statusLine := formatStatusCounts(counts, colorEnabled, false)
-	fmt.Printf("Status:       %s\n", statusLine)
-
-	remoteLine, err := formatCompareWithRemote(mainRepoPath, branch, remoteColor)
-	if err != nil {
-		return err
-	}
-	fmt.Println(remoteLine)
-
-	summary, err := linkedWorktreeSummary(mainRepoPath, colorEnabled)
-	if err != nil {
-		return err
-	}
-	if isLast && !blockUsesColor {
-		fmt.Printf("Worktrees:    %s", summary)
-	} else {
-		fmt.Printf("Worktrees:    %s\n", summary)
-	}
-	return nil
-}
-
-func projectRemoteRelation(mainRepoPath, currentBranch string) (git.BranchRelation, error) {
-	upstream, err := gitUpstreamRef(mainRepoPath)
-	if err != nil {
-		return 0, err
-	}
-	if upstream == "" {
-		return git.BranchRelationSame, nil
-	}
-	if err := gitFetchQuiet(mainRepoPath); err != nil {
-		return 0, err
-	}
-	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
-	if err != nil {
-		return 0, err
-	}
-	return result.Relation, nil
-}
-
-func linkedWorktreeDirtyCount(mainRepo string) (int, error) {
-	linked, err := worktree.ListLinked(mainRepo)
-	if err != nil {
-		return 0, err
-	}
-	dirty := 0
-	for _, entry := range linked {
-		if worktree.IsDead(entry.Path) {
-			continue
-		}
-		counts, err := gitWorktreeStatusCounts(entry.Path)
-		if err != nil {
-			return 0, err
-		}
-		if counts.added != 0 || counts.changed != 0 || counts.renamed != 0 || counts.deleted != 0 {
-			dirty++
-		}
-	}
-	return dirty, nil
-}
-
 func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelation git.BranchRelation, dirtyWorktrees int) bool {
 	if !colorEnabled {
 		return false
@@ -308,6 +213,7 @@ func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bo
 
 func gitUpstreamRef(repoPath string) (string, error) {
 	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "@{upstream}")
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", nil
@@ -315,51 +221,33 @@ func gitUpstreamRef(repoPath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func linkedWorktreeSummary(mainRepo string, colorEnabled bool) (string, error) {
-	linked, err := worktree.ListLinked(mainRepo)
+func gitWorktreeIsClean(repoPath string) (bool, error) {
+	out, err := gitOutputNoOptionalLocks(repoPath, "status", "--porcelain")
 	if err != nil {
-		return "", err
+		return false, err
 	}
-	clean, dirty := 0, 0
-	for _, entry := range linked {
-		if worktree.IsDead(entry.Path) {
-			continue
-		}
-		counts, err := gitWorktreeStatusCounts(entry.Path)
-		if err != nil {
-			return "", err
-		}
-		if counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0 {
-			clean++
-		} else {
-			dirty++
-		}
-	}
-	total := clean + dirty
-	if colorEnabled && dirty > 0 {
-		return fmt.Sprintf("%d total, %s", total, colorize(fmt.Sprintf("%d dirty", dirty), ansiRed)), nil
-	}
-	return fmt.Sprintf("%d total, %d dirty", total, dirty), nil
+	counts := parseStatusCounts(out)
+	return counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0, nil
 }
 
 func gitWorktreeStatusCounts(repoPath string) (statusCounts, error) {
-	out, err := gitOutput(repoPath, "status", "--porcelain")
+	clean, err := gitWorktreeIsClean(repoPath)
 	if err != nil {
 		return statusCounts{}, err
 	}
-
-	var counts statusCounts
-	for _, line := range strings.Split(out, "\n") {
-		if line == "" {
-			continue
-		}
-		countStatusLine(&counts, line)
+	if clean {
+		return statusCounts{}, nil
 	}
-	return counts, nil
+	return statusCounts{changed: 1}, nil
+}
+
+func gitOutputNoOptionalLocks(repoPath string, args ...string) (string, error) {
+	return gitOutput(repoPath, args...)
 }
 
 func gitOutput(repoPath string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
@@ -376,38 +264,6 @@ func gitStatusCounts(repoPath string) (statusCounts, error) {
 		return statusCounts{}, err
 	}
 	return parseStatusCounts(out), nil
-}
-
-func gitProjectStatusCounts(repoPath string) (statusCounts, error) {
-	skipUntracked, err := linkedWorktreeRelPaths(repoPath)
-	if err != nil {
-		return statusCounts{}, err
-	}
-	out, err := gitOutput(repoPath, "status", "--porcelain")
-	if err != nil {
-		return statusCounts{}, err
-	}
-	return parseProjectStatusCounts(out, skipUntracked), nil
-}
-
-func linkedWorktreeRelPaths(mainRepo string) (map[string]struct{}, error) {
-	linked, err := worktree.ListLinked(mainRepo)
-	if err != nil {
-		return nil, err
-	}
-	skip := make(map[string]struct{})
-	for _, entry := range linked {
-		if worktree.IsDead(entry.Path) {
-			continue
-		}
-		rel, err := filepath.Rel(mainRepo, entry.Path)
-		if err != nil {
-			continue
-		}
-		rel = filepath.ToSlash(rel)
-		skip[rel] = struct{}{}
-	}
-	return skip, nil
 }
 
 func parseProjectStatusCounts(out string, skipUntracked map[string]struct{}) statusCounts {
@@ -441,6 +297,34 @@ func parseStatusCounts(out string) statusCounts {
 
 func gitFetchQuiet(repoPath string) error {
 	cmd := exec.Command("git", "-C", repoPath, "fetch", "--quiet")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if len(out) > 0 {
+			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		}
+		return fmt.Errorf("git fetch: %w", err)
+	}
+	return nil
+}
+
+func gitFetchQuietNoOptionalLocks(repoPath string) error {
+	cmd := exec.Command("git", "-C", repoPath, "fetch", "--quiet")
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if len(out) > 0 {
+			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		}
+		return fmt.Errorf("git fetch: %w", err)
+	}
+	return nil
+}
+
+func gitFetchUpstreamQuietNoOptionalLocks(repoPath, upstream string) error {
+	remote, branch, ok := strings.Cut(upstream, "/")
+	if !ok || remote == "" || branch == "" {
+		return gitFetchQuietNoOptionalLocks(repoPath)
+	}
+	cmd := exec.Command("git", "-C", repoPath, "fetch", "--quiet", remote, branch)
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if len(out) > 0 {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))

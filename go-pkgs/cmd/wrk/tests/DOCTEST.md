@@ -44,6 +44,8 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos) and `events.jsonl` (append-only event log); tests isolate at `{WorkRoot}/.wrk`.
 - **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
 - **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
+- **WRK_PROJECTS_PERF_LOG** — when set to a file path, `wrk --projects` appends JSONL latency events (`run_start`, `project_start`, `phase`, `worktree_status`, `phase_total`, `project_end`, `run_end`) without changing stdout/stderr; zero overhead when unset.
+- **Request.ProjectsPerfLog** — perf-profile tests: path written to `WRK_PROJECTS_PERF_LOG`.
 - **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs pull` (no commit count), `diverged(N commit(s))`, or `(no upstream)` when the branch has no upstream), and `Worktrees:    N total, M dirty` (four spaces after colon, aligned with other fields; counts of **linked** worktrees with existing paths only via `worktree.ListLinked` + porcelain status; dead/missing worktrees are skipped; always shown, e.g. `0 total, 0 dirty`). When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, and `N dirty` when N > 0; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs merge back(...)` and `needs pull`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs fast forward(+N commit(s))` applies only to `--status` `Master:` (not `Remote:`).
 - **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
@@ -268,6 +270,13 @@ wrk tests
     ├── invalid-mode/
     │   ├── projects-with-list/   # wrk --projects --list → mutual exclusion
     │   └── add-missing-path/     # wrk --add without path → error
+    ├── perf-profile/             # WRK_PROJECTS_PERF_LOG instrumentation + parallel budgets
+    │   ├── emits-events/
+    │   │   └── many-worktrees/   # JSONL lifecycle + 12 worktree_status events
+    │   ├── budget/
+    │   │   └── many-worktrees-parallel/ # worktree_status_all <100ms, run_end <200ms
+    │   └── structure/
+    │       └── dedup-list-linked/  # single ListLinked per project (not skip+summary)
     └── basename-fallback/        # create-mode basename → saved projects.json lookup
         ├── single-match/
         │   └── create/           # one match → worktree from saved path
@@ -441,6 +450,9 @@ wrk tests
 | 102 | projects/add/idempotent | duplicate auto + manual → single entry (source stays auto) |
 | 103 | projects/events/append-on-success | create appends event with `exit_code` 0 |
 | 104 | projects/events/append-on-failure | failed command appends event with `exit_code` != 0 |
+| 105a | projects/perf-profile/emits-events/many-worktrees | perf log JSONL with run/project/phase/worktree events for 12 wts |
+| 105b | projects/perf-profile/budget/many-worktrees-parallel | parallel gather: worktree_status_all <100ms, run_end <200ms |
+| 105c | projects/perf-profile/structure/dedup-list-linked | one list_linked phase per project (dedup ListLinked) |
 | 105 | projects/invalid-mode/projects-with-list | `wrk --projects --list` → mutually exclusive error |
 | 106 | projects/invalid-mode/add-missing-path | `wrk --add` without path → error |
 | 107 | projects/basename-fallback/single-match/create | Saved project; cwd elsewhere; `wrk myrepo` creates wt from saved path |
@@ -598,6 +610,7 @@ type Request struct {
 	SecondRepo         string // projects tests: second main repo path
 	BasenameEnv        string // basename-fallback tests: e.g. WRK_BASENAME_CONFIRM=1
 	SelectedSavedRepo  string // basename-fallback tty-select: chosen saved project path
+	ProjectsPerfLog    string // perf-profile tests: WRK_PROJECTS_PERF_LOG path
 	FakeHome           string // git-lfs-hook tests: temp home with .local/bin/git-lfs
 	UseMinimalPath     bool   // git-lfs-hook tests: run wrk with PATH=/usr/bin:/bin
 }

@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -274,17 +275,50 @@ Environment:
 }
 
 func runProjects(wrkHome string, colorEnabled bool) error {
+	endPerf := beginProjectsPerfRun()
+	defer endPerf()
+
 	paths, err := storage.ListProjects(wrkHome)
 	if err != nil {
 		return err
 	}
-	for i, p := range paths {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	results := make([]projectStatusData, len(paths))
+	errs := make([]error, len(paths))
+
+	workers := minInt(projectsProjectWorkers(), len(paths))
+	jobs := make(chan int, len(paths))
+	for i := range paths {
+		jobs <- i
+	}
+	close(jobs)
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				p := paths[i]
+				endProject := beginProjectPerf(p)
+				results[i], errs[i] = gatherProjectStatus(p, colorEnabled)
+				endProject()
+			}
+		}()
+	}
+	wg.Wait()
+
+	for i := range paths {
+		if errs[i] != nil {
+			return errs[i]
+		}
 		if i > 0 {
-			fmt.Println()
+			fmt.Print("\n\n")
 		}
-		if err := printProjectStatusBlock(p, colorEnabled, i == len(paths)-1); err != nil {
-			return err
-		}
+		printProjectStatusFromData(results[i], colorEnabled, i == len(paths)-1)
 	}
 	return nil
 }

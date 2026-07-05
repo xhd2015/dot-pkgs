@@ -403,6 +403,9 @@ func wrkEnv(req *Request) []string {
 		if req.BasenameEnv != "" {
 			env = append(env, req.BasenameEnv)
 		}
+		if req.ProjectsPerfLog != "" {
+			env = append(env, "WRK_PROJECTS_PERF_LOG="+req.ProjectsPerfLog)
+		}
 		return env
 	}
 	env := append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
@@ -414,6 +417,9 @@ func wrkEnv(req *Request) []string {
 	}
 	if req.BasenameEnv != "" {
 		env = append(env, req.BasenameEnv)
+	}
+	if req.ProjectsPerfLog != "" {
+		env = append(env, "WRK_PROJECTS_PERF_LOG="+req.ProjectsPerfLog)
 	}
 	return env
 }
