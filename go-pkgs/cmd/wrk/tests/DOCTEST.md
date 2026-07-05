@@ -47,7 +47,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
 - **WRK_PROJECTS_PERF_LOG** — when set to a file path, `wrk --projects` appends JSONL latency events (`run_start`, `project_start`, `phase`, `worktree_status`, `phase_total`, `project_end`, `run_end`) without changing stdout/stderr; zero overhead when unset.
 - **Request.ProjectsPerfLog** — perf-profile tests: path written to `WRK_PROJECTS_PERF_LOG`.
-- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. **Never aborts** the run due to per-project or per-worktree git failures (exit 0 unless `projects.json` is unreadable); errors surface inline in stdout blocks; stderr stays empty for these cases. **Healthy main repo** blocks include absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs pull` (no commit count), `diverged(N commit(s))`, or `(no upstream)` when the branch has no upstream), and `Worktrees:` (four spaces after colon, aligned with other fields) with composable summary segments: `N total` and `M dirty` always; `K error` only when K > 0 (alive linked worktree path exists but `git status` fails); `P prune` only when P > 0 (registered in `git worktree list` but checkout directory missing per `worktree.IsDead`). After the `Worktrees:` line, each broken (alive, git-fails) worktree emits `  <absolute-path>  error: <full git stderr message>` (two-space indent); no per-path lines for prunable/dead worktrees. **Broken main repo** blocks omit Branch, Commit, Remote, and Worktrees entirely — only `Dir:` and `Status:       error: <full git stderr message>`. When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, `N dirty` when N > 0, `K error` when K > 0, broken-main `Status: error: ...` value, and per-worktree `error: ...` detail values; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs merge back(...)` and `needs pull`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs fast forward(+N commit(s))` applies only to `--status` `Master:` (not `Remote:`).
+- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. **Never aborts** the run due to per-project or per-worktree git failures (exit 0 unless `projects.json` is unreadable); errors surface inline in stdout blocks; stderr stays empty for these cases. **Healthy main repo** blocks include absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs push(+N commit(s))`, `needs pull(N commit(s) behind)`, `diverged(N commit(s))`, or `(no upstream)` when the branch has no upstream), and `Worktrees:` (four spaces after colon, aligned with other fields) with composable summary segments: `N total` and `M dirty` always; `K error` only when K > 0 (alive linked worktree path exists but `git status` fails); `P prune` only when P > 0 (registered in `git worktree list` but checkout directory missing per `worktree.IsDead`). After the `Worktrees:` line, each broken (alive, git-fails) worktree emits `  <absolute-path>  error: <full git stderr message>` (two-space indent); no per-path lines for prunable/dead worktrees. **Broken main repo** blocks omit Branch, Commit, Remote, and Worktrees entirely — only `Dir:` and `Status:       error: <full git stderr message>`. When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, `N dirty` when N > 0, `K error` when K > 0, broken-main `Status: error: ...` value, and per-worktree `error: ...` detail values; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs push(...)` and `needs pull(...)`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs merge back(+N commit(s))` and `needs fast forward(+N commit(s))` apply only to `--status` `Master:` (not `Remote:`).
 - **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **Stdout trailing newline** — all wrk modes that print non-empty stdout end with `\n` after the last content line (shell prompt stays on its own line). Empty stdout has no bytes.
 - **Stdout assertions** — doctest leaves use `assert.Output` with `version: 2` full-match templates only (no `<contains>` for stdout). Multi-block stdout (e.g. `--status` scan blocks, `--projects` project blocks) is asserted with one v2 template covering the entire stdout; blocks are joined with `\n\n`. Stderr error messages continue to use `<contains>` partial match.
@@ -253,8 +253,8 @@ wrk tests
     │   ├── missing-dir/          # wrk <nonexistent> → no record
     │   └── fail-after-record/    # dirty --done fails but project recorded
     ├── remote-brief/             # wrk --projects shared Remote: brief labels (plain pipe)
-    │   ├── ahead-of-upstream/    # Remote: needs merge back(+N commit)
-    │   ├── behind-upstream/      # Remote: needs pull
+    │   ├── ahead-of-upstream/    # Remote: needs push(+N commit)
+    │   ├── behind-upstream/      # Remote: needs pull(N commit(s) behind)
     │   ├── diverged/             # Remote: diverged(N commits)
     │   └── up-to-date/           # Remote: identical
     ├── detailed-status/          # wrk --projects detailed status blocks (plain pipe output)
@@ -263,7 +263,7 @@ wrk tests
     │   ├── broken-main-repo/     # recorded path no longer git -> minimal Dir+Status error block
     │   ├── prunable-worktrees/   # deleted checkout -> 0 total, 1 prune (summary only)
     │   ├── with-linked-mixed/    # Worktrees:    3 total, 1 dirty
-    │   ├── ahead-of-upstream/    # Remote: needs merge back(+N commit)
+    │   ├── ahead-of-upstream/    # Remote: needs push(+N commit)
     │   ├── no-upstream/          # Remote: (no upstream)
     │   ├── multiple-projects/    # two blocks, lex order, blank separator
     │   └── empty/                # exit 0, empty stdout
@@ -271,8 +271,8 @@ wrk tests
     │   ├── no-color-pipe/        # pipe without --color → no ANSI, aligned Worktrees
     │   ├── force-color-dirty-status/   # granular red/grey dirty Status segments
     │   ├── force-color-dirty-partial/  # 2 changed, zero other counts → grey + red mix
-    │   ├── force-color-needs-push/     # orange needs merge back(...)
-    │   ├── force-color-needs-pull/     # orange needs pull
+    │   ├── force-color-needs-push/     # orange needs push(...)
+    │   ├── force-color-needs-pull/     # orange needs pull(...)
     │   ├── force-color-diverged/       # red diverged(...)
     │   ├── force-color-worktrees-dirty/ # red N dirty portion only
     │   ├── force-color-stale-gitdir-linked/ # red on error summary + detail lines
@@ -478,7 +478,7 @@ wrk tests
 | 99b2 | projects/detailed-status/stale-gitdir-linked | stale `.git` gitdir → `2 total, 0 dirty, 1 error` + detail line, exit 0 |
 | 99b2a | projects/detailed-status/broken-main-repo | broken main repo → minimal `Dir` + `Status: error: ...` only, exit 0 |
 | 99b2b | projects/detailed-status/prunable-worktrees | deleted checkout → `0 total, 0 dirty, 1 prune`, no per-path lines, exit 0 |
-| 99c | projects/detailed-status/ahead-of-upstream | `Remote:` shows `needs merge back(+N commit)` |
+| 99c | projects/detailed-status/ahead-of-upstream | `Remote:` shows `needs push(+N commit)` |
 | 99d | projects/detailed-status/no-upstream | `Remote: (no upstream)` |
 | 99e | projects/detailed-status/multiple-projects | two lex-ordered blocks with blank separator |
 | 99e2 | projects/output-streaming/fast-before-slow-gather | fast project stdout before slow project gather completes |
@@ -486,11 +486,11 @@ wrk tests
 | 99g | projects/color-output/no-color-pipe | pipe `--projects` → no ANSI, aligned `Worktrees:    ` |
 | 99h | projects/color-output/force-color-dirty-status | `--color` → granular red/grey dirty status segments |
 | 99h2 | projects/color-output/force-color-dirty-partial | `--color` → grey zero segments, red `2 changed` |
-| 99i | projects/color-output/force-color-needs-push | `--color` → orange around `needs merge back(...)` |
-| 99j | projects/color-output/force-color-needs-pull | `--color` → orange around `needs pull` |
+| 99i | projects/color-output/force-color-needs-push | `--color` → orange around `needs push(...)` |
+| 99j | projects/color-output/force-color-needs-pull | `--color` → orange around `needs pull(...)` |
 | 99k | projects/color-output/force-color-diverged | `--color` → red around `diverged(...)` |
-| 99o | projects/remote-brief/ahead-of-upstream | plain `Remote: needs merge back(+1 commit)` |
-| 99p | projects/remote-brief/behind-upstream | plain `Remote: needs pull` |
+| 99o | projects/remote-brief/ahead-of-upstream | plain `Remote: needs push(+1 commit)` |
+| 99p | projects/remote-brief/behind-upstream | plain `Remote: needs pull(1 commit behind)` |
 | 99q | projects/remote-brief/diverged | plain `Remote: diverged(2 commits)` |
 | 99r | projects/remote-brief/up-to-date | plain `Remote: identical` |
 | 99l | projects/color-output/force-color-worktrees-dirty | `--color` → red on `N dirty` only |

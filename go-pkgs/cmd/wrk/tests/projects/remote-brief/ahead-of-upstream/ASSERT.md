@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Remote:       needs merge back(+1 commit)` (plain text, no ANSI).
+- `Remote:       needs push(+1 commit)` (plain text, no ANSI).
 - `Worktrees:    0 total, 0 dirty`.
 - Stderr is empty.
 
@@ -23,8 +23,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertRemoteBriefBlocksSeparated(t, resp.Stdout, 1)
 
 	remote := remoteBriefCompareField(t, req.MainRepo, "origin/main", "main")
-	if remote != "Remote:       needs merge back(+1 commit)" {
-		t.Fatalf("Remote: want needs merge back(+1 commit), got %q", remote)
+	if remote != "Remote:       needs push(+1 commit)" {
+		t.Fatalf("Remote: want needs push(+1 commit), got %q", remote)
 	}
 	block := remoteBriefStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
 	assert.Output(t, resp.Stdout, block)

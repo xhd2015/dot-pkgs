@@ -110,17 +110,22 @@ func FormatRemoteBrief(result *git.CompareBranchesResult, colorEnabled bool) str
 		if result.CommitsAheadB != 1 {
 			commitWord = "commits"
 		}
-		s := fmt.Sprintf("needs merge back(+%d %s)", result.CommitsAheadB, commitWord)
+		s := fmt.Sprintf("needs push(+%d %s)", result.CommitsAheadB, commitWord)
 		if colorEnabled {
 			return colorize(s, ansiOrange)
 		}
 		return s
 
 	case git.BranchRelationBIsAncestorOfA:
-		if colorEnabled {
-			return colorize("needs pull", ansiOrange)
+		commitWord := "commit"
+		if result.CommitsAheadA != 1 {
+			commitWord = "commits"
 		}
-		return "needs pull"
+		s := fmt.Sprintf("needs pull(%d %s behind)", result.CommitsAheadA, commitWord)
+		if colorEnabled {
+			return colorize(s, ansiOrange)
+		}
+		return s
 
 	case git.BranchRelationDiverged:
 		diverged := result.CommitsAheadA + result.CommitsAheadB

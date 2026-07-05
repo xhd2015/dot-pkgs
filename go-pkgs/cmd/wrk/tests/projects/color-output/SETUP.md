@@ -27,7 +27,7 @@ wrk --list --color -> git worktree list unchanged (no ANSI)
 
 - Red (`#31`): word `dirty`, count segments with N > 0, `Remote: diverged(...)`, worktree `N dirty` when N > 0, `K error` when K > 0, broken-main `Status: error: ...` value, and per-worktree `error: ...` detail values.
 - Grey (`#90`): count segments with N = 0 in dirty status lines.
-- Orange (`#33`): `Remote: needs merge back(...)` and `Remote: needs pull`.
+- Orange (`#33`): `Remote: needs push(...)` and `Remote: needs pull(...)`.
 - Green (`#32`): not used on `--projects` (`clean` and `identical` stay uncolored).
 - Labels (`Dir:`, `Branch:`, etc.) stay uncolored; only value substrings are wrapped.
 - `Worktrees:    ` uses four spaces after the colon (aligned with other fields).
@@ -146,9 +146,13 @@ func colorRemoteBriefFromResult(result *git.CompareBranchesResult) string {
 		if result.CommitsAheadB != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("needs merge back(+%d %s)", result.CommitsAheadB, commitWord)
+		return fmt.Sprintf("needs push(+%d %s)", result.CommitsAheadB, commitWord)
 	case git.BranchRelationBIsAncestorOfA:
-		return "needs pull"
+		commitWord := "commit"
+		if result.CommitsAheadA != 1 {
+			commitWord = "commits"
+		}
+		return fmt.Sprintf("needs pull(%d %s behind)", result.CommitsAheadA, commitWord)
 	case git.BranchRelationDiverged:
 		diverged := result.CommitsAheadA + result.CommitsAheadB
 		commitWord := "commit"

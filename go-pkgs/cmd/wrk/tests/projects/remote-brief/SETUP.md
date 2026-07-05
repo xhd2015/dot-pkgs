@@ -3,7 +3,7 @@
 **Feature**: wrk --projects Remote: uses shared brief branch-relation labels (plain pipe)
 
 ```
-tracked upstream relation -> wrk --projects (pipe) -> Remote: identical|needs merge back|needs pull|diverged
+tracked upstream relation -> wrk --projects (pipe) -> Remote: identical|needs push|needs pull|diverged
 ```
 
 ## Preconditions
@@ -52,9 +52,13 @@ func remoteBriefFromResult(result *git.CompareBranchesResult) string {
 		if result.CommitsAheadB != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("needs merge back(+%d %s)", result.CommitsAheadB, commitWord)
+		return fmt.Sprintf("needs push(+%d %s)", result.CommitsAheadB, commitWord)
 	case git.BranchRelationBIsAncestorOfA:
-		return "needs pull"
+		commitWord := "commit"
+		if result.CommitsAheadA != 1 {
+			commitWord = "commits"
+		}
+		return fmt.Sprintf("needs pull(%d %s behind)", result.CommitsAheadA, commitWord)
 	case git.BranchRelationDiverged:
 		diverged := result.CommitsAheadA + result.CommitsAheadB
 		commitWord := "commit"

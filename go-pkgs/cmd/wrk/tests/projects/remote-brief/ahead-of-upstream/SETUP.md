@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: main ahead of upstream shows Remote: needs merge back
+**Feature**: main ahead of upstream shows Remote: needs push
 
 ```
-main tracked to origin/main -> one local commit -> Remote: needs merge back(+1 commit)
+main tracked to origin/main -> one local commit -> Remote: needs push(+1 commit)
 ```
 
 ## Steps

@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: main behind upstream shows Remote: needs pull
+**Feature**: main behind upstream shows Remote: needs pull with commit count
 
 ```
-main tracked to origin/main -> origin has extra commit -> Remote: needs pull
+main tracked to origin/main -> origin has extra commit -> Remote: needs pull(1 commit behind)
 ```
 
 ## Steps

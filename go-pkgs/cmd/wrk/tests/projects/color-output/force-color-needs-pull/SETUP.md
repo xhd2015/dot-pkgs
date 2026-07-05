@@ -3,7 +3,7 @@
 **Feature**: --color highlights needs pull remote summary in orange
 
 ```
-main behind origin/main -> wrk --projects --color -> orange needs pull
+main behind origin/main -> wrk --projects --color -> orange needs pull(1 commit behind)
 ```
 
 ## Steps
