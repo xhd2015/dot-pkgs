@@ -56,7 +56,7 @@ func (ctx *invocationContext) autoRecord() error {
 	return nil
 }
 
-func resolveCommand(projects, addFlagSet, setTaskFlagSet, done, list, status, repos, mergeBack bool, depPath string, allDeps bool) string {
+func resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, done, list, status, repos, mergeBack bool, depPath string, allDeps bool) string {
 	switch {
 	case setTaskFlagSet:
 		return "set-task"
@@ -64,6 +64,8 @@ func resolveCommand(projects, addFlagSet, setTaskFlagSet, done, list, status, re
 		return "projects"
 	case addFlagSet:
 		return "add"
+	case removeFlagSet:
+		return "rm"
 	case repos:
 		return "repos"
 	case status:
@@ -84,10 +86,12 @@ func resolveCommand(projects, addFlagSet, setTaskFlagSet, done, list, status, re
 }
 
 var flagValueArgs = map[string]struct{}{
-	"--dep":       {},
-	"--task":      {},
-	"--set-task":  {},
-	"--add":       {},
+	"--dep":      {},
+	"-t":         {},
+	"--task":     {},
+	"--set-task": {},
+	"--add":      {},
+	"--rm":       {},
 }
 
 func extractEventArgs(original, positionals []string) []string {
@@ -97,6 +101,7 @@ func extractEventArgs(original, positionals []string) []string {
 	for _, arg := range original {
 		if skipValue {
 			skipValue = false
+			out = append(out, arg)
 			continue
 		}
 		if pos < len(positionals) && arg == positionals[pos] {

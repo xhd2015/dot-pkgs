@@ -3,7 +3,7 @@
 ```
 would: wrk example.com/dep1 at ./external/mydep1-main-2026-06-30
 would: wrk example.com/dep2 at ./external/mydep2-main-2026-06-30
-would: wrk 2 deps
+would: wrked 2 deps
 ```
 
 ## Expected
@@ -19,17 +19,17 @@ would: wrk 2 deps
 - 0
 
 ```go
+import "github.com/xhd2015/doctest/assert"
+
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
 	if resp.ExitCode != 0 {
 		t.Fatalf("exit code %d stderr=%q stdout=%q", resp.ExitCode, resp.Stderr, resp.Stdout)
 	}
 
-	wantStdout := fmt.Sprintf("would: wrk example.com/dep1 at %s\nwould: wrk example.com/dep2 at %s\nwould: wrk 2 deps\n",
+	wantStdout := fmt.Sprintf("would: wrk example.com/dep1 at %s\nwould: wrk example.com/dep2 at %s\nwould: wrked 2 deps\n",
 		allDepsExternalRelPath("mydep1"), allDepsExternalRelPath("mydep2"))
-	if resp.Stdout != wantStdout {
-		t.Fatalf("stdout mismatch:\nwant %q\n got %q", wantStdout, resp.Stdout)
-	}
+	assert.Output(t, resp.Stdout, allDepsStdoutV2(wantStdout))
 
 	assertFileNotExists(t, filepath.Join(req.ConsumerTop, "external"))
 	wantDep1 := allDepsExternalAbsPath(req.ConsumerTop, "mydep1")

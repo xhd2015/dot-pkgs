@@ -24,10 +24,10 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected 2 status blocks, got %d:\n%s", got, resp.Stdout)
 	}
 
-	assert.Output(t, resp.Stdout, statusBlockTemplate(t, req.MainRepo, ".", "clean"))
-
 	master := masterField(t, req.MainRepo, "main", req.WtBranch)
-	linkedBlock := statusBlockWithMaster(t, req.WtDir, "wt-linked", "clean", master)
-	assert.Output(t, resp.Stdout, linkedBlock)
+	assert.Output(t, resp.Stdout, statusStdoutV2(t,
+		statusBlockPlain(t, req.MainRepo, ".", "clean"),
+		statusBlockWithMasterPlain(t, req.WtDir, "wt-linked", "clean", master),
+	))
 }
 ```

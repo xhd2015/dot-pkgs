@@ -23,11 +23,10 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected 2 status blocks, got %d:\n%s", got, resp.Stdout)
 	}
 
-	root := colorStatusBlockTemplate(t, req.MainRepo, ".", "<ansi-color green>clean</ansi-color>", "")
-	assert.Output(t, resp.Stdout, root)
-
 	master := colorStatusMasterFieldColored(t, req.MainRepo, "main", req.WtBranch)
-	linked := colorStatusBlockTemplate(t, req.WtDir, "wt-linked", "<ansi-color green>clean</ansi-color>", master)
-	assert.Output(t, resp.Stdout, linked)
+	assert.Output(t, resp.Stdout, colorStatusStdoutV2(t,
+		colorStatusBlockPlain(t, req.MainRepo, ".", "<ansi-color green>clean</ansi-color>", ""),
+		colorStatusBlockPlain(t, req.WtDir, "wt-linked", "<ansi-color green>clean</ansi-color>", master),
+	))
 }
 ```

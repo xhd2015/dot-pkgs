@@ -53,14 +53,20 @@ func statusBranchLine(t *testing.T, repoDir string) string {
 	return "Branch:       " + branch
 }
 
+func statusBlockPlain(t *testing.T, repoDir, relDir, statusLine string) string {
+	t.Helper()
+	return fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       %s",
+		relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
+}
+
 func statusBlockTemplate(t *testing.T, repoDir, relDir, statusLine string) string {
 	t.Helper()
-	return fmt.Sprintf(`<contains>
-Dir:          %s
-%s
-%s
-Status:       %s
-</contains>`, relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
+	return v2StdoutTemplate(statusBlockPlain(t, repoDir, relDir, statusLine))
+}
+
+func statusStdoutV2(t *testing.T, blocks ...string) string {
+	t.Helper()
+	return v2StdoutTemplate(joinStdoutBlocks(blocks...))
 }
 
 func statusInitRepoWithSubject(t *testing.T, path, subject string) {

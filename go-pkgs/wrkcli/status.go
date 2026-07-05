@@ -44,7 +44,7 @@ func runStatus(workDir string, colorEnabled bool) error {
 		if i > 0 {
 			fmt.Println()
 		}
-		if err := printStatusBlock(checkoutRoot, repo.Path, colorEnabled, i == len(repos)-1); err != nil {
+		if err := printStatusBlock(checkoutRoot, repo.Path, colorEnabled); err != nil {
 			return err
 		}
 	}
@@ -84,7 +84,7 @@ func discoverStatusRepos(ctx context.Context, root string) ([]scan_repo.Repo, er
 	return scan_repo.Scan(ctx, scan_repo.Options{Roots: []string{root}})
 }
 
-func printStatusBlock(root, repoPath string, colorEnabled bool, isLast bool) error {
+func printStatusBlock(root, repoPath string, colorEnabled bool) error {
 	rel, err := filepath.Rel(root, repoPath)
 	if err != nil {
 		return fmt.Errorf("resolve relative repo path: %w", err)
@@ -124,23 +124,16 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, isLast bool) err
 	fmt.Printf("Commit:       %s  %s\n", short, subject)
 
 	statusLine := formatStatusCounts(counts, colorEnabled, true)
-	omitTrailingNL := isLast
 	if hasMaster {
 		fmt.Printf("Status:       %s\n", statusLine)
-		if omitTrailingNL {
-			fmt.Printf("Master:       %s", masterBrief)
-		} else {
-			fmt.Printf("Master:       %s\n", masterBrief)
-		}
-	} else if omitTrailingNL {
-		fmt.Printf("Status:       %s", statusLine)
+		fmt.Printf("Master:       %s\n", masterBrief)
 	} else {
 		fmt.Printf("Status:       %s\n", statusLine)
 	}
 	return nil
 }
 
-func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelation git.BranchRelation, dirtyWorktrees int) bool {
+func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelation git.BranchRelation, dirtyWorktrees, worktreeErrors int) bool {
 	if !colorEnabled {
 		return false
 	}
@@ -148,6 +141,9 @@ func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelatio
 		return true
 	}
 	if dirtyWorktrees > 0 {
+		return true
+	}
+	if worktreeErrors > 0 {
 		return true
 	}
 	switch remoteRelation {
@@ -222,12 +218,27 @@ func gitUpstreamRef(repoPath string) (string, error) {
 }
 
 func gitWorktreeIsClean(repoPath string) (bool, error) {
-	out, err := gitOutputNoOptionalLocks(repoPath, "status", "--porcelain")
+	out, err := gitCombinedOutput(repoPath, "status", "--porcelain")
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
-	counts := parseStatusCounts(out)
+	counts := parseStatusCounts(strings.TrimSpace(string(out)))
 	return counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0, nil
+}
+
+func gitCombinedOutput(repoPath string, args ...string) ([]byte, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	return cmd.CombinedOutput()
+}
+
+func gitCombinedOutputError(repoPath string, args ...string) string {
+	out, err := gitCombinedOutput(repoPath, args...)
+	if err == nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func gitWorktreeStatusCounts(repoPath string) (statusCounts, error) {

@@ -29,6 +29,8 @@ import (
 	"sync"
 	"testing"
 	"unicode"
+
+	"github.com/xhd2015/doctest/assert"
 )
 
 var buildOnce sync.Once
@@ -262,12 +264,34 @@ func assertBranchCheckedOutInWorktree(t *testing.T, wtDir, wantBranch string) {
 	}
 }
 
+func v2StdoutTemplate(body string) string {
+	if body == "" {
+		return "---\nversion: 2\n---\n"
+	}
+	if !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	return "---\nversion: 2\n---\n" + body
+}
+
+func joinStdoutBlocks(blocks ...string) string {
+	trimmed := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		b = strings.TrimSuffix(b, "\n")
+		if b != "" {
+			trimmed = append(trimmed, b)
+		}
+	}
+	result := strings.Join(trimmed, "\n\n")
+	if result != "" && !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+	return result
+}
+
 func assertStdoutExactPath(t *testing.T, stdout, wantPath string) {
 	t.Helper()
-	got := strings.TrimSpace(stdout)
-	if got != wantPath {
-		t.Fatalf("stdout: expected %q, got %q", wantPath, got)
-	}
+	assert.Output(t, stdout, v2StdoutTemplate(wantPath))
 }
 
 func assertContains(t *testing.T, s, substr string) {
@@ -460,6 +484,8 @@ func ensureHelpersUsed() {
 	_ = assertBranchExists
 	_ = assertWorktreeListContains
 	_ = assertBranchCheckedOutInWorktree
+	_ = v2StdoutTemplate
+	_ = joinStdoutBlocks
 	_ = assertStdoutExactPath
 	_ = assertContains
 	_ = assertNotContains

@@ -4,7 +4,7 @@
 
 ```
 # consumer and mydep1 both registered; consumer requires dep1 -> dep1 linked, self skipped
-projects.json (consumer, mydep1) + consumer requires dep1 -> wrk 1 deps
+projects.json (consumer, mydep1) + consumer requires dep1 -> wrked 1 deps
 ```
 
 ## Steps

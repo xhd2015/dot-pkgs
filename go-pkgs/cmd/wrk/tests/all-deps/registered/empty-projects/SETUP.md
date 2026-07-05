@@ -3,8 +3,8 @@
 **Feature**: wrk --all-deps with empty projects.json makes no changes
 
 ```
-# no projects.json (or empty list) -> wrk 0 deps, no external/, no replaces
-consumer (requires dep1) + empty projects.json -> wrk --all-deps -> wrk 0 deps
+# no projects.json (or empty list) -> wrked 0 deps, no external/, no replaces
+consumer (requires dep1) + empty projects.json -> wrk --all-deps -> wrked 0 deps
 ```
 
 ## Steps

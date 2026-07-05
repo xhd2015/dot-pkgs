@@ -1,13 +1,13 @@
 ## Expected Output
 
 ```
-would: wrk 0 deps
+would: wrked 0 deps
 ```
 
 ## Expected
 
 - Exit code 0.
-- Stdout is exactly `would: wrk 0 deps\n`.
+- Stdout is exactly `would: wrked 0 deps\n`.
 - No `external/` directory; no `replace` directives; no `/external` in `.gitignore`.
 
 ## Exit Code
@@ -15,14 +15,14 @@ would: wrk 0 deps
 - 0
 
 ```go
+import "github.com/xhd2015/doctest/assert"
+
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
 	if resp.ExitCode != 0 {
 		t.Fatalf("exit code %d stderr=%q stdout=%q", resp.ExitCode, resp.Stderr, resp.Stdout)
 	}
-	if resp.Stdout != "would: wrk 0 deps\n" {
-		t.Fatalf("stdout mismatch:\nwant %q\n got %q", "would: wrk 0 deps\n", resp.Stdout)
-	}
+	assert.Output(t, resp.Stdout, allDepsStdoutV2("would: wrked 0 deps\n"))
 	assertFileNotExists(t, filepath.Join(req.ConsumerTop, "external"))
 	mod, err := allDepsReadGoMod(req.RepoDir)
 	if err != nil {

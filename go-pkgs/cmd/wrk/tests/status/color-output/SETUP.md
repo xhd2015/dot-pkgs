@@ -158,19 +158,29 @@ func colorStatusFormatDirtyCounts(added, changed, renamed, deleted int) string {
 	)
 }
 
-func colorStatusBlockTemplate(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
+func colorStatusBlockPlain(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
 	t.Helper()
 	block := fmt.Sprintf("Dir:          %s\n%s\n%s\nStatus:       %s",
 		relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine)
 	if masterLine != "" {
 		block += "\n" + masterLine
 	}
-	return "<contains>\n" + block + "\n</contains>"
+	return block
+}
+
+func colorStatusBlockTemplate(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
+	t.Helper()
+	return v2StdoutTemplate(colorStatusBlockPlain(t, repoDir, relDir, statusLine, masterLine))
 }
 
 func colorStatusBlockContains(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
 	t.Helper()
 	return colorStatusBlockTemplate(t, repoDir, relDir, statusLine, masterLine)
+}
+
+func colorStatusStdoutV2(t *testing.T, blocks ...string) string {
+	t.Helper()
+	return v2StdoutTemplate(joinStdoutBlocks(blocks...))
 }
 
 func dirtyColorStatusRepo(t *testing.T, repo string) {
@@ -193,8 +203,10 @@ func ensureColorStatusHelpersUsed() {
 	_ = colorStatusMasterFieldColored
 	_ = colorStatusDirtySegment
 	_ = colorStatusFormatDirtyCounts
+	_ = colorStatusBlockPlain
 	_ = colorStatusBlockTemplate
 	_ = colorStatusBlockContains
+	_ = colorStatusStdoutV2
 	_ = dirtyColorStatusRepo
 }
 ```

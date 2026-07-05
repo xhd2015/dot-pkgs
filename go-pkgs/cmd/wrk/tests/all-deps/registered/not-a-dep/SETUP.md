@@ -4,7 +4,7 @@
 
 ```
 # registered otherrepo (example.com/other) not in consumer requires -> skipped
-projects.json (otherrepo) + consumer requires dep1 only -> wrk 0 deps
+projects.json (otherrepo) + consumer requires dep1 only -> wrked 0 deps
 ```
 
 ## Steps

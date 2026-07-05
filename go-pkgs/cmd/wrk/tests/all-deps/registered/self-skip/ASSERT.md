@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- Stdout lists dep1 only, then `wrk 1 deps`.
+- Stdout lists dep1 only, then `wrked 1 deps`.
 - Consumer `go.mod` has a `replace` for `example.com/dep1` but NOT for `example.com/consumer`.
 
 ## Exit Code
@@ -9,6 +9,8 @@
 - 0
 
 ```go
+import "github.com/xhd2015/doctest/assert"
+
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
 	if resp.ExitCode != 0 {
@@ -17,10 +19,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	dep1 := allDepsDepDir(req.WorkRoot, "mydep1")
 	wantDep1 := allDepsExternalAbsPath(req.ConsumerTop, "mydep1")
-	wantStdout := fmt.Sprintf("wrk example.com/dep1 at %s\nwrk 1 deps\n", allDepsExternalRelPath("mydep1"))
-	if resp.Stdout != wantStdout {
-		t.Fatalf("stdout mismatch:\nwant %q\n got %q", wantStdout, resp.Stdout)
-	}
+	wantStdout := fmt.Sprintf("wrk example.com/dep1 at %s\nwrked 1 deps\n", allDepsExternalRelPath("mydep1"))
+	assert.Output(t, resp.Stdout, allDepsStdoutV2(wantStdout))
 
 	assertFileExists(t, wantDep1)
 	assertGitFileIsWorktreeLink(t, wantDep1)

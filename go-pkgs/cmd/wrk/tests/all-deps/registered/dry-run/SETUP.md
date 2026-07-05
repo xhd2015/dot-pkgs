@@ -4,10 +4,10 @@
 
 ```
 # registered deps match consumer requires -> would: lines in project-path order, no side effects
-projects.json (mydep1, mydep2) + consumer -> wrk --all-deps --dry-run -> would: wrk N deps
+projects.json (mydep1, mydep2) + consumer -> wrk --all-deps --dry-run -> would: wrked N deps
 
-# empty projects -> would: wrk 0 deps
-no projects.json -> wrk --all-deps --dry-run -> would: wrk 0 deps
+# empty projects -> would: wrked 0 deps
+no projects.json -> wrk --all-deps --dry-run -> would: wrked 0 deps
 ```
 
 ## Preconditions

@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- Stdout lists dep1 at `svc-a` then dep2 at `svc-b` (mod/scan Dir order within the project), then `wrk 2 deps`.
+- Stdout lists dep1 at `svc-a` then dep2 at `svc-b` (mod/scan Dir order within the project), then `wrked 2 deps`.
 - Exactly one external worktree for `myrepo`.
 
 ## Exit Code
@@ -9,7 +9,11 @@
 - 0
 
 ```go
-import "os"
+import (
+	"os"
+
+	"github.com/xhd2015/doctest/assert"
+)
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
@@ -20,10 +24,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	myrepo := allDepsDepDir(req.WorkRoot, "myrepo")
 	wantRel1 := nestedExternalRelSubPath("myrepo", "svc-a")
 	wantRel2 := nestedExternalRelSubPath("myrepo", "svc-b")
-	wantStdout := fmt.Sprintf("wrk example.com/dep1 at %s\nwrk example.com/dep2 at %s\nwrk 2 deps\n", wantRel1, wantRel2)
-	if resp.Stdout != wantStdout {
-		t.Fatalf("stdout mismatch:\nwant %q\n got %q", wantStdout, resp.Stdout)
-	}
+	wantStdout := fmt.Sprintf("wrk example.com/dep1 at %s\nwrk example.com/dep2 at %s\nwrked 2 deps\n", wantRel1, wantRel2)
+	assert.Output(t, resp.Stdout, allDepsStdoutV2(wantStdout))
 
 	repoExternal := allDepsExternalAbsPath(req.ConsumerTop, "myrepo")
 	assertFileExists(t, repoExternal)

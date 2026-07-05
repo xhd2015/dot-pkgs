@@ -4,7 +4,7 @@
 
 ```
 # dep1 pre-replaced; dep2 registered -> dep1 skipped, dep2 linked
-consumer (dep1 pre-replaced) + projects.json (mydep1, mydep2) -> wrk 1 deps
+consumer (dep1 pre-replaced) + projects.json (mydep1, mydep2) -> wrked 1 deps
 ```
 
 ## Steps

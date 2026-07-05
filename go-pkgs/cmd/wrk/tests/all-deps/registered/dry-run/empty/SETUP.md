@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: wrk --all-deps --dry-run with empty projects prints would: wrk 0 deps
+**Feature**: wrk --all-deps --dry-run with empty projects prints would: wrked 0 deps
 
 ```
-# no projects.json -> would: wrk 0 deps, no side effects
+# no projects.json -> would: wrked 0 deps, no side effects
 consumer (requires dep1) + empty projects -> wrk --all-deps --dry-run
 ```
 

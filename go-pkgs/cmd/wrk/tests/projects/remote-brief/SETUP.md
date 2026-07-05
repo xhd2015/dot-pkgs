@@ -101,7 +101,7 @@ func remoteBriefStatusBlockTemplate(t *testing.T, mainRepo, statusLine, remoteFi
 		remoteField,
 		worktreesSummary,
 	)
-	return "<contains>\n" + block + "\n</contains>"
+	return v2StdoutTemplate(block)
 }
 
 func initRemoteBriefRepo(t *testing.T, path, subject string) {

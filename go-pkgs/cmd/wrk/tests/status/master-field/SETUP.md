@@ -109,18 +109,18 @@ func masterField(t *testing.T, mainRepo, mainBranch, wtBranch string) string {
 	return "Master:       " + masterBriefFromResult(result)
 }
 
+func statusBlockWithMasterPlain(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
+	t.Helper()
+	block := statusBlockPlain(t, repoDir, relDir, statusLine)
+	if masterLine != "" {
+		block += "\n" + masterLine
+	}
+	return block
+}
+
 func statusBlockWithMaster(t *testing.T, repoDir, relDir, statusLine, masterLine string) string {
 	t.Helper()
-	if masterLine == "" {
-		return statusBlockTemplate(t, repoDir, relDir, statusLine)
-	}
-	return fmt.Sprintf(`<contains>
-Dir:          %s
-%s
-%s
-Status:       %s
-%s
-</contains>`, relDir, statusBranchLine(t, repoDir), statusCommitLine(t, repoDir), statusLine, masterLine)
+	return v2StdoutTemplate(statusBlockWithMasterPlain(t, repoDir, relDir, statusLine, masterLine))
 }
 
 func assertNoMasterField(t *testing.T, stdout string) {
@@ -137,6 +137,7 @@ func ensureMasterFieldHelpersUsed() {
 	_ = commitOnWorktree
 	_ = masterBriefFromResult
 	_ = masterField
+	_ = statusBlockWithMasterPlain
 	_ = statusBlockWithMaster
 	_ = assertNoMasterField
 }

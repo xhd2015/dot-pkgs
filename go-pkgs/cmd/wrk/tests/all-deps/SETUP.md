@@ -23,7 +23,7 @@ consumer (go.mod + git) + projects.json (dep main repos) -> wrk --all-deps -> st
 ## Context
 
 - Output order follows **lexicographic project path order** (same as `wrk --projects`).
-- Empty or absent `projects.json` → `wrk 0 deps`, exit 0, no `external/`, no replaces.
+- Empty or absent `projects.json` → `wrked 0 deps`, exit 0, no `external/`, no replaces.
 - `--scan-root` and `WRK_SCAN_ROOT` are removed; passing `--scan-root` must error.
 
 ```go
@@ -324,6 +324,10 @@ func nestedExternalRelSubPath(repoBasename, subdir string) string {
 	return fmt.Sprintf("./external/%s-main-%s/%s", repoBasename, wrkDate, subdir)
 }
 
+func allDepsStdoutV2(body string) string {
+	return v2StdoutTemplate(body)
+}
+
 func allDepsEnsureHelpersUsed() {
 	_ = allDepsGoModJSON{}
 	_ = allDepsProjectEntry{}
@@ -348,5 +352,6 @@ func allDepsEnsureHelpersUsed() {
 	_ = initAllDepsConsumer
 	_ = nestedExternalAbsSubPath
 	_ = nestedExternalRelSubPath
+	_ = allDepsStdoutV2
 }
 ```

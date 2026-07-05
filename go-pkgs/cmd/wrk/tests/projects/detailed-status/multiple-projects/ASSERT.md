@@ -12,7 +12,8 @@
 ```go
 import (
 	"sort"
-	"strings"
+
+	"github.com/xhd2015/doctest/assert"
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
@@ -38,10 +39,6 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		remote := compareWithRemoteField(t, repo, "origin/main", "main")
 		blocks = append(blocks, projectStatusBlockExact(t, repo, "clean", remote, "0 total, 0 dirty"))
 	}
-	want := strings.Join(blocks, "\n\n")
-	got := strings.TrimSpace(resp.Stdout)
-	if got != want {
-		t.Fatalf("stdout:\nwant:\n%q\ngot:\n%q", want, got)
-	}
+	assert.Output(t, resp.Stdout, projectsStdoutV2(t, blocks...))
 }
 ```

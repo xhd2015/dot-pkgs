@@ -4,7 +4,7 @@
 
 ```
 # registered myrepo has svc-a=dep1 and svc-b=dep2; consumer requires both -> one worktree, two replaces
-projects.json (myrepo) + consumer requires dep1+dep2 -> wrk 2 deps
+projects.json (myrepo) + consumer requires dep1+dep2 -> wrked 2 deps
 ```
 
 ## Steps

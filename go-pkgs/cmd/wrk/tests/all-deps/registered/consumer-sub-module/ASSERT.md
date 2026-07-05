@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- Stdout contains both dep lines and ends with `wrk 2 deps`.
+- Stdout contains both dep lines and ends with `wrked 2 deps`.
 - Consumer sub-module `go-pkgs/go.mod` has replaces for both deps.
 
 ## Exit Code
@@ -9,7 +9,7 @@
 - 0
 
 ```go
-import "strings"
+import "github.com/xhd2015/doctest/assert"
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
@@ -17,10 +17,9 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("exit code %d stderr=%q stdout=%q", resp.ExitCode, resp.Stderr, resp.Stdout)
 	}
 
-	stdout := strings.TrimSpace(resp.Stdout)
-	assertContains(t, stdout, "wrk example.com/dep1 at ./external/mydep1-main-"+wrkDate)
-	assertContains(t, stdout, "wrk example.com/dep2 at ./external/mydep2-main-"+wrkDate)
-	assertContains(t, stdout, "wrk 2 deps")
+	wantStdout := fmt.Sprintf("wrk example.com/dep1 at %s\nwrk example.com/dep2 at %s\nwrked 2 deps\n",
+		allDepsExternalRelPath("mydep1"), allDepsExternalRelPath("mydep2"))
+	assert.Output(t, resp.Stdout, allDepsStdoutV2(wantStdout))
 
 	modDir := filepath.Join(req.ConsumerTop, "go-pkgs")
 	mod, err := allDepsReadGoMod(modDir)

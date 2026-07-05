@@ -8,7 +8,10 @@ wrk --projects -> status block per project (lexicographic order)
 
 # extra fields vs wrk --status on main repo
 Remote: <brief upstream sync summary>
-Worktrees:    N total, M dirty  (linked worktrees only, always shown; four spaces after colon)
+Worktrees:    N total, M dirty[, K error][, P prune]  (composable segments; four spaces after colon)
+
+# broken main repo -> minimal block (Dir + Status error only)
+# per-worktree git failure -> detail line after Worktrees summary
 ```
 
 ## Preconditions
@@ -16,6 +19,7 @@ Worktrees:    N total, M dirty  (linked worktrees only, always shown; four space
 - Git must be available.
 - Tests use isolated `WRK_HOME` at `{WorkRoot}/.wrk`.
 - `wrk --projects` is standalone; empty `projects.json` yields exit 0 and empty stdout.
+- Per-project/per-worktree git failures surface inline in stdout; exit 0 unless `projects.json` is unreadable.
 
 ## Steps
 
@@ -25,12 +29,16 @@ Worktrees:    N total, M dirty  (linked worktrees only, always shown; four space
 
 - `Dir` is the **absolute** normalized main-repo path.
 - `Remote:` uses brief sync summary from `CompareBranches(mainRepo, upstreamRef, currentBranch)`; no upstream → `(no upstream)`.
-- `Worktrees:` counts linked worktrees only (`worktree.ListLinked`); clean when all porcelain counts are zero.
+- `Worktrees:` summary uses composable segments: `N total` and `M dirty` always; `K error` when alive linked worktrees fail `git status`; `P prune` when `git worktree list` entries have missing checkout dirs (`worktree.IsDead`).
+- Broken (alive, git-fails) worktrees emit a detail line: `  <abs-path>  error: <full git stderr>` (two-space indent); prunable/dead worktrees have no per-path lines.
+- Broken main repo blocks omit Branch, Commit, Remote, and Worktrees; `Status: error: <full git stderr>` only.
 - Blocks are separated by a blank line; project order is lexicographic by absolute path.
 
 ```go
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -130,7 +138,87 @@ func projectStatusBlockExact(t *testing.T, mainRepo, statusLine, compareRemoteFi
 
 func projectStatusBlockTemplate(t *testing.T, mainRepo, statusLine, compareRemoteField, worktreesSummary string) string {
 	t.Helper()
-	return "<contains>\n" + projectStatusBlockExact(t, mainRepo, statusLine, compareRemoteField, worktreesSummary) + "\n</contains>"
+	return v2StdoutTemplate(projectStatusBlockExact(t, mainRepo, statusLine, compareRemoteField, worktreesSummary))
+}
+
+func formatWorktreesSummary(total, dirty, errors, prunes int) string {
+	parts := []string{
+		fmt.Sprintf("%d total", total),
+		fmt.Sprintf("%d dirty", dirty),
+	}
+	if errors > 0 {
+		parts = append(parts, fmt.Sprintf("%d error", errors))
+	}
+	if prunes > 0 {
+		parts = append(parts, fmt.Sprintf("%d prune", prunes))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func gitCommandCombinedError(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("git %v in %s: expected failure", args, dir)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func worktreeStatusError(t *testing.T, wtPath string) string {
+	t.Helper()
+	return gitCommandCombinedError(t, wtPath, "status", "--porcelain")
+}
+
+func mainRepoStatusError(t *testing.T, mainRepo string) string {
+	t.Helper()
+	return gitCommandCombinedError(t, mainRepo, "status", "--porcelain")
+}
+
+func worktreeErrorDetailLine(t *testing.T, wtPath, gitErr string) string {
+	t.Helper()
+	return fmt.Sprintf("  %s  error: %s", resolvePath(t, wtPath), gitErr)
+}
+
+func projectStatusBlockWithDetailsPlain(t *testing.T, mainRepo, statusLine, compareRemoteField, worktreesSummary string, detailLines []string) string {
+	t.Helper()
+	lines := []string{
+		projectDirLine(t, mainRepo),
+		statusBranchLine(t, mainRepo),
+		statusCommitLine(t, mainRepo),
+		"Status:       " + statusLine,
+		compareRemoteField,
+		"Worktrees:    " + worktreesSummary,
+	}
+	lines = append(lines, detailLines...)
+	return strings.Join(lines, "\n")
+}
+
+func projectStatusBlockWithDetailsTemplate(t *testing.T, mainRepo, statusLine, compareRemoteField, worktreesSummary string, detailLines []string) string {
+	t.Helper()
+	return v2StdoutTemplate(projectStatusBlockWithDetailsPlain(t, mainRepo, statusLine, compareRemoteField, worktreesSummary, detailLines))
+}
+
+func brokenMainRepoBlockTemplate(t *testing.T, repoPath, gitErr string) string {
+	t.Helper()
+	return v2StdoutTemplate(fmt.Sprintf("%s\nStatus:       error: %s",
+		projectDirLine(t, repoPath), gitErr))
+}
+
+func removeGitDir(t *testing.T, repoPath string) {
+	t.Helper()
+	gitDir := filepath.Join(repoPath, ".git")
+	if err := os.RemoveAll(gitDir); err != nil {
+		t.Fatalf("remove %s: %v", gitDir, err)
+	}
+}
+
+func removeWorktreeCheckout(t *testing.T, wtPath string) {
+	t.Helper()
+	if err := os.RemoveAll(wtPath); err != nil {
+		t.Fatalf("remove worktree checkout %s: %v", wtPath, err)
+	}
 }
 
 func initDetailedStatusRepo(t *testing.T, path, subject string) {
@@ -270,6 +358,16 @@ func ensureDetailedStatusHelpersUsed() {
 	_ = projectDirLine
 	_ = projectStatusBlockExact
 	_ = projectStatusBlockTemplate
+	_ = formatWorktreesSummary
+	_ = gitCommandCombinedError
+	_ = worktreeStatusError
+	_ = mainRepoStatusError
+	_ = worktreeErrorDetailLine
+	_ = projectStatusBlockWithDetailsPlain
+	_ = projectStatusBlockWithDetailsTemplate
+	_ = brokenMainRepoBlockTemplate
+	_ = removeGitDir
+	_ = removeWorktreeCheckout
 	_ = compareWithRemoteField
 	_ = initDetailedStatusRepo
 	_ = setupBareOrigin

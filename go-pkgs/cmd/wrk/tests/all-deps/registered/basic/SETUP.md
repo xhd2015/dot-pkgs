@@ -4,7 +4,7 @@
 
 ```
 # consumer requires dep1+dep2; both registered -> both linked in project-path order
-consumer (requires dep1, dep2) + projects.json (mydep1, mydep2) -> wrk --all-deps -> 2 external wts + wrk 2 deps
+consumer (requires dep1, dep2) + projects.json (mydep1, mydep2) -> wrk --all-deps -> 2 external wts + wrked 2 deps
 ```
 
 ## Steps

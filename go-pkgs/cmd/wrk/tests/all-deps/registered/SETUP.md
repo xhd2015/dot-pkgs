@@ -23,7 +23,7 @@ self / not-required / already-replaced / seen dedup / non-git / missing path -> 
 ## Context
 
 - One external worktree per matched repo (multiple sub-modules → multiple replaces, one worktree).
-- Empty or absent `projects.json` → `wrk 0 deps` with no side effects.
+- Empty or absent `projects.json` → `wrked 0 deps` with no side effects.
 
 ```go
 import "path/filepath"

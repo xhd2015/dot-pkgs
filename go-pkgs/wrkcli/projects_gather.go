@@ -20,6 +20,11 @@ const (
 	envProjectsProjectWorkers  = "WRK_PROJECTS_PROJECT_WORKERS"
 )
 
+type worktreeErrorDetail struct {
+	path string
+	msg  string
+}
+
 type projectStatusData struct {
 	mainRepoPath    string
 	branch          string
@@ -29,7 +34,11 @@ type projectStatusData struct {
 	remoteLine      string
 	remoteRelation  git.BranchRelation
 	dirtyWorktrees  int
+	worktreeErrors  int
+	pruneCount      int
 	worktreeSummary string
+	mainRepoError   string
+	errorDetails    []worktreeErrorDetail
 }
 
 type fetchAsyncResult struct {
@@ -167,6 +176,7 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusD
 	var (
 		data            projectStatusData
 		preludeErr      error
+		mainStatusErr   string
 		preludeMu       sync.Mutex
 		preludeWG       sync.WaitGroup
 		linkedRes       linkedResult
@@ -178,6 +188,13 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusD
 			defer preludeMu.Unlock()
 			if preludeErr == nil && err != nil {
 				preludeErr = err
+			}
+		}
+		setMainStatusErr = func(msg string) {
+			preludeMu.Lock()
+			defer preludeMu.Unlock()
+			if mainStatusErr == "" && msg != "" {
+				mainStatusErr = msg
 			}
 		}
 		branchFailed = func() bool {
@@ -230,15 +247,15 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusD
 		defer preludeWG.Done()
 		defer mainStatusReady.Done()
 		linkedReady.Wait()
-		if linkedRes.err != nil {
-			setPreludeErr(linkedRes.err)
-			return
+		var skip map[string]struct{}
+		if linkedRes.err == nil {
+			skip = skipUntrackedRelPaths(mainRepoPath, linkedRes.entries)
 		}
-		skip := skipUntrackedRelPaths(mainRepoPath, linkedRes.entries)
 		counts, err := projectsPerfTimedValue(mainRepoPath, "main_status", func() (statusCounts, error) {
 			return gitProjectStatusCountsWithSkip(mainRepoPath, skip)
 		})
 		if err != nil {
+			setMainStatusErr(gitCombinedOutputError(mainRepoPath, "status", "--porcelain"))
 			setPreludeErr(err)
 			return
 		}
@@ -246,14 +263,20 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusD
 	}()
 
 	linkedReady.Wait()
-	if linkedRes.err != nil {
-		return projectStatusData{}, linkedRes.err
+
+	var linkedEntries []worktree.Entry
+	if linkedRes.err == nil {
+		linkedEntries = linkedRes.entries
 	}
 
-	alive := aliveLinkedEntries(linkedRes.entries)
+	alive := aliveLinkedEntries(linkedEntries)
+	for _, entry := range linkedEntries {
+		if worktree.IsDead(entry.Path) {
+			data.pruneCount++
+		}
+	}
 
 	var (
-		wtErr     error
 		clean     int
 		dirty     int
 		wtChecks  int
@@ -300,11 +323,6 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusD
 	}
 
 	mainStatusReady.Wait()
-	if preludeErr != nil {
-		wtWG.Wait()
-		<-remoteCh
-		return projectStatusData{}, preludeErr
-	}
 
 	var remote remoteAsyncResult
 	var endWG sync.WaitGroup
@@ -323,36 +341,44 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool) (projectStatusD
 	preludeWG.Wait()
 	endWG.Wait()
 
-	if remote.err != nil {
-		return projectStatusData{}, remote.err
+	if preludeErr != nil {
+		data.mainRepoError = mainStatusErr
+		if data.mainRepoError == "" {
+			data.mainRepoError = preludeErr.Error()
+		}
+		return data, nil
 	}
-	data.remoteLine = remote.remoteLine
-	data.remoteRelation = remote.relation
+
+	if remote.err != nil {
+		data.remoteLine = "Remote:       error: " + remote.err.Error()
+		data.remoteRelation = git.BranchRelationSame
+	} else {
+		data.remoteLine = remote.remoteLine
+		data.remoteRelation = remote.relation
+	}
 
 	for _, result := range wtResults {
 		wtChecks++
-		if wtErr == nil && result.err != nil {
-			wtErr = result.err
-		} else if wtErr == nil {
-			if result.isClean {
-				clean++
-			} else {
-				dirty++
-			}
+		if result.err != nil {
+			data.worktreeErrors++
+			data.errorDetails = append(data.errorDetails, worktreeErrorDetail{
+				path: storage.NormalizePath(result.path),
+				msg:  result.err.Error(),
+			})
+		} else if result.isClean {
+			clean++
+		} else {
+			dirty++
 		}
 		recordProjectsPerfWorktree(mainRepoPath, result.path, result.elapsed)
 	}
 	recordProjectsPerfAggregate(mainRepoPath, "worktree_status_all", wtChecks, wtElapsed)
 
-	if wtErr != nil {
-		return projectStatusData{}, wtErr
-	}
-
 	summary, err := projectsPerfTimedValue(mainRepoPath, "worktree_summary", func() (string, error) {
-		return formatLinkedWorktreeSummary(clean, dirty, colorEnabled), nil
+		return formatLinkedWorktreeSummary(clean, dirty, data.worktreeErrors, data.pruneCount, colorEnabled), nil
 	})
 	if err != nil {
-		return projectStatusData{}, err
+		return data, nil
 	}
 	data.worktreeSummary = summary
 	data.dirtyWorktrees = dirty
@@ -383,8 +409,16 @@ func gitCommitShortSubject(repoPath string) (short, subject string, err error) {
 	return out, "", nil
 }
 
-func printProjectStatusFromData(data projectStatusData, colorEnabled bool, isLast bool) {
-	blockUsesColor := projectBlockUsesColor(colorEnabled, data.counts, data.remoteRelation, data.dirtyWorktrees)
+func printProjectStatusFromData(data projectStatusData, colorEnabled bool) {
+	if data.mainRepoError != "" {
+		fmt.Printf("Dir:          %s\n", data.mainRepoPath)
+		statusVal := "error: " + data.mainRepoError
+		if colorEnabled {
+			statusVal = colorize(statusVal, ansiRed)
+		}
+		fmt.Printf("Status:       %s\n", statusVal)
+		return
+	}
 
 	fmt.Printf("Dir:          %s\n", data.mainRepoPath)
 	fmt.Printf("Branch:       %s\n", data.branch)
@@ -392,19 +426,31 @@ func printProjectStatusFromData(data projectStatusData, colorEnabled bool, isLas
 	statusLine := formatStatusCounts(data.counts, colorEnabled, false)
 	fmt.Printf("Status:       %s\n", statusLine)
 	fmt.Println(data.remoteLine)
-	if isLast && blockUsesColor {
+	if len(data.errorDetails) > 0 {
 		fmt.Printf("Worktrees:    %s\n", data.worktreeSummary)
-	} else {
-		fmt.Printf("Worktrees:    %s", data.worktreeSummary)
+		for _, detail := range data.errorDetails {
+			line := formatWorktreeErrorDetailLine(detail.path, detail.msg, colorEnabled)
+			fmt.Printf("%s\n", line)
+		}
+		return
 	}
+	fmt.Printf("Worktrees:    %s\n", data.worktreeSummary)
 }
 
-func printProjectStatusBlock(mainRepoPath string, colorEnabled bool, isLast bool) error {
+func formatWorktreeErrorDetailLine(path, msg string, colorEnabled bool) string {
+	errVal := "error: " + msg
+	if colorEnabled {
+		errVal = colorize(errVal, ansiRed)
+	}
+	return fmt.Sprintf("  %s  %s", path, errVal)
+}
+
+func printProjectStatusBlock(mainRepoPath string, colorEnabled bool) error {
 	data, err := gatherProjectStatus(mainRepoPath, colorEnabled)
 	if err != nil {
 		return err
 	}
-	printProjectStatusFromData(data, colorEnabled, isLast)
+	printProjectStatusFromData(data, colorEnabled)
 	return nil
 }
 
@@ -443,10 +489,23 @@ func gitProjectStatusCountsWithSkip(repoPath string, skipUntracked map[string]st
 	return parseProjectStatusCounts(out, skipUntracked), nil
 }
 
-func formatLinkedWorktreeSummary(clean, dirty int, colorEnabled bool) string {
-	total := clean + dirty
+func formatLinkedWorktreeSummary(clean, dirty, errors, prunes int, colorEnabled bool) string {
+	total := clean + dirty + errors
+	parts := []string{fmt.Sprintf("%d total", total)}
 	if colorEnabled && dirty > 0 {
-		return fmt.Sprintf("%d total, %s", total, colorize(fmt.Sprintf("%d dirty", dirty), ansiRed))
+		parts = append(parts, colorize(fmt.Sprintf("%d dirty", dirty), ansiRed))
+	} else {
+		parts = append(parts, fmt.Sprintf("%d dirty", dirty))
 	}
-	return fmt.Sprintf("%d total, %d dirty", total, dirty)
+	if errors > 0 {
+		errPart := fmt.Sprintf("%d error", errors)
+		if colorEnabled {
+			errPart = colorize(errPart, ansiRed)
+		}
+		parts = append(parts, errPart)
+	}
+	if prunes > 0 {
+		parts = append(parts, fmt.Sprintf("%d prune", prunes))
+	}
+	return strings.Join(parts, ", ")
 }

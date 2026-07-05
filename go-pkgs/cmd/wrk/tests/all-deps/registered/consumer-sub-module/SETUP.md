@@ -4,7 +4,7 @@
 
 ```
 # consumer go.mod in go-pkgs/ (no root go.mod); registered deps -> scan + link both
-projects.json (mydep1, mydep2) + consumer go-pkgs/ requires dep1+dep2 -> wrk 2 deps
+projects.json (mydep1, mydep2) + consumer go-pkgs/ requires dep1+dep2 -> wrked 2 deps
 ```
 
 ## Steps

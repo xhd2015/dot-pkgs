@@ -3,8 +3,8 @@
 **Feature**: wrk --all-deps silently skips projects.json entries whose path does not exist
 
 ```
-# projects.json lists nonexistent path -> skip silently -> wrk 0 deps
-consumer (requires dep1) + projects.json (missing path) -> wrk 0 deps
+# projects.json lists nonexistent path -> skip silently -> wrked 0 deps
+consumer (requires dep1) + projects.json (missing path) -> wrked 0 deps
 ```
 
 ## Steps

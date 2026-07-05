@@ -23,8 +23,10 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if got := statusOutputBlockCount(resp.Stdout); got != 2 {
 		t.Fatalf("expected 2 status blocks, got %d:\n%s", got, resp.Stdout)
 	}
-	assert.Output(t, resp.Stdout, statusBlockTemplate(t, req.MainRepo, ".", "clean"))
-	assert.Output(t, resp.Stdout, statusBlockTemplate(t, req.DepPath, "tools/child", "clean"))
+	assert.Output(t, resp.Stdout, statusStdoutV2(t,
+		statusBlockPlain(t, req.MainRepo, ".", "clean"),
+		statusBlockPlain(t, req.DepPath, "tools/child", "clean"),
+	))
 	assertNoMasterField(t, resp.Stdout)
 }
 ```

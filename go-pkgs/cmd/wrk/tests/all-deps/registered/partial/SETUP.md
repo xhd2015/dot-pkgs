@@ -4,7 +4,7 @@
 
 ```
 # consumer requires dep1+dep2; only dep1 registered -> dep1 linked, dep2 untouched
-consumer (requires dep1, dep2) + projects.json (mydep1 only) -> wrk --all-deps -> wrk 1 deps
+consumer (requires dep1, dep2) + projects.json (mydep1 only) -> wrk --all-deps -> wrked 1 deps
 ```
 
 ## Steps

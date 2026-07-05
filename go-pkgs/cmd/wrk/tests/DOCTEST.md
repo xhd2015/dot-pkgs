@@ -7,7 +7,7 @@ Decision tree covering the `wrk` CLI: no-args worktree creation, optional `wrk <
 first positional, `wrk <dir> <target-dir>` second positional spawn-location override,
 `wrk --dep` external dependency worktrees, `wrk --done` merge-back
 (including external cascade), `wrk --list`, `wrk --status`, and project persistence
-(`wrk --projects`, `wrk --add`, auto-record, events.jsonl).
+(`wrk --projects`, `wrk --add`, `wrk --rm`, auto-record, events.jsonl).
 
 # DSN (Domain Specific Notion)
 
@@ -31,14 +31,15 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **deps/** — manually linked worktrees may also live under `{consumerTop}/deps/...` (or any path under the checkout); created via `git -C <depMain> worktree add` into the consumer tree. `--done` cascade discovers them via `scan_repo.Scan`, same as `external/*`.
 - **gitWorktreeList** — helper capturing raw `git worktree list` stdout from a directory for list-test comparison.
 - **Request.StdinInput** — when non-empty, piped to wrk stdin before wait (mvd merge-back pattern).
-- **wrk --all-deps** — automates `--dep` for every dependency discoverable from registered projects: scans the consumer tree (`gotool/mod/scan.Scan`) for all Go modules and builds the union of required-module sets and existing local `Replace` sets; loads candidate dep repos from `{WRK_HOME}/projects.json` via `storage.ListProjects` (lexicographically sorted absolute main-repo paths — same order as `wrk --projects`); for each registered project path that is a git main repo, scans it with `gotool/mod/scan.Scan` and matches module paths against required modules; skips self, modules not required, already-replaced modules (tolerated, not errored — unlike `--done`), already-seen modules, missing project paths, and non-git project paths (all skipped silently); for each match links an external worktree under `{consumerTop}/external/` via the shared `linkExternalDep` core and records a `replace` in every consumer module that requires it (sub-module `Dir` when `m.Dir != "."`); runs `go mod tidy` in each affected consumer module (skipped when zero deps linked). Consumers without a root `go.mod` (module lives in a subdirectory) are supported via module scanning. Stdout: one line per linked dep in **registered project path order** (lexicographic), with matched modules within each project in `mod/scan` Dir order: `wrk <module-path> at ./external/<name>[/<subdir>]` (path relative to `consumerTop`), then a final summary `wrk <N> deps`. Empty or absent `projects.json` → single line `wrk 0 deps`, exit 0, no tidy, no `external/` created, no replaces.
+- **wrk --all-deps** — automates `--dep` for every dependency discoverable from registered projects: scans the consumer tree (`gotool/mod/scan.Scan`) for all Go modules and builds the union of required-module sets and existing local `Replace` sets; loads candidate dep repos from `{WRK_HOME}/projects.json` via `storage.ListProjects` (lexicographically sorted absolute main-repo paths — same order as `wrk --projects`); for each registered project path that is a git main repo, scans it with `gotool/mod/scan.Scan` and matches module paths against required modules; skips self, modules not required, already-replaced modules (tolerated, not errored — unlike `--done`), already-seen modules, missing project paths, and non-git project paths (all skipped silently); for each match links an external worktree under `{consumerTop}/external/` via the shared `linkExternalDep` core and records a `replace` in every consumer module that requires it (sub-module `Dir` when `m.Dir != "."`); runs `go mod tidy` in each affected consumer module (skipped when zero deps linked). Consumers without a root `go.mod` (module lives in a subdirectory) are supported via module scanning. Stdout: one line per linked dep in **registered project path order** (lexicographic), with matched modules within each project in `mod/scan` Dir order: `wrk <module-path> at ./external/<name>[/<subdir>]` (path relative to `consumerTop`), then a final summary `wrked <N> deps`. Empty or absent `projects.json` → single line `wrked 0 deps`, exit 0, no tidy, no `external/` created, no replaces.
 - **Removed from --all-deps** — `--scan-root` flag and `WRK_SCAN_ROOT` env var (and `resolveScanRoot()` / `scan_repo.Scan` in the `--all-deps` code path). Passing `--scan-root` → non-zero exit; stderr mentions unknown/unexpected flag or `scan-root` removed.
 - **--all-deps mutual exclusion** — `--all-deps` is mutually exclusive with `--dep`, `--done`, `--list`, and no-args create; `--all-deps --dep <x>` → non-zero exit, stderr mentions "mutually exclusive"; no positional args allowed.
-- **wrk --all-deps --dry-run** — runs the full read-only discovery/planning of `--all-deps` but writes nothing. Same cwd/git/go.mod validation, same `required`/`alreadyReplaced`/`consumerModule` sets, same registered-project discovery (`storage.ListProjects` + `modscan.Scan` per project), same self / not-required / already-replaced / seen / missing-path / non-git skips, and the SAME external-path naming + collision logic as the real run — but it does NOT `MkdirAll(external/)`, does NOT `ensureGitignoreExternal`, does NOT `createExternalWorktree` (no `git worktree add`/branch/remote/fetch), does NOT `GoModEditReplace`, and does NOT `GoModTidy`. stdout: one line per planned module in registered project path order `would: wrk <module-path> at ./external/<name>[/<subdir>]`, then a final `would: wrk <N> deps` (empty projects → single `would: wrk 0 deps`). Core guarantee: after a dry run `{consumerTop}/external/` does NOT exist, consumer `go.mod` is unchanged (no new replaces), and `.gitignore` is unchanged (no `/external` line). Errors that occur during planning (non-git cwd, unreadable go.mod) still surface as errors — the process "actually runs".
+- **wrk --all-deps --dry-run** — runs the full read-only discovery/planning of `--all-deps` but writes nothing. Same cwd/git/go.mod validation, same `required`/`alreadyReplaced`/`consumerModule` sets, same registered-project discovery (`storage.ListProjects` + `modscan.Scan` per project), same self / not-required / already-replaced / seen / missing-path / non-git skips, and the SAME external-path naming + collision logic as the real run — but it does NOT `MkdirAll(external/)`, does NOT `ensureGitignoreExternal`, does NOT `createExternalWorktree` (no `git worktree add`/branch/remote/fetch), does NOT `GoModEditReplace`, and does NOT `GoModTidy`. stdout: one line per planned module in registered project path order `would: wrk <module-path> at ./external/<name>[/<subdir>]`, then a final `would: wrked <N> deps` (empty projects → single `would: wrked 0 deps`). Core guarantee: after a dry run `{consumerTop}/external/` does NOT exist, consumer `go.mod` is unchanged (no new replaces), and `.gitignore` is unchanged (no `/external` line). Errors that occur during planning (non-git cwd, unreadable go.mod) still surface as errors — the process "actually runs".
 - **--dry-run** — bool flag (no value); valid ONLY with `--all-deps`. Bare `wrk --dry-run`, or `--dry-run` with any other mode (`--dep`/`--done`/`--list`/no-args create) → non-zero exit, stderr `wrk: --dry-run is only valid with --all-deps`. It does NOT relax `--all-deps`'s mutual exclusion with `--dep`/`--done`/`--list` — `--dry-run --all-deps --dep <x>` still errors as mutually exclusive (the `--all-deps` mutual-exclusion check runs first).
-- **wrk --task <desc>** — flag valid only in create mode (no `--done`/`--list`/`--dep`/`--all-deps`). Derives a sanitized slug from `<desc>` (lowercase, non-letter-digit → `-`, collapse, trim, truncate 64 runes). Appends slug after the date in both dir and branch names: `{basename}-{token}-{date}-{slug}[-N]` for dir, `{branchBase}-{date}-{slug}[-N]` for branch. Empty `<desc>` or slug → non-zero exit. No metadata file stored — the slug is embedded in the name.
+- **wrk --task <desc>** / **wrk -t <desc>** — `-t` and `--task` are equivalent (like `-l,--list`); `hasArg` / `taskFlagSet` detect both forms. Event `args` record whichever form was passed (e.g. `["-t", "desc"]` when `-t` is used). Flag valid only in create mode (no `--done`/`--list`/`--dep`/`--all-deps`). Derives a sanitized slug from `<desc>` (lowercase, non-letter-digit → `-`, collapse, trim, truncate 64 runes). Appends slug after the date in both dir and branch names: `{basename}-{token}-{date}-{slug}[-N]` for dir, `{branchBase}-{date}-{slug}[-N]` for branch. Empty `<desc>` or slug → non-zero exit. No metadata file stored — the slug is embedded in the name.
 - **wrk --set-task <desc>** — flag valid alone (mutually exclusive with all other flags). When run from inside a linked worktree (no `<dir>`), renames that worktree. When run as `wrk <dir> --set-task <desc>`, renames the worktree at `<dir>`. Parses the worktree's branch name to extract `branchBase` and `date` (branch must match `{branchBase}-{YYYY-MM-DD}[-slug][-N]`; non-wrk worktrees → error). Computes new dir and branch names with the new slug. If slug is unchanged → no-op. Before `git worktree move`, checks stdout: TTY → warns (old→new path + branch) and prompts `Proceed? [Y/n]`; confirmation executes the move. Non-TTY → non-zero exit `wrk: --set-task requires a terminal (tty)`. When run with `WRK_SET_TASK_CONFIRM=1` env → auto-confirms without TTY (test escape hatch). `<dir>` resolves to the effective working directory; empty `<dir>` (or absent) defaults to cwd.
-- **Request.TaskDesc** — when set, used by test assertions to compute expected dir/branch names with task slug.
+- **Request.TaskDesc** — when set, task description passed to wrk (with `Request.TaskFlag`, default `--task`).
+- **Request.TaskFlag** — task tests: CLI flag form for task description (`-t` or `--task`; default `--task` when `TaskDesc` is set).
 - **Request.SetTaskDesc** — when set, tests pass `--set-task <desc>` to wrk; test assertions verify rename side effects.
 - **Request.SetTaskEnv** — when set, appended to wrk's environment (e.g., `WRK_SET_TASK_CONFIRM=1` to auto-confirm rename in tests).
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos) and `events.jsonl` (append-only event log); tests isolate at `{WorkRoot}/.wrk`.
@@ -46,10 +47,14 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
 - **WRK_PROJECTS_PERF_LOG** — when set to a file path, `wrk --projects` appends JSONL latency events (`run_start`, `project_start`, `phase`, `worktree_status`, `phase_total`, `project_end`, `run_end`) without changing stdout/stderr; zero overhead when unset.
 - **Request.ProjectsPerfLog** — perf-profile tests: path written to `WRK_PROJECTS_PERF_LOG`.
-- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs pull` (no commit count), `diverged(N commit(s))`, or `(no upstream)` when the branch has no upstream), and `Worktrees:    N total, M dirty` (four spaces after colon, aligned with other fields; counts of **linked** worktrees with existing paths only via `worktree.ListLinked` + porcelain status; dead/missing worktrees are skipped; always shown, e.g. `0 total, 0 dirty`). When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, and `N dirty` when N > 0; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs merge back(...)` and `needs pull`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs fast forward(+N commit(s))` applies only to `--status` `Master:` (not `Remote:`).
+- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. **Never aborts** the run due to per-project or per-worktree git failures (exit 0 unless `projects.json` is unreadable); errors surface inline in stdout blocks; stderr stays empty for these cases. **Healthy main repo** blocks include absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs pull` (no commit count), `diverged(N commit(s))`, or `(no upstream)` when the branch has no upstream), and `Worktrees:` (four spaces after colon, aligned with other fields) with composable summary segments: `N total` and `M dirty` always; `K error` only when K > 0 (alive linked worktree path exists but `git status` fails); `P prune` only when P > 0 (registered in `git worktree list` but checkout directory missing per `worktree.IsDead`). After the `Worktrees:` line, each broken (alive, git-fails) worktree emits `  <absolute-path>  error: <full git stderr message>` (two-space indent); no per-path lines for prunable/dead worktrees. **Broken main repo** blocks omit Branch, Commit, Remote, and Worktrees entirely — only `Dir:` and `Status:       error: <full git stderr message>`. When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, `N dirty` when N > 0, `K error` when K > 0, broken-main `Status: error: ...` value, and per-worktree `error: ...` detail values; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs merge back(...)` and `needs pull`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs fast forward(+N commit(s))` applies only to `--status` `Master:` (not `Remote:`).
 - **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
+- **Stdout trailing newline** — all wrk modes that print non-empty stdout end with `\n` after the last content line (shell prompt stays on its own line). Empty stdout has no bytes.
+- **Stdout assertions** — doctest leaves use `assert.Output` with `version: 2` full-match templates only (no `<contains>` for stdout). Multi-block stdout (e.g. `--status` scan blocks, `--projects` project blocks) is asserted with one v2 template covering the entire stdout; blocks are joined with `\n\n`. Stderr error messages continue to use `<contains>` partial match.
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
-- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
+- **wrk --rm `<dir>`** — standalone mode; `--rm <dir>` (no `--remove` alias); `--rm` consumes the next argument as `<dir>`; mutually exclusive with all other modes; requires non-empty path (`wrk: --rm requires a path argument`). Help text: `--rm <dir>  remove a recorded main repository path`. Resolves target: `filepath.Abs` + `storage.NormalizePath`; if path exists and is inside a git work tree → resolve to main repo via `worktree.ShowToplevel` + `worktree.ResolveMainRepo` (same as `--add`); if path does not exist → use normalized absolute path as-is (stale/moved entries). **Success (entry removed)**: exit 0; stdout = removed main-repo absolute path (single line, trimmed). **Idempotent (not in projects.json)**: exit 0; empty stdout; no error. Does not delete worktrees, git repos, or events.jsonl history. Appends event `command: "rm"`, `args: ["--rm", "<path-arg>"]`, `exit_code: 0`. Auto-record still runs before remove.
+- **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
+- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
 - **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; and `--dep <dir>` via `runDep` with `allowBasenameFallback=true`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--status`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup.
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
@@ -118,7 +123,7 @@ wrk tests
 │   │   ├── removed-scan-root/  # --scan-root flag → non-zero error
 │   │   └── dry-run/            # --dry-run with registered projects
 │   │       ├── basic/          # registered deps → would: lines, no side effects
-│   │       └── empty/        # empty projects → would: wrk 0 deps
+│   │       └── empty/        # empty projects → would: wrked 0 deps
 │   ├── mutually-exclusive/     # wrk --all-deps --dep <x> → non-zero, mutually exclusive
 │   ├── not-git-cwd/            # cwd not a git repo → non-zero, is not a git repository
 │   └── dry-run/
@@ -196,6 +201,7 @@ wrk tests
     └── task/                          # wrk --task and wrk --set-task
         ├── spawn/                     # --task when creating worktree
         │   ├── basic/                 # wrk --task "fix login bug" → slug in name
+        │   ├── t-alias/               # wrk -t "fix login bug" → slug in name; event args use -t
         │   ├── special-chars/         # capitals, symbols → sanitized slug
         │   ├── long-task/             # >64 runes → truncated
         │   ├── empty-task/            # --task "" → error
@@ -240,6 +246,9 @@ wrk tests
     │   └── up-to-date/           # Remote: identical
     ├── detailed-status/          # wrk --projects detailed status blocks (plain pipe output)
     │   ├── single-clean-no-wts/  # one project, clean, no linked wts
+    │   ├── stale-gitdir-linked/  # stale .git gitdir -> inline error detail, exit 0
+    │   ├── broken-main-repo/     # recorded path no longer git -> minimal Dir+Status error block
+    │   ├── prunable-worktrees/   # deleted checkout -> 0 total, 1 prune (summary only)
     │   ├── with-linked-mixed/    # Worktrees:    3 total, 1 dirty
     │   ├── ahead-of-upstream/    # Remote: needs merge back(+N commit)
     │   ├── no-upstream/          # Remote: (no upstream)
@@ -253,6 +262,7 @@ wrk tests
     │   ├── force-color-needs-pull/     # orange needs pull
     │   ├── force-color-diverged/       # red diverged(...)
     │   ├── force-color-worktrees-dirty/ # red N dirty portion only
+    │   ├── force-color-stale-gitdir-linked/ # red on error summary + detail lines
     │   ├── clean-no-color/       # all clean + --color → no highlights
     │   └── color-with-list/      # --list --color → list unchanged, no ANSI
     ├── list/
@@ -264,6 +274,17 @@ wrk tests
     │   │   ├── main-repo/        # wrk --add <mainRepo>
     │   │   └── linked-worktree/  # wrk --add <linkedWt> → main repo
     │   └── idempotent/           # auto + manual → single entry
+    ├── remove/
+    │   ├── manual/
+    │   │   ├── main-repo/        # --add then --rm <mainRepo> → gone, stdout path
+    │   │   └── linked-worktree/  # --rm <linkedWt> → main repo removed
+    │   ├── idempotent/
+    │   │   ├── not-recorded/     # never recorded → exit 0, empty stdout
+    │   │   └── already-removed/  # remove twice → second empty stdout
+    │   ├── missing-path-arg/     # wrk --rm (no path) → error
+    │   ├── stale-path/           # record, delete .git, --rm old path → removed
+    │   └── invalid-mode/
+    │       └── remove-with-list/ # wrk --rm X --list → mutually exclusive
     ├── events/
     │   ├── append-on-success/    # create → event exit_code 0
     │   └── append-on-failure/    # failed command → event exit_code != 0
@@ -333,22 +354,22 @@ wrk tests
 | 32 | dep/cwd-in-sub-module | Cwd is inside sub-module dir, not repo root → success |
 | 33 | dep/external-wt-owned-by-dep-repo | External dep worktree's `.git` gitdir resolves to the DEP main repo, not the consumer; dep owns the worktree |
 | 34 | dep/external-wt-from-linked-consumer | `--dep` from inside a linked consumer worktree → external wt owned by dep main repo, not consumer main |
-| 35 | all-deps/registered/basic | dep1+dep2 registered in projects.json → both linked in project-path order, `wrk 2 deps` |
-| 36 | all-deps/registered/partial | only dep1 registered → dep1 linked, dep2 not replaced, `wrk 1 deps` |
-| 37 | all-deps/registered/already-replaced | dep1 pre-replaced `=> ./external/preexisting` → skipped; dep2 linked, `wrk 1 deps` |
-| 38 | all-deps/registered/empty-projects | no projects.json → `wrk 0 deps`, no replaces, no `external/` |
-| 39 | all-deps/registered/self-skip | consumer also in projects.json → dep1 linked, self skipped, `wrk 1 deps` |
+| 35 | all-deps/registered/basic | dep1+dep2 registered in projects.json → both linked in project-path order, `wrked 2 deps` |
+| 36 | all-deps/registered/partial | only dep1 registered → dep1 linked, dep2 not replaced, `wrked 1 deps` |
+| 37 | all-deps/registered/already-replaced | dep1 pre-replaced `=> ./external/preexisting` → skipped; dep2 linked, `wrked 1 deps` |
+| 38 | all-deps/registered/empty-projects | no projects.json → `wrked 0 deps`, no replaces, no `external/` |
+| 39 | all-deps/registered/self-skip | consumer also in projects.json → dep1 linked, self skipped, `wrked 1 deps` |
 | 40 | all-deps/mutually-exclusive | `wrk --all-deps --dep <x>` → non-zero, mutually exclusive |
 | 41 | all-deps/not-git-cwd | cwd not a git repo → non-zero, is not a git repository |
-| 42 | all-deps/registered/nested-submodule | nested sub-module in registered repo → linked, replace at sub-dir, `wrk 1 deps` |
-| 43 | all-deps/registered/multi-module-same-repo | two sub-modules in one registered repo → ONE worktree, two replaces, `wrk 2 deps` |
+| 42 | all-deps/registered/nested-submodule | nested sub-module in registered repo → linked, replace at sub-dir, `wrked 1 deps` |
+| 43 | all-deps/registered/multi-module-same-repo | two sub-modules in one registered repo → ONE worktree, two replaces, `wrked 2 deps` |
 | 44 | all-deps/registered/consumer-sub-module | consumer module in subdir → scan + link all registered deps |
-| 45 | all-deps/registered/dry-run/basic | registered dep1+dep2 → `would:` lines, `would: wrk 2 deps`, NO side effects |
-| 46 | all-deps/registered/dry-run/empty | empty projects → `would: wrk 0 deps`, NO side effects |
+| 45 | all-deps/registered/dry-run/basic | registered dep1+dep2 → `would:` lines, `would: wrked 2 deps`, NO side effects |
+| 46 | all-deps/registered/dry-run/empty | empty projects → `would: wrked 0 deps`, NO side effects |
 | 47 | all-deps/dry-run/without-all-deps | `wrk --dry-run` (no `--all-deps`) → non-zero, stderr `--dry-run is only valid with --all-deps` |
-| 47a | all-deps/registered/not-a-dep | registered project not required by consumer → skipped, `wrk 0 deps` |
-| 47b | all-deps/registered/missing-project-path | projects.json missing path → skip silently, `wrk 0 deps` |
-| 47c | all-deps/registered/non-git-project | registered non-git dir → skip silently, `wrk 0 deps` |
+| 47a | all-deps/registered/not-a-dep | registered project not required by consumer → skipped, `wrked 0 deps` |
+| 47b | all-deps/registered/missing-project-path | projects.json missing path → skip silently, `wrked 0 deps` |
+| 47c | all-deps/registered/non-git-project | registered non-git dir → skip silently, `wrked 0 deps` |
 | 47d | all-deps/registered/removed-scan-root | `wrk --all-deps --scan-root X` → non-zero, stderr mentions scan-root |
 | 48 | done/external-cascade | `--done` cascades to `external/*` dep wt first; parent errors on local replace (names go.mod + directive) |
 | 49 | done/local-replace-blocks | extra-repo `replace => ./external/foo` (non-existent) blocks `--done` at guard (names go.mod + directive) |
@@ -375,6 +396,7 @@ wrk tests
 | 67 | done/intra-replace-strict-blocks | intra-repo replace + `--no-in-module-replace` → block, names go.mod + directive |
 | 68 | done/no-in-module-replace-without-done | `wrk --list --no-in-module-replace` → non-zero, `--no-in-module-replace is only valid with --done` |
 | 69 | task/spawn/basic | `wrk --task "fix login bug"` → dir/branch include `-fix-login-bug` |
+| 69a | task/spawn/t-alias | `wrk -t "fix login bug"` → same slug behavior; event `args: ["-t", "fix login bug"]` |
 | 70 | task/spawn/special-chars | Task with capitals, symbols, unicode → sanitized slug |
 | 71 | task/spawn/long-task | >64 runes → truncated to 64 |
 | 72 | task/spawn/empty-task | `--task ""` → error |
@@ -428,6 +450,9 @@ wrk tests
 | 99 | projects/list/projects/after-records | `wrk --projects` prints sorted detailed blocks after auto-record |
 | 99a | projects/detailed-status/single-clean-no-wts | one project block with remote compare + `0 total, 0 dirty` |
 | 99b | projects/detailed-status/with-linked-mixed | `Worktrees: 3 total, 1 dirty` |
+| 99b2 | projects/detailed-status/stale-gitdir-linked | stale `.git` gitdir → `2 total, 0 dirty, 1 error` + detail line, exit 0 |
+| 99b2a | projects/detailed-status/broken-main-repo | broken main repo → minimal `Dir` + `Status: error: ...` only, exit 0 |
+| 99b2b | projects/detailed-status/prunable-worktrees | deleted checkout → `0 total, 0 dirty, 1 prune`, no per-path lines, exit 0 |
 | 99c | projects/detailed-status/ahead-of-upstream | `Remote:` shows `needs merge back(+N commit)` |
 | 99d | projects/detailed-status/no-upstream | `Remote: (no upstream)` |
 | 99e | projects/detailed-status/multiple-projects | two lex-ordered blocks with blank separator |
@@ -443,6 +468,7 @@ wrk tests
 | 99q | projects/remote-brief/diverged | plain `Remote: diverged(2 commits)` |
 | 99r | projects/remote-brief/up-to-date | plain `Remote: identical` |
 | 99l | projects/color-output/force-color-worktrees-dirty | `--color` → red on `N dirty` only |
+| 99l2 | projects/color-output/force-color-stale-gitdir-linked | `--color` → red on `1 error` summary + per-path `error: ...` |
 | 99m | projects/color-output/clean-no-color | all clean + `--color` → no red/orange on values |
 | 99n | projects/color-output/color-with-list | `--list --color` → git worktree list unchanged |
 | 100 | projects/add/manual/main-repo | `wrk --add <mainRepo>` records + stdout path |
@@ -455,6 +481,13 @@ wrk tests
 | 105c | projects/perf-profile/structure/dedup-list-linked | one list_linked phase per project (dedup ListLinked) |
 | 105 | projects/invalid-mode/projects-with-list | `wrk --projects --list` → mutually exclusive error |
 | 106 | projects/invalid-mode/add-missing-path | `wrk --add` without path → error |
+| 106a | projects/remove/manual/main-repo | `--add` then `--rm <mainRepo>` → gone from json, stdout path |
+| 106b | projects/remove/manual/linked-worktree | `--rm <linkedWt>` resolves to main repo, removes entry |
+| 106c | projects/remove/idempotent/not-recorded | `--rm` never-recorded path → exit 0, empty stdout |
+| 106d | projects/remove/idempotent/already-removed | remove twice → second call exit 0, empty stdout |
+| 106e | projects/remove/missing-path-arg | `wrk --rm` without path → error |
+| 106f | projects/remove/stale-path | record repo, delete `.git`, `--rm <old-path>` → removed |
+| 106g | projects/remove/invalid-mode/remove-with-list | `wrk --rm X --list` → mutually exclusive error |
 | 107 | projects/basename-fallback/single-match/create | Saved project; cwd elsewhere; `wrk myrepo` creates wt from saved path |
 | 108 | projects/basename-fallback/cwd-exists/no-fallback | `./myrepo` exists in cwd (not git); `wrk myrepo` → git error, no fallback |
 | 109 | projects/basename-fallback/no-match/error | No cwd entry, no saved project → `does not exist` |
@@ -540,6 +573,7 @@ doctest test ./tests/target-dir/relative-path
 
 # Run a task spawn leaf
 doctest test ./tests/task/spawn/basic
+doctest test ./tests/task/spawn/t-alias
 doctest test ./tests/task/spawn/empty-task
 doctest test ./tests/task/spawn/sequence
 
@@ -564,6 +598,10 @@ doctest test ./tests/projects/remote-brief
 doctest vet ./tests/projects/color-output
 doctest test ./tests/projects/color-output
 doctest test ./tests/projects/add/manual/main-repo
+doctest vet ./tests/projects/remove
+doctest test ./tests/projects/remove
+doctest test ./tests/projects/remove/manual/main-repo
+doctest test ./tests/projects/remove/idempotent/already-removed
 doctest test ./tests/projects/events/append-on-success
 
 # Run basename-fallback leaves (expect RED until basename fallback is implemented)
@@ -602,7 +640,8 @@ type Request struct {
 	DepsLinkedWtDir  string // done tests: manual linked worktree under deps/ (or other non-external path)
 	DepsDepPath      string // done tests: dep main repo that owns DepsLinkedWtDir
 	DepModulePath    string // dep tests: module path from dep go.mod
-	TaskDesc           string // task tests: task description passed to --task
+	TaskDesc           string // task tests: task description passed to --task or -t
+	TaskFlag           string // task tests: flag form for TaskDesc ("-t" or "--task"; default "--task")
 	SetTaskDesc        string // task tests: new task description for --set-task
 	SetTaskEnv         string // task tests: extra env vars for --set-task (e.g., WRK_SET_TASK_CONFIRM=1)
 	OldExternalGitdir  string // propagate tests: old gitdir content before rename
@@ -632,7 +671,11 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		args = append(args, req.SpawnDir)
 	}
 	if req.TaskDesc != "" {
-		args = append(args, "--task", req.TaskDesc)
+		taskFlag := req.TaskFlag
+		if taskFlag == "" {
+			taskFlag = "--task"
+		}
+		args = append(args, taskFlag, req.TaskDesc)
 	}
 	if req.SetTaskDesc != "" {
 		args = append(args, "--set-task", req.SetTaskDesc)

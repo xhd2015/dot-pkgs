@@ -4,7 +4,7 @@
 
 ```
 # projects.json lists existing plain dir (not git) -> skip silently
-consumer (requires dep1) + projects.json (non-git dir) -> wrk 0 deps
+consumer (requires dep1) + projects.json (non-git dir) -> wrked 0 deps
 ```
 
 ## Steps

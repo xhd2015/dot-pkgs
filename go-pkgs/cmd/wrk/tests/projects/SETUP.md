@@ -12,6 +12,7 @@ WRK_HOME -> projects.json (deduped main repos) + events.jsonl (append-only log)
 # standalone project modes
 wrk --projects -> sorted detailed status blocks (one per recorded main repo)
 wrk --add <dir> -> manual record + stdout main repo path
+wrk --rm <dir> -> delete recorded main repo + stdout path (or empty if idempotent)
 ```
 
 ## Preconditions
@@ -125,6 +126,11 @@ func resolvePath(t *testing.T, path string) string {
 		return abs
 	}
 	return resolved
+}
+
+func projectsStdoutV2(t *testing.T, blocks ...string) string {
+	t.Helper()
+	return v2StdoutTemplate(joinStdoutBlocks(blocks...))
 }
 
 func assertProjectRecorded(t *testing.T, wrkHome, wantPath, wantSource string) {
@@ -253,6 +259,7 @@ func ensureProjectsHelpersUsed() {
 	_ = readProjectsFile
 	_ = readEvents
 	_ = resolvePath
+	_ = projectsStdoutV2
 	_ = assertProjectRecorded
 	_ = assertProjectsCount
 	_ = assertNoProjectsFile

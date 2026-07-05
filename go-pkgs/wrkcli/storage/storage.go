@@ -117,6 +117,30 @@ func RecordProject(wrkHome, path, source string) error {
 	return SaveProjects(wrkHome, pf)
 }
 
+// RemoveProject deletes the project entry matching normalized path. Returns
+// true when an entry was removed, false when no matching entry exists.
+func RemoveProject(wrkHome, path string) (bool, error) {
+	path = NormalizePath(path)
+	pf, err := LoadProjects(wrkHome)
+	if err != nil {
+		return false, err
+	}
+	var kept []Project
+	removed := false
+	for _, p := range pf.Projects {
+		if NormalizePath(p.Path) == path {
+			removed = true
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if !removed {
+		return false, nil
+	}
+	pf.Projects = kept
+	return true, SaveProjects(wrkHome, pf)
+}
+
 // ListProjects returns recorded project paths sorted lexicographically.
 func ListProjects(wrkHome string) ([]string, error) {
 	pf, err := LoadProjects(wrkHome)

@@ -25,7 +25,7 @@ wrk --list --color -> git worktree list unchanged (no ANSI)
 
 ## Context
 
-- Red (`#31`): word `dirty`, count segments with N > 0, `Remote: diverged(...)`, worktree `N dirty` when N > 0.
+- Red (`#31`): word `dirty`, count segments with N > 0, `Remote: diverged(...)`, worktree `N dirty` when N > 0, `K error` when K > 0, broken-main `Status: error: ...` value, and per-worktree `error: ...` detail values.
 - Grey (`#90`): count segments with N = 0 in dirty status lines.
 - Orange (`#33`): `Remote: needs merge back(...)` and `Remote: needs pull`.
 - Green (`#32`): not used on `--projects` (`clean` and `identical` stay uncolored).
@@ -35,6 +35,7 @@ wrk --list --color -> git worktree list unchanged (no ANSI)
 ```go
 import (
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -174,7 +175,61 @@ func colorProjectStatusBlockPlain(t *testing.T, mainRepo, statusLine, remoteFiel
 
 func colorProjectStatusBlockTemplate(t *testing.T, mainRepo, statusLine, remoteField, worktreesSummary string) string {
 	t.Helper()
-	return "---\nversion: 2\n---\n" + colorProjectStatusBlockPlain(t, mainRepo, statusLine, remoteField, worktreesSummary)
+	return v2StdoutTemplate(colorProjectStatusBlockPlain(t, mainRepo, statusLine, remoteField, worktreesSummary))
+}
+
+func colorFormatWorktreesSummary(total, dirty, errors, prunes int) string {
+	parts := []string{
+		fmt.Sprintf("%d total", total),
+		fmt.Sprintf("%d dirty", dirty),
+	}
+	if errors > 0 {
+		parts = append(parts, fmt.Sprintf("<ansi-color red>%d error</ansi-color>", errors))
+	}
+	if prunes > 0 {
+		parts = append(parts, fmt.Sprintf("%d prune", prunes))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func colorGitCommandCombinedError(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("git %v in %s: expected failure", args, dir)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func colorWorktreeStatusError(t *testing.T, wtPath string) string {
+	t.Helper()
+	return colorGitCommandCombinedError(t, wtPath, "status", "--porcelain")
+}
+
+func colorWorktreeErrorDetailLine(t *testing.T, wtPath, gitErr string) string {
+	t.Helper()
+	return fmt.Sprintf("  %s  <ansi-color red>error: %s</ansi-color>", resolvePath(t, wtPath), gitErr)
+}
+
+func colorProjectStatusBlockWithDetailsPlain(t *testing.T, mainRepo, statusLine, remoteField, worktreesSummary string, detailLines []string) string {
+	t.Helper()
+	lines := []string{
+		colorProjectDirLine(t, mainRepo),
+		colorStatusBranchLine(t, mainRepo),
+		colorStatusCommitLine(t, mainRepo),
+		"Status:       " + statusLine,
+		remoteField,
+		"Worktrees:    " + worktreesSummary,
+	}
+	lines = append(lines, detailLines...)
+	return strings.Join(lines, "\n")
+}
+
+func colorProjectStatusBlockWithDetailsTemplate(t *testing.T, mainRepo, statusLine, remoteField, worktreesSummary string, detailLines []string) string {
+	t.Helper()
+	return v2StdoutTemplate(colorProjectStatusBlockWithDetailsPlain(t, mainRepo, statusLine, remoteField, worktreesSummary, detailLines))
 }
 
 func colorLinkedWorktreeSummary(t *testing.T, mainRepo string) string {
@@ -291,6 +346,12 @@ func ensureColorOutputHelpersUsed() {
 	_ = colorRemoteBriefFromResult
 	_ = colorProjectStatusBlockPlain
 	_ = colorProjectStatusBlockTemplate
+	_ = colorFormatWorktreesSummary
+	_ = colorGitCommandCombinedError
+	_ = colorWorktreeStatusError
+	_ = colorWorktreeErrorDetailLine
+	_ = colorProjectStatusBlockWithDetailsPlain
+	_ = colorProjectStatusBlockWithDetailsTemplate
 	_ = colorLinkedWorktreeSummary
 	_ = colorGitStatusCounts
 	_ = addColorLinkedWorktree

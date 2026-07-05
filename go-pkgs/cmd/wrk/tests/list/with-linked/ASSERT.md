@@ -11,6 +11,8 @@
 ```go
 import (
 	"path/filepath"
+
+	"github.com/xhd2015/doctest/assert"
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
@@ -18,20 +20,14 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.ExitCode != 0 {
 		t.Fatalf("exit code %d stderr=%q", resp.ExitCode, resp.Stderr)
 	}
+	if resp.Stderr != "" {
+		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
+	}
 
 	mainRepo := filepath.Join(req.WorkRoot, "myrepo")
-	linkedWT := filepath.Join(req.WorkRoot, "linked-wt")
-
-	assertContains(t, resp.Stdout, mainRepo)
-	assertContains(t, resp.Stdout, linkedWT)
-
 	want := gitWorktreeList(t, mainRepo)
 	if resp.Stdout != want {
 		t.Fatalf("stdout mismatch:\nwant:\n%q\ngot:\n%q", want, resp.Stdout)
-	}
-
-	if resp.Stderr != "" {
-		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
 	}
 }
 ```

@@ -4,7 +4,7 @@
 
 ```
 # registered mydep1+mydep2 -> would: lines for both, no external/, no replaces
-projects.json (mydep1, mydep2) + consumer -> wrk --all-deps --dry-run -> would: wrk 2 deps
+projects.json (mydep1, mydep2) + consumer -> wrk --all-deps --dry-run -> would: wrked 2 deps
 ```
 
 ## Steps
