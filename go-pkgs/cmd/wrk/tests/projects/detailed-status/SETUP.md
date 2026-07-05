@@ -95,22 +95,22 @@ func compareWithRemoteField(t *testing.T, mainRepo, upstreamRef, currentBranch s
 func remoteBriefFromResult(result *git.CompareBranchesResult) string {
 	switch result.Relation {
 	case git.BranchRelationSame:
-		return "Up to date"
+		return "identical"
 	case git.BranchRelationAIsAncestorOfB:
 		commitWord := "commit"
 		if result.CommitsAheadB != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("Needs Push(+%d %s)", result.CommitsAheadB, commitWord)
+		return fmt.Sprintf("needs merge back(+%d %s)", result.CommitsAheadB, commitWord)
 	case git.BranchRelationBIsAncestorOfA:
-		return "Needs Pull"
+		return "needs pull"
 	case git.BranchRelationDiverged:
 		diverged := result.CommitsAheadA + result.CommitsAheadB
 		commitWord := "commit"
 		if diverged != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("Needs Merge(%d %s diverged)", diverged, commitWord)
+		return fmt.Sprintf("diverged(%d %s)", diverged, commitWord)
 	default:
 		return fmt.Sprintf("unknown branch relation %v", result.Relation)
 	}

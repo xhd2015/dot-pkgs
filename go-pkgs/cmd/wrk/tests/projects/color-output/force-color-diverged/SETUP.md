@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: --color highlights diverged Needs Merge remote summary in red
+**Feature**: --color highlights diverged remote summary in red
 
 ```
-main and origin/main each have unique commits -> wrk --projects --color -> red Needs Merge(...)
+main and origin/main each have unique commits -> wrk --projects --color -> red diverged(N commits)
 ```
 
 ## Steps

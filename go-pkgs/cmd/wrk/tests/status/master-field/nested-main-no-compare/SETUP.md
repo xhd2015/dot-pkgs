@@ -1,10 +1,10 @@
 # Scenario
 
-**Feature**: nested independent main repos omit Compare with Master
+**Feature**: nested independent main repos omit Master:
 
 ```
 # root checkout + nested independent repo (multiple-git-dirs pattern)
-myrepo + myrepo/tools/child -> wrk --status -> neither block has Compare with Master
+myrepo + myrepo/tools/child -> wrk --status -> neither block has Master:
 ```
 
 ## Steps
@@ -17,7 +17,7 @@ myrepo + myrepo/tools/child -> wrk --status -> neither block has Compare with Ma
 import "path/filepath"
 
 func Setup(t *testing.T, req *Request) error {
-	ensureCompareWithMasterHelpersUsed()
+	ensureMasterFieldHelpersUsed()
 	repo := filepath.Join(req.WorkRoot, "myrepo")
 	child := filepath.Join(repo, "tools", "child")
 

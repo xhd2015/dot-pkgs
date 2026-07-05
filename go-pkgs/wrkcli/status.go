@@ -20,7 +20,7 @@ type statusCounts struct {
 	deleted int
 }
 
-func runStatus(workDir string) error {
+func runStatus(workDir string, colorEnabled bool) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -44,7 +44,7 @@ func runStatus(workDir string) error {
 		if i > 0 {
 			fmt.Println()
 		}
-		if err := printStatusBlock(checkoutRoot, repo.Path); err != nil {
+		if err := printStatusBlock(checkoutRoot, repo.Path, colorEnabled, i == len(repos)-1); err != nil {
 			return err
 		}
 	}
@@ -84,7 +84,7 @@ func discoverStatusRepos(ctx context.Context, root string) ([]scan_repo.Repo, er
 	return scan_repo.Scan(ctx, scan_repo.Options{Roots: []string{root}})
 }
 
-func printStatusBlock(root, repoPath string) error {
+func printStatusBlock(root, repoPath string, colorEnabled bool, isLast bool) error {
 	rel, err := filepath.Rel(root, repoPath)
 	if err != nil {
 		return fmt.Errorf("resolve relative repo path: %w", err)
@@ -110,20 +110,37 @@ func printStatusBlock(root, repoPath string) error {
 		return err
 	}
 
+	hasMaster := worktree.IsLinked(repoPath)
+	var masterBrief string
+	if hasMaster {
+		masterBrief, _, err = masterBriefForRepo(repoPath, branch, colorEnabled)
+		if err != nil {
+			return err
+		}
+	}
+
 	fmt.Printf("Dir:          %s\n", filepath.ToSlash(rel))
 	fmt.Printf("Branch:       %s\n", branch)
 	fmt.Printf("Commit:       %s  %s\n", short, subject)
-	fmt.Printf("Status:       %s\n", formatStatusCounts(counts, false))
 
-	if worktree.IsLinked(repoPath) {
-		if err := printCompareWithMaster(repoPath, branch); err != nil {
-			return err
+	statusLine := formatStatusCounts(counts, colorEnabled, true)
+	omitTrailingNL := isLast
+	if hasMaster {
+		fmt.Printf("Status:       %s\n", statusLine)
+		if omitTrailingNL {
+			fmt.Printf("Master:       %s", masterBrief)
+		} else {
+			fmt.Printf("Master:       %s\n", masterBrief)
 		}
+	} else if omitTrailingNL {
+		fmt.Printf("Status:       %s", statusLine)
+	} else {
+		fmt.Printf("Status:       %s\n", statusLine)
 	}
 	return nil
 }
 
-func printProjectStatusBlock(mainRepoPath string, colorEnabled bool) error {
+func printProjectStatusBlock(mainRepoPath string, colorEnabled bool, isLast bool) error {
 	mainRepoPath = storage.NormalizePath(mainRepoPath)
 
 	branch, err := gitOutput(mainRepoPath, "rev-parse", "--abbrev-ref", "HEAD")
@@ -142,14 +159,26 @@ func printProjectStatusBlock(mainRepoPath string, colorEnabled bool) error {
 	if err != nil {
 		return err
 	}
+	isClean := counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0
+	remoteColor := colorEnabled && isClean
+
+	remoteRelation, err := projectRemoteRelation(mainRepoPath, branch)
+	if err != nil {
+		return err
+	}
+	dirtyWorktrees, err := linkedWorktreeDirtyCount(mainRepoPath)
+	if err != nil {
+		return err
+	}
+	blockUsesColor := projectBlockUsesColor(colorEnabled, counts, remoteRelation, dirtyWorktrees)
 
 	fmt.Printf("Dir:          %s\n", mainRepoPath)
 	fmt.Printf("Branch:       %s\n", branch)
 	fmt.Printf("Commit:       %s  %s\n", short, subject)
-	statusLine := formatStatusCounts(counts, colorEnabled)
+	statusLine := formatStatusCounts(counts, colorEnabled, false)
 	fmt.Printf("Status:       %s\n", statusLine)
 
-	remoteLine, err := formatCompareWithRemote(mainRepoPath, branch, colorEnabled)
+	remoteLine, err := formatCompareWithRemote(mainRepoPath, branch, remoteColor)
 	if err != nil {
 		return err
 	}
@@ -159,25 +188,104 @@ func printProjectStatusBlock(mainRepoPath string, colorEnabled bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Worktrees:    %s\n", summary)
+	if isLast && !blockUsesColor {
+		fmt.Printf("Worktrees:    %s", summary)
+	} else {
+		fmt.Printf("Worktrees:    %s\n", summary)
+	}
 	return nil
 }
 
-func printCompareWithMaster(repoPath, wtBranch string) error {
+func projectRemoteRelation(mainRepoPath, currentBranch string) (git.BranchRelation, error) {
+	upstream, err := gitUpstreamRef(mainRepoPath)
+	if err != nil {
+		return 0, err
+	}
+	if upstream == "" {
+		return git.BranchRelationSame, nil
+	}
+	if err := gitFetchQuiet(mainRepoPath); err != nil {
+		return 0, err
+	}
+	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
+	if err != nil {
+		return 0, err
+	}
+	return result.Relation, nil
+}
+
+func linkedWorktreeDirtyCount(mainRepo string) (int, error) {
+	linked, err := worktree.ListLinked(mainRepo)
+	if err != nil {
+		return 0, err
+	}
+	dirty := 0
+	for _, entry := range linked {
+		if worktree.IsDead(entry.Path) {
+			continue
+		}
+		counts, err := gitWorktreeStatusCounts(entry.Path)
+		if err != nil {
+			return 0, err
+		}
+		if counts.added != 0 || counts.changed != 0 || counts.renamed != 0 || counts.deleted != 0 {
+			dirty++
+		}
+	}
+	return dirty, nil
+}
+
+func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelation git.BranchRelation, dirtyWorktrees int) bool {
+	if !colorEnabled {
+		return false
+	}
+	if counts.added != 0 || counts.changed != 0 || counts.renamed != 0 || counts.deleted != 0 {
+		return true
+	}
+	if dirtyWorktrees > 0 {
+		return true
+	}
+	switch remoteRelation {
+	case git.BranchRelationAIsAncestorOfB, git.BranchRelationBIsAncestorOfA, git.BranchRelationDiverged:
+		return true
+	default:
+		return false
+	}
+}
+
+func statusBlockUsesColor(colorEnabled bool, counts statusCounts, hasMaster bool, masterRelation git.BranchRelation) bool {
+	if !colorEnabled {
+		return false
+	}
+	if counts.added != 0 || counts.changed != 0 || counts.renamed != 0 || counts.deleted != 0 {
+		return true
+	}
+	if counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0 {
+		return true
+	}
+	if hasMaster {
+		switch masterRelation {
+		case git.BranchRelationSame, git.BranchRelationAIsAncestorOfB, git.BranchRelationBIsAncestorOfA, git.BranchRelationDiverged:
+			return true
+		}
+	}
+	return false
+}
+
+func masterBriefForRepo(repoPath, wtBranch string, colorEnabled bool) (string, git.BranchRelation, error) {
 	mainRepo, err := worktree.ReadMainRepo(repoPath)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 	mainBranch, err := gitOutput(mainRepo, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
-		return err
+		return "", 0, err
 	}
 	result, err := git.CompareBranches(mainRepo, mainBranch, wtBranch)
 	if err != nil {
-		return err
+		return "", 0, err
 	}
-	fmt.Println(formatCompareField("Compare with Master: ", mainBranch, wtBranch, result))
-	return nil
+	return FormatMasterBrief(result, colorEnabled), result.Relation, nil
 }
 
 func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bool) (string, error) {
@@ -366,14 +474,30 @@ func countStatusLine(counts *statusCounts, line string) {
 	}
 }
 
-func formatStatusCounts(counts statusCounts, colorEnabled bool) string {
+func formatStatusCounts(counts statusCounts, colorEnabled bool, greenClean bool) string {
 	if counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0 {
+		if colorEnabled && greenClean {
+			return colorize("clean", ansiGreen)
+		}
 		return "clean"
 	}
-	s := fmt.Sprintf("dirty (%d added, %d changed, %d renamed, %d deleted)",
-		counts.added, counts.changed, counts.renamed, counts.deleted)
-	if colorEnabled {
+	if !colorEnabled {
+		return fmt.Sprintf("dirty (%d added, %d changed, %d renamed, %d deleted)",
+			counts.added, counts.changed, counts.renamed, counts.deleted)
+	}
+	return colorize("dirty", ansiRed) + " (" +
+		strings.Join([]string{
+			formatStatusCountSegment(counts.added, "added"),
+			formatStatusCountSegment(counts.changed, "changed"),
+			formatStatusCountSegment(counts.renamed, "renamed"),
+			formatStatusCountSegment(counts.deleted, "deleted"),
+		}, ", ") + ")"
+}
+
+func formatStatusCountSegment(n int, kind string) string {
+	s := fmt.Sprintf("%d %s", n, kind)
+	if n > 0 {
 		return colorize(s, ansiRed)
 	}
-	return s
+	return colorize(s, ansiGrey)
 }

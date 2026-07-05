@@ -24,7 +24,8 @@ wrk --status + other mode -> error (mutually exclusive)
 
 - Successful status output is a sequence of blocks containing `Dir`, `Branch`, `Commit`, and `Status` lines.
 - The `Dir` line is relative to the current checkout toplevel; the checkout itself is `.`.
-- **Linked worktrees only** (`worktree.IsLinked`) also include `Compare with Master:` — kool-style output comparing the main repo's current branch vs the worktree's current branch (`git.CompareBranches`); main checkout and nested independent `RepoTypeMain` repos omit this field.
+- **Linked worktrees only** (`worktree.IsLinked`) also include one-line `Master:` — brief branch-relation label comparing the main repo's current branch vs the worktree's current branch (`git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs fast forward(+N commit(s))`, `diverged(N commit(s))`); main checkout and nested independent `RepoTypeMain` repos omit this field.
+- When stdout is a TTY or `--color` is set, `--status` colors `Status: clean` green and applies granular dirty-status coloring (same rules as `--projects`); `Master:` values use green/orange/red by relation. Without color: plain text.
 
 ```go
 import (

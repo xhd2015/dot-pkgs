@@ -25,8 +25,10 @@ wrk --list --color -> git worktree list unchanged (no ANSI)
 
 ## Context
 
-- Red (`#31`): dirty `Status:`, diverged `Remote: Needs Merge(...)`, worktree `N dirty` when N > 0.
-- Orange (`#33`): `Remote: Needs Push(...)` and `Remote: Needs Pull`.
+- Red (`#31`): word `dirty`, count segments with N > 0, `Remote: diverged(...)`, worktree `N dirty` when N > 0.
+- Grey (`#90`): count segments with N = 0 in dirty status lines.
+- Orange (`#33`): `Remote: needs merge back(...)` and `Remote: needs pull`.
+- Green (`#32`): not used on `--projects` (`clean` and `identical` stay uncolored).
 - Labels (`Dir:`, `Branch:`, etc.) stay uncolored; only value substrings are wrapped.
 - `Worktrees:    ` uses four spaces after the colon (aligned with other fields).
 
@@ -137,22 +139,22 @@ func colorCompareWithRemoteField(t *testing.T, mainRepo, upstreamRef, currentBra
 func colorRemoteBriefFromResult(result *git.CompareBranchesResult) string {
 	switch result.Relation {
 	case git.BranchRelationSame:
-		return "Up to date"
+		return "identical"
 	case git.BranchRelationAIsAncestorOfB:
 		commitWord := "commit"
 		if result.CommitsAheadB != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("Needs Push(+%d %s)", result.CommitsAheadB, commitWord)
+		return fmt.Sprintf("needs merge back(+%d %s)", result.CommitsAheadB, commitWord)
 	case git.BranchRelationBIsAncestorOfA:
-		return "Needs Pull"
+		return "needs pull"
 	case git.BranchRelationDiverged:
 		diverged := result.CommitsAheadA + result.CommitsAheadB
 		commitWord := "commit"
 		if diverged != 1 {
 			commitWord = "commits"
 		}
-		return fmt.Sprintf("Needs Merge(%d %s diverged)", diverged, commitWord)
+		return fmt.Sprintf("diverged(%d %s)", diverged, commitWord)
 	default:
 		return fmt.Sprintf("unknown branch relation %v", result.Relation)
 	}
@@ -243,6 +245,22 @@ func dirtyColorWorktree(t *testing.T, wtDir, filename, content string) {
 	writeFile(t, filepath.Join(wtDir, filename), content)
 }
 
+func colorDirtyStatusSegment(n int, kind string) string {
+	if n > 0 {
+		return fmt.Sprintf("<ansi-color red>%d %s</ansi-color>", n, kind)
+	}
+	return fmt.Sprintf("<ansi-color #90>%d %s</ansi-color>", n, kind)
+}
+
+func colorFormatDirtyStatusCounts(added, changed, renamed, deleted int) string {
+	return fmt.Sprintf("<ansi-color red>dirty</ansi-color> (%s, %s, %s, %s)",
+		colorDirtyStatusSegment(added, "added"),
+		colorDirtyStatusSegment(changed, "changed"),
+		colorDirtyStatusSegment(renamed, "renamed"),
+		colorDirtyStatusSegment(deleted, "deleted"),
+	)
+}
+
 func colorProjectsOutputBlockCount(stdout string) int {
 	return strings.Count(stdout, "Dir:          ")
 }
@@ -277,6 +295,8 @@ func ensureColorOutputHelpersUsed() {
 	_ = colorGitStatusCounts
 	_ = addColorLinkedWorktree
 	_ = dirtyColorWorktree
+	_ = colorDirtyStatusSegment
+	_ = colorFormatDirtyStatusCounts
 	_ = colorProjectsOutputBlockCount
 	_ = assertColorProjectsBlocksSeparated
 }

@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Remote:` value `Needs Push(+1 commit)` is wrapped in orange (`#33`) ANSI.
+- `Remote:` value `needs merge back(+1 commit)` is wrapped in orange (`#33`) ANSI.
 - Stderr is empty.
 
 ## Exit Code
@@ -32,7 +32,7 @@ version: 2
 %s
 %s
 Status:       clean
-Remote:       <ansi-color #33>Needs Push(+1 commit)</ansi-color>
+Remote:       <ansi-color #33>needs merge back(+1 commit)</ansi-color>
 Worktrees:    0 total, 0 dirty
 `, colorProjectDirLine(t, req.MainRepo), colorStatusBranchLine(t, req.MainRepo), colorStatusCommitLine(t, req.MainRepo))
 	assert.Output(t, resp.Stdout, block)

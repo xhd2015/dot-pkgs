@@ -211,7 +211,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runRepos(workDir)
 	}
 	if status {
-		return runStatus(workDir)
+		colorEnabled := term.IsTerminal(int(os.Stdout.Fd())) || colorFlag
+		return runStatus(workDir, colorEnabled)
 	}
 	if depPath != "" {
 		return runDep(workDir, depPath, wrkHome)
@@ -281,7 +282,7 @@ func runProjects(wrkHome string, colorEnabled bool) error {
 		if i > 0 {
 			fmt.Println()
 		}
-		if err := printProjectStatusBlock(p, colorEnabled); err != nil {
+		if err := printProjectStatusBlock(p, colorEnabled, i == len(paths)-1); err != nil {
 			return err
 		}
 	}

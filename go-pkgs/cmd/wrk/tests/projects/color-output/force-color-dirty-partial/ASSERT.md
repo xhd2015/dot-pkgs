@@ -1,8 +1,8 @@
 ## Expected
 
 - Exit code 0.
-- `Status:` value uses granular coloring when `--color` is set: red for `dirty` and non-zero count segments, grey (`#90`) for zero-count segments.
-- Other fields (including `Worktrees:`) are not erroneously colored.
+- `Status:` uses granular coloring: red for `dirty` and `2 changed`, grey (`#90`) for zero-count segments.
+- Separators `(`, `, `, `)` are uncolored.
 - Stderr is empty.
 
 ## Exit Code
@@ -27,16 +27,17 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertColorProjectsBlocksSeparated(t, resp.Stdout, 1)
 
 	remote := colorCompareWithRemoteField(t, req.MainRepo, "origin/main", "main")
+	status := colorFormatDirtyStatusCounts(0, 2, 0, 0)
 	block := fmt.Sprintf(`---
 version: 2
 ---
 %s
 %s
 %s
-Status:       <ansi-color red>dirty</ansi-color> (<ansi-color red>1 added</ansi-color>, <ansi-color #90>0 changed</ansi-color>, <ansi-color #90>0 renamed</ansi-color>, <ansi-color #90>0 deleted</ansi-color>)
+Status:       %s
 %s
 Worktrees:    0 total, 0 dirty
-`, colorProjectDirLine(t, req.MainRepo), colorStatusBranchLine(t, req.MainRepo), colorStatusCommitLine(t, req.MainRepo), remote)
+`, colorProjectDirLine(t, req.MainRepo), colorStatusBranchLine(t, req.MainRepo), colorStatusCommitLine(t, req.MainRepo), status, remote)
 	assert.Output(t, resp.Stdout, block)
 }
 ```

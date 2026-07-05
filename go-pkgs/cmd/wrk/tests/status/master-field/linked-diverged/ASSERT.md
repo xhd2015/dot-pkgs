@@ -1,8 +1,8 @@
 ## Expected
 
 - Exit code 0.
-- Two status blocks for `.` and `tools/child`.
-- Neither block contains `Compare with Master`.
+- Linked worktree block includes `Master:       diverged(2 commits)`.
+- Root block has no `Master:` line.
 - Stderr is empty.
 
 ## Exit Code
@@ -23,8 +23,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if got := statusOutputBlockCount(resp.Stdout); got != 2 {
 		t.Fatalf("expected 2 status blocks, got %d:\n%s", got, resp.Stdout)
 	}
+
 	assert.Output(t, resp.Stdout, statusBlockTemplate(t, req.MainRepo, ".", "clean"))
-	assert.Output(t, resp.Stdout, statusBlockTemplate(t, req.DepPath, "tools/child", "clean"))
-	assertNoCompareWithMaster(t, resp.Stdout)
+
+	master := masterField(t, req.MainRepo, "main", req.WtBranch)
+	linkedBlock := statusBlockWithMaster(t, req.WtDir, "wt-linked", "clean", master)
+	assert.Output(t, resp.Stdout, linkedBlock)
 }
 ```

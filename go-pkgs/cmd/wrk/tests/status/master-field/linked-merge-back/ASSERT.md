@@ -1,7 +1,8 @@
 ## Expected
 
 - Exit code 0.
-- Single status block for `Dir: .` with no `Compare with Master` line anywhere in stdout.
+- Linked worktree block includes `Master:       needs merge back(+1 commit)`.
+- Root block has no `Master:` line.
 - Stderr is empty.
 
 ## Exit Code
@@ -19,10 +20,14 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stderr != "" {
 		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
 	}
-	if got := statusOutputBlockCount(resp.Stdout); got != 1 {
-		t.Fatalf("expected 1 status block, got %d:\n%s", got, resp.Stdout)
+	if got := statusOutputBlockCount(resp.Stdout); got != 2 {
+		t.Fatalf("expected 2 status blocks, got %d:\n%s", got, resp.Stdout)
 	}
+
 	assert.Output(t, resp.Stdout, statusBlockTemplate(t, req.MainRepo, ".", "clean"))
-	assertNoCompareWithMaster(t, resp.Stdout)
+
+	master := masterField(t, req.MainRepo, "main", req.WtBranch)
+	linkedBlock := statusBlockWithMaster(t, req.WtDir, "wt-linked", "clean", master)
+	assert.Output(t, resp.Stdout, linkedBlock)
 }
 ```

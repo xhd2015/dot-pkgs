@@ -1,7 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Remote:       needs merge back(+1 commit)`.
+- `Remote:       diverged(2 commits)` (plain text, no ANSI).
 - `Worktrees:    0 total, 0 dirty`.
 - Stderr is empty.
 
@@ -20,13 +20,13 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stderr != "" {
 		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
 	}
-	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
+	assertRemoteBriefBlocksSeparated(t, resp.Stdout, 1)
 
-	remote := compareWithRemoteField(t, req.MainRepo, "origin/main", "main")
-	if remote != "Remote:       needs merge back(+1 commit)" {
-		t.Fatalf("Remote: want needs merge back(+1 commit), got %q", remote)
+	remote := remoteBriefCompareField(t, req.MainRepo, "origin/main", "main")
+	if remote != "Remote:       diverged(2 commits)" {
+		t.Fatalf("Remote: want diverged(2 commits), got %q", remote)
 	}
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
+	block := remoteBriefStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
 	assert.Output(t, resp.Stdout, block)
 }
 ```

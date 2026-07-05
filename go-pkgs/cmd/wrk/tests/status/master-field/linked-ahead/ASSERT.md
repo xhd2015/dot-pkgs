@@ -10,17 +10,15 @@ Dir:          wt-linked
 Branch:       wt-side
 Commit:       <wt short>  status main root
 Status:       clean
-Compare with Master: main is newer(wt-side +1 commit -> main)
-                     to fast forward, on wt-side: 
-                        git merge --ff-only  main
+Master:       needs fast forward(+1 commit)
 ```
 
 ## Expected
 
 - Exit code 0.
 - Stdout contains two status blocks: root `.` and linked worktree `wt-linked`.
-- Root block has **no** `Compare with Master` line.
-- Linked worktree block includes `Compare with Master:` showing main branch is newer than the worktree branch (kool multi-line format).
+- Root block has **no** `Master:` line.
+- Linked worktree block includes one-line `Master: needs fast forward(+1 commit)`.
 - Stderr is empty.
 
 ## Side Effects
@@ -49,8 +47,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	rootBlock := statusBlockTemplate(t, req.MainRepo, ".", "clean")
 	assert.Output(t, resp.Stdout, rootBlock)
 
-	compare := compareWithMasterField(t, req.MainRepo, "main", req.WtBranch)
-	linkedBlock := statusBlockWithCompare(t, req.WtDir, "wt-linked", "clean", compare)
+	master := masterField(t, req.MainRepo, "main", req.WtBranch)
+	linkedBlock := statusBlockWithMaster(t, req.WtDir, "wt-linked", "clean", master)
 	assert.Output(t, resp.Stdout, linkedBlock)
 }
 ```

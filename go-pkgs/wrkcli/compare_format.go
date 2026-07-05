@@ -51,28 +51,37 @@ func FormatCompareBranches(refA, refB string, result *git.CompareBranchesResult)
 	return fmt.Sprintf("unknown branch relation %v", result.Relation)
 }
 
-// FormatRemoteBrief returns a one-line remote sync summary for --projects.
-func FormatRemoteBrief(result *git.CompareBranchesResult, colorEnabled bool) string {
+// FormatMasterBrief returns a one-line master sync summary for --status linked worktrees.
+func FormatMasterBrief(result *git.CompareBranchesResult, colorEnabled bool) string {
 	switch result.Relation {
 	case git.BranchRelationSame:
-		return "Up to date"
+		s := "identical"
+		if colorEnabled {
+			return colorize(s, ansiGreen)
+		}
+		return s
 
 	case git.BranchRelationAIsAncestorOfB:
 		commitWord := "commit"
 		if result.CommitsAheadB != 1 {
 			commitWord = "commits"
 		}
-		s := fmt.Sprintf("Needs Push(+%d %s)", result.CommitsAheadB, commitWord)
+		s := fmt.Sprintf("needs merge back(+%d %s)", result.CommitsAheadB, commitWord)
 		if colorEnabled {
 			return colorize(s, ansiOrange)
 		}
 		return s
 
 	case git.BranchRelationBIsAncestorOfA:
-		if colorEnabled {
-			return colorize("Needs Pull", ansiOrange)
+		commitWord := "commit"
+		if result.CommitsAheadA != 1 {
+			commitWord = "commits"
 		}
-		return "Needs Pull"
+		s := fmt.Sprintf("needs fast forward(+%d %s)", result.CommitsAheadA, commitWord)
+		if colorEnabled {
+			return colorize(s, ansiOrange)
+		}
+		return s
 
 	case git.BranchRelationDiverged:
 		diverged := result.CommitsAheadA + result.CommitsAheadB
@@ -80,7 +89,46 @@ func FormatRemoteBrief(result *git.CompareBranchesResult, colorEnabled bool) str
 		if diverged != 1 {
 			commitWord = "commits"
 		}
-		s := fmt.Sprintf("Needs Merge(%d %s diverged)", diverged, commitWord)
+		s := fmt.Sprintf("diverged(%d %s)", diverged, commitWord)
+		if colorEnabled {
+			return colorize(s, ansiRed)
+		}
+		return s
+	}
+
+	return fmt.Sprintf("unknown branch relation %v", result.Relation)
+}
+
+// FormatRemoteBrief returns a one-line remote sync summary for --projects.
+func FormatRemoteBrief(result *git.CompareBranchesResult, colorEnabled bool) string {
+	switch result.Relation {
+	case git.BranchRelationSame:
+		return "identical"
+
+	case git.BranchRelationAIsAncestorOfB:
+		commitWord := "commit"
+		if result.CommitsAheadB != 1 {
+			commitWord = "commits"
+		}
+		s := fmt.Sprintf("needs merge back(+%d %s)", result.CommitsAheadB, commitWord)
+		if colorEnabled {
+			return colorize(s, ansiOrange)
+		}
+		return s
+
+	case git.BranchRelationBIsAncestorOfA:
+		if colorEnabled {
+			return colorize("needs pull", ansiOrange)
+		}
+		return "needs pull"
+
+	case git.BranchRelationDiverged:
+		diverged := result.CommitsAheadA + result.CommitsAheadB
+		commitWord := "commit"
+		if diverged != 1 {
+			commitWord = "commits"
+		}
+		s := fmt.Sprintf("diverged(%d %s)", diverged, commitWord)
 		if colorEnabled {
 			return colorize(s, ansiRed)
 		}

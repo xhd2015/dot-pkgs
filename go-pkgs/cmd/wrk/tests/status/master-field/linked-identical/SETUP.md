@@ -1,10 +1,10 @@
 # Scenario
 
-**Feature**: linked worktree at same commit shows identical Compare with Master
+**Feature**: linked worktree at same commit shows Master: identical
 
 ```
 # linked wt created at current main HEAD with no extra commits
-main + wt-linked (identical) -> wrk --status -> Compare with Master: identical
+main + wt-linked (identical) -> wrk --status -> Master: identical
 ```
 
 ## Steps
@@ -15,7 +15,7 @@ main + wt-linked (identical) -> wrk --status -> Compare with Master: identical
 
 ```go
 func Setup(t *testing.T, req *Request) error {
-	ensureCompareWithMasterHelpersUsed()
+	ensureMasterFieldHelpersUsed()
 	mainRepo := setupMainRepoWithSubject(t, req.WorkRoot, "myrepo", "status main root")
 	wtDir := addLinkedWorktreeInRepo(t, mainRepo, "wt-linked", "wt-side")
 

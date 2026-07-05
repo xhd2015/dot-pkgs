@@ -21,7 +21,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **wrk --dep** — spawns a dependency worktree under `{consumerTop}/external/` as a worktree of the DEP repo (`git -C <depMain> worktree add`), so it is registered under `<depMain>/.git/worktrees/` (NOT the consumer's); the dep already holds its own objects, so no remote/fetch into the consumer is needed. **Consumer module discovery**: scans the full consumer tree (`gotool/mod/scan.Scan`) for all Go modules — consumers without a root `go.mod` (module lives in a subdirectory like `go-pkgs/`) are supported. **Dep module discovery**: likewise scans the dep tree for all Go modules. Matches each dep module against every consumer module's `require`/`replace` directives; for every matching consumer module, runs `gotool.Replace` + `gotool.Tidy`. Appends `/external` to `.gitignore` when missing, prints external worktree abs path on stdout. Naming: `{basename}-{token}-{WRK_DATE}[-N]` (same rules as create; basename from dep main repo); the branch lives in the dep repo, so the `-N` collision check runs against `depMain` (path under `consumerTop/external/` + branch in dep repo).
 - **wrk --done** — resolves checkout root via `ShowToplevel(cwd)`; requires a linked worktree (not main repo); clean worktree; implicit `--rm`. **Cascade**: `scan_repo.Scan(consumerTop)` discovers every git directory under the checkout; for each row where `RepoType == worktree` and `IsLinked(path)` and `path != checkoutRoot`, run `mergeBackExternalWorktree(path)` in scan path order (path-sorted). This covers `external/*` dep worktrees **and** manually linked worktrees elsewhere (e.g. `deps/foo`). Skip `RepoTypeMain` nested repos (no merge-back/delete). Each cascaded worktree is a dep-repo worktree (registered under `<depMain>/.git/worktrees/`), so `MergeBack` resolves its main repo from the worktree's `.git` gitdir (the dep main) and merges the dep branch back into the dep repo (the branch shares the dep's history, so merge-base resolves); this ensures dep work committed on a nested linked worktree is merged back before removal. Relation to dep main: already-included → remove only; ahead/diverged → prompt (`--confirm-from-stdin`), non-interactive ahead/diverged falls back to force-removal. The consumer's own `checkoutRoot` is excluded (finished by the final `MergeBack` in `runDone`). **Guard**: scan **every** Go module under the checkout (`gotool/mod/scan.Scan`) — main + all sub-modules — and classify each filesystem/local `replace` (`./`, `../`, or absolute path without version) by resolving its target relative to the module's `go.mod` dir: **intra-repo** = target dir exists AND `git -C <target> rev-parse --show-toplevel` equals the consumer's toplevel (a `../../`/`./sub` nested-module reference back into the same repo); **extra-repo** = everything else (`./external/foo` dep worktree, non-existent target, absolute path to another checkout, sibling outside) (`./external/foo` dep worktree, non-existent target, absolute/sibling outside). The guard names the offending `<top>/<m.Dir>/go.mod` file and each `replace <Old> => <New>` directive in its message. Default (no flag): intra-repo → **WARN to stderr and proceed** (exit 0, merge-back runs); extra-repo → **error, block**. `--no-in-module-replace` (opt-in, valid only with `--done`) → **all** local replaces block (fully-strict). A checkout with no `go.mod` at all yields zero modules → guard is a no-op → `--done` proceeds (and the linked-worktree check inside `MergeBack` still runs for a main-repo cwd, producing `not a linked worktree`). Branch relation to main: already-included → remove only; ahead/diverged → prompt then merge/rebase.
 - **wrk --list** — runs `git -C <cwd> worktree list`; prints stdout unchanged; cwd must be inside a git work tree (main repo, linked worktree, or nested subpath). Mutually exclusive with no-args create and `--done`.
-- **wrk --status** — standalone reporting mode; cwd must be inside a git work tree. Resolves the effective cwd's checkout root with git toplevel discovery, calls `scan_repo.Scan(context.Background(), scan_repo.Options{Roots: []string{Root}})`, and prints every discovered git directory in scan path order. Each block includes `Dir` relative to the initial toplevel (`.` for the root), current branch, short commit hash plus subject, and `Status` as either `clean` or `dirty (<added> added, <changed> changed, <renamed> renamed, <deleted> deleted)`. **Linked worktrees only** (`worktree.IsLinked`) also include `Compare with Master:` — same formatted output as `kool git compare-branch <main-repo-branch>` (compares main repo's current branch vs the worktree's current branch via `git.CompareBranches`; multi-line kool output with label on first line only). Main checkout (including `Dir: .`) and nested independent `RepoTypeMain` repos do **not** show `Compare with Master`. Mutually exclusive with `--done`, `--list`, `--dep`, `--all-deps`, create target arguments, and other modes.
+- **wrk --status** — standalone reporting mode; cwd must be inside a git work tree. Resolves the effective cwd's checkout root with git toplevel discovery, calls `scan_repo.Scan(context.Background(), scan_repo.Options{Roots: []string{Root}})`, and prints every discovered git directory in scan path order. Each block includes `Dir` relative to the initial toplevel (`.` for the root), current branch, short commit hash plus subject, and `Status` as either `clean` or `dirty (<added> added, <changed> changed, <renamed> renamed, <deleted> deleted)`. **Linked worktrees only** (`worktree.IsLinked`) also include one-line `Master:` — brief branch-relation label comparing main repo's current branch vs the worktree's current branch via `git.CompareBranches` (`identical`, `needs merge back(+N commit(s))`, `needs fast forward(+N commit(s))`, `diverged(N commit(s))`). Main checkout (including `Dir: .`) and nested independent `RepoTypeMain` repos do **not** show `Master:`. When stdout is a TTY or `--color` is set, `Status: clean` is green; dirty status uses granular red/grey segments (same rules as `--projects`); `Master:` values are green/orange/red by relation. Without color: plain text. Mutually exclusive with `--done`, `--list`, `--dep`, `--all-deps`, create target arguments, and other modes.
 - **--confirm-from-stdin** — when set with piped `StdinInput`, reads Y/n from stdin for merge-back confirmation (required for non-TTY ahead/diverged cases).
 - **--no-in-module-replace** — bool flag (no value); valid ONLY with `--done`. Restores the fully-strict local-replace guard: every filesystem/local `replace` (intra-repo or extra-repo) blocks `--done`. Without it (default), intra-repo replaces — whose target dir exists and shares the consumer's `git rev-parse --show-toplevel` (`../../`/`./sub` nested-module reference) — only WARN and `--done` proceeds; extra-repo replaces (`./external/foo` dep worktree, non-existent/absolute/sibling) still block. Bare `wrk --no-in-module-replace`, or with any other mode (`--dep`/`--list`/no-args create/`--all-deps`) → non-zero exit, stderr `wrk: --no-in-module-replace is only valid with --done`.
 - **Request.Args** — CLI arguments passed to `wrk` after optional `<dir>` (empty → no-args create; `["--dep", depPath]` for dep tests; `["--done"]` or `["--done", "--confirm-from-stdin"]` for done tests; `["--list"]` for list tests).
@@ -44,8 +44,8 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos) and `events.jsonl` (append-only event log); tests isolate at `{WorkRoot}/.wrk`.
 - **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
 - **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
-- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `Up to date`, `Needs Push(+N commits)`, `Needs Pull`, `Needs Merge(N commits diverged)`, or `(no upstream)` when the branch has no upstream), and `Worktrees:    N total, M dirty` (four spaces after colon, aligned with other fields; counts of **linked** worktrees with existing paths only via `worktree.ListLinked` + porcelain status; dead/missing worktrees are skipped; always shown, e.g. `0 total, 0 dirty`). When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for dirty `Status:`, diverged `Needs Merge(...)`, and `N dirty` when N > 0; orange (`#33`) for `Needs Push(...)` and `Needs Pull`; clean/up-to-date/no-upstream/zero-dirty stay plain. No `<dir>` required; exit 0 when empty (no output).
-- **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
+- **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. Each block includes absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs pull` (no commit count), `diverged(N commit(s))`, or `(no upstream)` when the branch has no upstream), and `Worktrees:    N total, M dirty` (four spaces after colon, aligned with other fields; counts of **linked** worktrees with existing paths only via `worktree.ListLinked` + porcelain status; dead/missing worktrees are skipped; always shown, e.g. `0 total, 0 dirty`). When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, and `N dirty` when N > 0; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs merge back(...)` and `needs pull`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs fast forward(+N commit(s))` applies only to `--status` `Master:` (not `Remote:`).
+- **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
@@ -155,11 +155,21 @@ wrk tests
 │   │   └── dirty-counts/         # added/changed/renamed/deleted counts
 │   ├── invalid-git-cwd/
 │   │   └── non-git/              # cwd is not a git repo (error)
-│   ├── compare-with-master/      # Compare with Master on linked worktrees only
-│   │   ├── linked-ahead/         # main newer than linked wt branch
-│   │   ├── linked-identical/      # branches identical
-│   │   ├── main-no-compare/       # main checkout omits field
+│   ├── master-field/             # brief Master: on linked worktrees only (plain pipe)
+│   │   ├── linked-ahead/         # Master: needs fast forward(+N commits)
+│   │   ├── linked-identical/     # Master: identical
+│   │   ├── linked-merge-back/    # Master: needs merge back(+N commits)
+│   │   ├── linked-diverged/      # Master: diverged(N commits)
+│   │   ├── main-no-compare/      # main checkout omits field
 │   │   └── nested-main-no-compare/ # nested independent repo omits field
+│   ├── color-output/             # wrk --status alignment + conditional ANSI (--color)
+│   │   ├── force-color-clean/    # --color → green Status: clean
+│   │   ├── force-color-dirty/    # --color → granular red/grey dirty status
+│   │   ├── force-color-master-identical/   # green Master: identical
+│   │   ├── force-color-master-fast-forward/ # orange needs fast forward
+│   │   ├── force-color-master-merge-back/   # orange needs merge back
+│   │   ├── force-color-master-diverged/   # red diverged
+│   │   └── no-color-pipe/        # pipe without --color → no ANSI, brief Master:
 │   └── invalid-mode/
 │       └── with-list/            # --status with --list is mutually exclusive
 ├── non-git-cwd/                  # cwd is not a git repo (error, no-args create)
@@ -221,19 +231,25 @@ wrk tests
     │   ├── non-git/              # non-git cwd → no record
     │   ├── missing-dir/          # wrk <nonexistent> → no record
     │   └── fail-after-record/    # dirty --done fails but project recorded
+    ├── remote-brief/             # wrk --projects shared Remote: brief labels (plain pipe)
+    │   ├── ahead-of-upstream/    # Remote: needs merge back(+N commit)
+    │   ├── behind-upstream/      # Remote: needs pull
+    │   ├── diverged/             # Remote: diverged(N commits)
+    │   └── up-to-date/           # Remote: identical
     ├── detailed-status/          # wrk --projects detailed status blocks (plain pipe output)
     │   ├── single-clean-no-wts/  # one project, clean, no linked wts
     │   ├── with-linked-mixed/    # Worktrees:    3 total, 1 dirty
-    │   ├── ahead-of-upstream/    # Remote: Needs Push(+N commits)
+    │   ├── ahead-of-upstream/    # Remote: needs merge back(+N commit)
     │   ├── no-upstream/          # Remote: (no upstream)
     │   ├── multiple-projects/    # two blocks, lex order, blank separator
     │   └── empty/                # exit 0, empty stdout
     ├── color-output/             # wrk --projects alignment + conditional ANSI (--color)
     │   ├── no-color-pipe/        # pipe without --color → no ANSI, aligned Worktrees
-    │   ├── force-color-dirty-status/   # red dirty Status value
-    │   ├── force-color-needs-push/     # orange Needs Push(...)
-    │   ├── force-color-needs-pull/     # orange Needs Pull
-    │   ├── force-color-diverged/       # red Needs Merge(...)
+    │   ├── force-color-dirty-status/   # granular red/grey dirty Status segments
+    │   ├── force-color-dirty-partial/  # 2 changed, zero other counts → grey + red mix
+    │   ├── force-color-needs-push/     # orange needs merge back(...)
+    │   ├── force-color-needs-pull/     # orange needs pull
+    │   ├── force-color-diverged/       # red diverged(...)
     │   ├── force-color-worktrees-dirty/ # red N dirty portion only
     │   ├── clean-no-color/       # all clean + --color → no highlights
     │   └── color-with-list/      # --list --color → list unchanged, no ANSI
@@ -378,10 +394,19 @@ wrk tests
 | 86 | status/valid-git-cwd/dirty-counts | status counts one added, changed, renamed, and deleted entry |
 | 87 | status/invalid-git-cwd/non-git | `wrk --status` outside git fails with `is not a git repository` |
 | 88 | status/invalid-mode/with-list | `wrk --status --list` fails as mutually exclusive |
-| 88a | status/compare-with-master/linked-ahead | linked wt block shows `Compare with Master` (main newer) |
-| 88b | status/compare-with-master/linked-identical | linked wt block shows identical compare |
-| 88c | status/compare-with-master/main-no-compare | main checkout block has no compare line |
-| 88d | status/compare-with-master/nested-main-no-compare | nested independent repo has no compare line |
+| 88a | status/master-field/linked-ahead | linked wt `Master: needs fast forward(+1 commit)` |
+| 88b | status/master-field/linked-identical | linked wt `Master: identical` |
+| 88c | status/master-field/linked-merge-back | linked wt `Master: needs merge back(+1 commit)` |
+| 88d | status/master-field/linked-diverged | linked wt `Master: diverged(2 commits)` |
+| 88e | status/master-field/main-no-compare | main checkout block has no Master: line |
+| 88f | status/master-field/nested-main-no-compare | nested independent repo has no Master: line |
+| 88g | status/color-output/force-color-clean | `--color` → green `Status: clean` |
+| 88h | status/color-output/force-color-dirty | `--color` → granular red/grey dirty status |
+| 88i | status/color-output/force-color-master-identical | `--color` → green `Master: identical` |
+| 88j | status/color-output/force-color-master-fast-forward | `--color` → orange needs fast forward |
+| 88k | status/color-output/force-color-master-merge-back | `--color` → orange needs merge back |
+| 88l | status/color-output/force-color-master-diverged | `--color` → red diverged |
+| 88m | status/color-output/no-color-pipe | pipe `--status` → no ANSI, brief Master: |
 | 90 | projects/auto-record/no-dir/main-cwd | `wrk --list` from main repo cwd records main repo |
 | 91 | projects/auto-record/no-dir/subdir-cwd | `wrk --list` from nested subdir records main repo |
 | 92 | projects/auto-record/dir-arg/main-repo | `wrk <mainRepo> --list` records main repo |
@@ -394,15 +419,20 @@ wrk tests
 | 99 | projects/list/projects/after-records | `wrk --projects` prints sorted detailed blocks after auto-record |
 | 99a | projects/detailed-status/single-clean-no-wts | one project block with remote compare + `0 total, 0 dirty` |
 | 99b | projects/detailed-status/with-linked-mixed | `Worktrees: 3 total, 1 dirty` |
-| 99c | projects/detailed-status/ahead-of-upstream | `Remote:` shows `Needs Push(+N commits)` |
+| 99c | projects/detailed-status/ahead-of-upstream | `Remote:` shows `needs merge back(+N commit)` |
 | 99d | projects/detailed-status/no-upstream | `Remote: (no upstream)` |
 | 99e | projects/detailed-status/multiple-projects | two lex-ordered blocks with blank separator |
 | 99f | projects/detailed-status/empty | empty projects → exit 0, no stdout |
 | 99g | projects/color-output/no-color-pipe | pipe `--projects` → no ANSI, aligned `Worktrees:    ` |
-| 99h | projects/color-output/force-color-dirty-status | `--color` → red around dirty `Status:` value |
-| 99i | projects/color-output/force-color-needs-push | `--color` → orange around `Needs Push(...)` |
-| 99j | projects/color-output/force-color-needs-pull | `--color` → orange around `Needs Pull` |
-| 99k | projects/color-output/force-color-diverged | `--color` → red around `Needs Merge(...)` |
+| 99h | projects/color-output/force-color-dirty-status | `--color` → granular red/grey dirty status segments |
+| 99h2 | projects/color-output/force-color-dirty-partial | `--color` → grey zero segments, red `2 changed` |
+| 99i | projects/color-output/force-color-needs-push | `--color` → orange around `needs merge back(...)` |
+| 99j | projects/color-output/force-color-needs-pull | `--color` → orange around `needs pull` |
+| 99k | projects/color-output/force-color-diverged | `--color` → red around `diverged(...)` |
+| 99o | projects/remote-brief/ahead-of-upstream | plain `Remote: needs merge back(+1 commit)` |
+| 99p | projects/remote-brief/behind-upstream | plain `Remote: needs pull` |
+| 99q | projects/remote-brief/diverged | plain `Remote: diverged(2 commits)` |
+| 99r | projects/remote-brief/up-to-date | plain `Remote: identical` |
 | 99l | projects/color-output/force-color-worktrees-dirty | `--color` → red on `N dirty` only |
 | 99m | projects/color-output/clean-no-color | all clean + `--color` → no red/orange on values |
 | 99n | projects/color-output/color-with-list | `--list --color` → git worktree list unchanged |
@@ -448,8 +478,10 @@ doctest test ./tests/list/main-only
 # Run status leaves
 doctest test ./tests/status
 doctest test ./tests/status/valid-git-cwd/dirty-counts
-doctest vet ./tests/status/compare-with-master
-doctest test ./tests/status/compare-with-master
+doctest vet ./tests/status/master-field
+doctest test ./tests/status/master-field
+doctest vet ./tests/status/color-output
+doctest test ./tests/status/color-output
 
 # Run a dep leaf
 doctest test ./tests/dep/basic
@@ -515,6 +547,8 @@ doctest test ./tests/projects/auto-record/no-dir/main-cwd
 doctest test ./tests/projects/list/projects/after-records
 doctest vet ./tests/projects/detailed-status
 doctest test ./tests/projects/detailed-status
+doctest vet ./tests/projects/remote-brief
+doctest test ./tests/projects/remote-brief
 doctest vet ./tests/projects/color-output
 doctest test ./tests/projects/color-output
 doctest test ./tests/projects/add/manual/main-repo

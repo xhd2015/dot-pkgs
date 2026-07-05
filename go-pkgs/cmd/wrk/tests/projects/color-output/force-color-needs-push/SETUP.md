@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: --color highlights Needs Push remote summary in orange
+**Feature**: --color highlights needs merge back remote summary in orange
 
 ```
-main ahead of origin/main -> wrk --projects --color -> orange Needs Push(...)
+main ahead of origin/main -> wrk --projects --color -> orange needs merge back(...)
 ```
 
 ## Steps

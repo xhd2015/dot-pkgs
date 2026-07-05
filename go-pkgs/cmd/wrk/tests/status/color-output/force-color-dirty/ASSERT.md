@@ -1,8 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- `Remote:       needs merge back(+1 commit)`.
-- `Worktrees:    0 total, 0 dirty`.
+- `Status:` value uses granular coloring: red `dirty` and non-zero count segments, grey zero-count segments.
 - Stderr is empty.
 
 ## Exit Code
@@ -20,13 +19,12 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stderr != "" {
 		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
 	}
-	assertProjectsBlocksSeparated(t, resp.Stdout, 1)
-
-	remote := compareWithRemoteField(t, req.MainRepo, "origin/main", "main")
-	if remote != "Remote:       needs merge back(+1 commit)" {
-		t.Fatalf("Remote: want needs merge back(+1 commit), got %q", remote)
+	if got := statusOutputBlockCount(resp.Stdout); got != 1 {
+		t.Fatalf("expected 1 status block, got %d:\n%s", got, resp.Stdout)
 	}
-	block := projectStatusBlockTemplate(t, req.MainRepo, "clean", remote, "0 total, 0 dirty")
+
+	status := colorStatusFormatDirtyCounts(1, 1, 0, 0)
+	block := colorStatusBlockTemplate(t, req.MainRepo, ".", status, "")
 	assert.Output(t, resp.Stdout, block)
 }
 ```

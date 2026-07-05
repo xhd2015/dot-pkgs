@@ -60,7 +60,7 @@ func projectListCompareRemoteField(t *testing.T, mainRepo string) string {
 	if result.Relation != git.BranchRelationSame {
 		t.Fatalf("expected identical upstream, got relation %v", result.Relation)
 	}
-	return "Remote:       Up to date"
+	return "Remote:       identical"
 }
 
 func projectListBlock(t *testing.T, mainRepo string) string {

@@ -1,8 +1,7 @@
 ## Expected
 
 - Exit code 0.
-- Linked worktree block includes `Compare with Master: main and wt-side are identical`.
-- Root block has no `Compare with Master` line.
+- Linked worktree `Master:` value `needs merge back(+1 commit)` is wrapped in orange (`#33`) ANSI.
 - Stderr is empty.
 
 ## Exit Code
@@ -24,10 +23,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected 2 status blocks, got %d:\n%s", got, resp.Stdout)
 	}
 
-	assert.Output(t, resp.Stdout, statusBlockTemplate(t, req.MainRepo, ".", "clean"))
+	root := colorStatusBlockTemplate(t, req.MainRepo, ".", "<ansi-color green>clean</ansi-color>", "")
+	assert.Output(t, resp.Stdout, root)
 
-	compare := compareWithMasterField(t, req.MainRepo, "main", req.WtBranch)
-	linkedBlock := statusBlockWithCompare(t, req.WtDir, "wt-linked", "clean", compare)
-	assert.Output(t, resp.Stdout, linkedBlock)
+	master := colorStatusMasterFieldColored(t, req.MainRepo, "main", req.WtBranch)
+	linked := colorStatusBlockTemplate(t, req.WtDir, "wt-linked", "<ansi-color green>clean</ansi-color>", master)
+	assert.Output(t, resp.Stdout, linked)
 }
 ```

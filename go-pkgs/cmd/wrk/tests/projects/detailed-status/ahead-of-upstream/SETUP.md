@@ -3,7 +3,7 @@
 **Feature**: Remote shows branch ahead of upstream
 
 ```
-main tracked to origin/main -> commit on main -> Remote: Needs Push(+1 commit)
+main tracked to origin/main -> commit on main -> Remote: needs merge back(+1 commit)
 ```
 
 ## Steps

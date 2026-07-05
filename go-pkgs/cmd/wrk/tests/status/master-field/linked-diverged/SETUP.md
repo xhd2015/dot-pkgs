@@ -1,30 +1,29 @@
 # Scenario
 
-**Feature**: linked worktree behind main shows Compare with Master (main newer)
+**Feature**: diverged linked worktree shows Master: diverged
 
 ```
-# main gains a commit after linked wt was created
-main + wt-linked (same base) -> commit on main -> wrk --status
+# main and wt-side each gain unique commits
+main + wt-linked -> commit on main + commit on wt-side -> wrk --status
 
 # linked wt block compares main branch vs worktree branch
-linked wt block -> Compare with Master: main is newer(...)
+linked wt block -> Master: diverged(N commits)
 ```
 
 ## Steps
 
 1. Initialize `{WorkRoot}/myrepo` on branch `main`.
 2. Add linked worktree at `myrepo/wt-linked` on branch `wt-side`.
-3. Commit on `main` (+1 commit ahead of the worktree branch).
+3. Commit on `main` and on `wt-side` (one commit each, diverged).
 4. Run `wrk --status` from the main repo root.
 
 ```go
-import "path/filepath"
-
 func Setup(t *testing.T, req *Request) error {
-	ensureCompareWithMasterHelpersUsed()
+	ensureMasterFieldHelpersUsed()
 	mainRepo := setupMainRepoWithSubject(t, req.WorkRoot, "myrepo", "status main root")
 	wtDir := addLinkedWorktreeInRepo(t, mainRepo, "wt-linked", "wt-side")
-	commitOnMain(t, mainRepo, "ahead-on-main.txt", "ahead\n", "main ahead commit")
+	commitOnMain(t, mainRepo, "main-only.txt", "main\n", "main only commit")
+	commitOnWorktree(t, wtDir, "wt-only.txt", "wt\n", "wt only commit")
 
 	req.RepoDir = mainRepo
 	req.MainRepo = mainRepo

@@ -1,10 +1,10 @@
 # Scenario
 
-**Feature**: main checkout status block omits Compare with Master
+**Feature**: main checkout status block omits Master:
 
 ```
 # no linked worktrees registered
-myrepo (main only) -> wrk --status -> root block without Compare with Master
+myrepo (main only) -> wrk --status -> root block without Master:
 ```
 
 ## Steps
@@ -14,7 +14,7 @@ myrepo (main only) -> wrk --status -> root block without Compare with Master
 
 ```go
 func Setup(t *testing.T, req *Request) error {
-	ensureCompareWithMasterHelpersUsed()
+	ensureMasterFieldHelpersUsed()
 	mainRepo := setupMainRepoWithSubject(t, req.WorkRoot, "myrepo", "status main root")
 
 	req.RepoDir = mainRepo

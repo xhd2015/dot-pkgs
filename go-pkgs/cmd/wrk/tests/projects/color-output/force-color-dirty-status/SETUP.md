@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: --color highlights dirty main-repo Status value in red
+**Feature**: --color highlights dirty word and non-zero count segments in red
 
 ```
-main repo with uncommitted added file -> wrk --projects --color -> red dirty status value
+main repo with 1 added file -> wrk --projects --color -> red dirty + 1 added, grey zero segments
 ```
 
 ## Steps
