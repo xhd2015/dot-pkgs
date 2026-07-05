@@ -10,6 +10,7 @@ import (
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/storage"
 	"github.com/xhd2015/gitops/git"
 )
 
@@ -40,13 +41,44 @@ func runStatus(workDir string, colorEnabled bool) error {
 		return err
 	}
 
-	for i, repo := range repos {
-		if i > 0 {
-			fmt.Println()
-		}
-		if err := printStatusBlock(checkoutRoot, repo.Path, colorEnabled); err != nil {
+	scanPaths := make(map[string]struct{}, len(repos))
+	for _, repo := range repos {
+		scanPaths[storage.NormalizePath(repo.Path)] = struct{}{}
+	}
+
+	var appendEntries []worktree.Entry
+	if worktree.IsMainRepo(checkoutRoot) {
+		linked, err := worktree.ListLinked(checkoutRoot)
+		if err != nil {
 			return err
 		}
+		for _, entry := range linked {
+			if _, ok := scanPaths[storage.NormalizePath(entry.Path)]; ok {
+				continue
+			}
+			appendEntries = append(appendEntries, entry)
+		}
+	}
+
+	scanColorEnabled := colorEnabled && len(appendEntries) == 0
+
+	blocksPrinted := 0
+	for _, repo := range repos {
+		if blocksPrinted > 0 {
+			fmt.Println()
+		}
+		if err := printStatusBlock(checkoutRoot, repo.Path, scanColorEnabled); err != nil {
+			return err
+		}
+		blocksPrinted++
+	}
+
+	for _, entry := range appendEntries {
+		if blocksPrinted > 0 {
+			fmt.Println()
+		}
+		printAppendedLinkedBlock(checkoutRoot, entry.Path, colorEnabled)
+		blocksPrinted++
 	}
 	return nil
 }
@@ -82,6 +114,57 @@ func runRepos(workDir string) error {
 
 func discoverStatusRepos(ctx context.Context, root string) ([]scan_repo.Repo, error) {
 	return scan_repo.Scan(ctx, scan_repo.Options{Roots: []string{root}})
+}
+
+func printAppendedLinkedBlock(mainRepo, repoPath string, colorEnabled bool) {
+	dirLine := storage.NormalizePath(repoPath)
+
+	if worktree.IsDead(repoPath) {
+		fmt.Printf("Dir:          %s\n", dirLine)
+		fmt.Printf("Status:       prunable\n")
+		return
+	}
+
+	branch, err := gitOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+		return
+	}
+	short, err := gitOutput(repoPath, "rev-parse", "--short=7", "HEAD")
+	if err != nil {
+		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+		return
+	}
+	subject, err := gitOutput(repoPath, "log", "-1", "--pretty=%s")
+	if err != nil {
+		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+		return
+	}
+	counts, err := gitStatusCounts(repoPath)
+	if err != nil {
+		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+		return
+	}
+	masterBrief, _, err := masterBriefForRepo(repoPath, branch, colorEnabled)
+	if err != nil {
+		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+		return
+	}
+
+	fmt.Printf("Dir:          %s\n", dirLine)
+	fmt.Printf("Branch:       %s\n", branch)
+	fmt.Printf("Commit:       %s  %s\n", short, subject)
+	fmt.Printf("Status:       %s\n", formatStatusCounts(counts, colorEnabled, true))
+	fmt.Printf("Master:       %s\n", masterBrief)
+}
+
+func printAppendedBrokenBlock(dirLine, msg string, colorEnabled bool) {
+	statusVal := "error: " + msg
+	if colorEnabled {
+		statusVal = colorize(statusVal, ansiRed)
+	}
+	fmt.Printf("Dir:          %s\n", dirLine)
+	fmt.Printf("Status:       %s\n", statusVal)
 }
 
 func printStatusBlock(root, repoPath string, colorEnabled bool) error {
