@@ -19,8 +19,8 @@ func Setup(t *testing.T, req *Request) error {
 	req.MainRepo = mainRepo
 	initGitRepoOnMain(t, mainRepo)
 	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/myrepo\ngo 1.21\n")
-	runGit(t, mainRepo, "add", "go.mod")
-	runGit(t, mainRepo, "commit", "-m", "add go.mod")
+	runGitIsolated(t, mainRepo, "add", "go.mod")
+	runGitIsolated(t, mainRepo, "commit", "-m", "add go.mod")
 
 	taskDesc := "fix login"
 	slug := slugify(taskDesc)
@@ -29,7 +29,7 @@ func Setup(t *testing.T, req *Request) error {
 
 	// Pre-create the exact branch
 	collisionBranch := branchNameWithTask("main", wrkDate, slug, 0)
-	runGit(t, mainRepo, "branch", collisionBranch)
+	runGitIsolated(t, mainRepo, "branch", collisionBranch)
 	req.WtBranch = branchNameWithTask("main", wrkDate, slug, 1)
 	return nil
 }

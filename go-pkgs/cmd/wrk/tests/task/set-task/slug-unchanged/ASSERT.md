@@ -26,7 +26,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertFileExists(t, req.WtDir)
 
 	// Branch still exists
-	branch := gitOutput(t, req.MainRepo, "rev-parse", "--abbrev-ref", "refs/heads/main-"+wrkDate+"-my-task")
+	branch := gitOutputIsolated(t, req.MainRepo, "rev-parse", "--abbrev-ref", "refs/heads/main-"+wrkDate+"-my-task")
 	if branch == "" {
 		t.Fatal("old branch should still exist")
 	}

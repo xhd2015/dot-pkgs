@@ -38,10 +38,10 @@ func Setup(t *testing.T, req *Request) error {
 	writeFile(t, filepath.Join(mainRepo, "submod", "go.mod"), "module example.com/foo\n\ngo 1.21\n")
 	writeFile(t, filepath.Join(mainRepo, "go.mod"),
 		"module example.com/consumer\n\ngo 1.22\n\nreplace example.com/foo => ./submod\n")
-	runGit(t, mainRepo, "add", "go.mod", "submod")
+	runGitIsolated(t, mainRepo, "add", "go.mod", "submod")
 	// --no-verify bypasses the project's go-no-local-replace pre-commit hook
 	// (same rationale as intra-replace-warns).
-	runGit(t, mainRepo, "commit", "--no-verify", "-m", "add consumer with intra-repo replace")
+	runGitIsolated(t, mainRepo, "commit", "--no-verify", "-m", "add consumer with intra-repo replace")
 
 	wtDir := runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir

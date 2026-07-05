@@ -43,8 +43,8 @@ func Setup(t *testing.T, req *Request) error {
 	writeFile(t, filepath.Join(mainRepo, "submod", "go.mod"), "module example.com/foo\n\ngo 1.21\n")
 	writeFile(t, filepath.Join(mainRepo, "go.mod"),
 		"module example.com/consumer\n\ngo 1.22\n\nreplace example.com/foo => ./submod\n")
-	runGit(t, mainRepo, "add", "go.mod", "submod")
-	runGit(t, mainRepo, "commit", "--no-verify", "-m", "add consumer with intra-repo replace")
+	runGitIsolated(t, mainRepo, "add", "go.mod", "submod")
+	runGitIsolated(t, mainRepo, "commit", "--no-verify", "-m", "add consumer with intra-repo replace")
 
 	wtDir := runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir
@@ -52,8 +52,8 @@ func Setup(t *testing.T, req *Request) error {
 
 	submodAbs := filepath.Join(mainRepo, "submod")
 	runGoMod(t, wtDir, "edit", "-replace=example.com/foo="+submodAbs)
-	runGit(t, wtDir, "add", "go.mod")
-	runGit(t, wtDir, "commit", "--no-verify", "-m", "absolute cross-worktree replace")
+	runGitIsolated(t, wtDir, "add", "go.mod")
+	runGitIsolated(t, wtDir, "commit", "--no-verify", "-m", "absolute cross-worktree replace")
 
 	req.RepoDir = req.WorkRoot
 	req.Args = []string{"--done", wtDir}

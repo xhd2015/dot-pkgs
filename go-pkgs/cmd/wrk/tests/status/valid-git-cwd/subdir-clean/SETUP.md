@@ -23,8 +23,8 @@ func Setup(t *testing.T, req *Request) error {
 	nested := filepath.Join(repo, "sub", "dir")
 	mkdirAll(t, nested)
 	writeFile(t, filepath.Join(nested, "file.txt"), "subdir\n")
-	runGit(t, repo, "add", "sub/dir/file.txt")
-	runGit(t, repo, "commit", "-m", "add subdir file")
+	runGitIsolated(t, repo, "add", "sub/dir/file.txt")
+	runGitIsolated(t, repo, "commit", "-m", "add subdir file")
 
 	req.RepoDir = nested
 	req.MainRepo = repo

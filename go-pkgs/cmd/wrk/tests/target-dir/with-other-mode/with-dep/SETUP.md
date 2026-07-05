@@ -51,16 +51,16 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, consumer)
 	writeFile(t, filepath.Join(consumer, "go.mod"), "module example.com/consumer\n\ngo 1.22\n")
 	tdRunGo(t, consumer, "mod", "edit", "-require="+tdDepModulePath+"@v0.0.0")
-	runGit(t, consumer, "add", "go.mod")
-	runGit(t, consumer, "commit", "-m", "require dep")
+	runGitIsolated(t, consumer, "add", "go.mod")
+	runGitIsolated(t, consumer, "commit", "-m", "require dep")
 
 	// dep repo with a go.mod
 	dep := filepath.Join(req.WorkRoot, "mydep")
 	initGitRepoOnMain(t, dep)
 	writeFile(t, filepath.Join(dep, "go.mod"), "module "+tdDepModulePath+"\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(dep, "dep.go"), "package dep\n")
-	runGit(t, dep, "add", "go.mod", "dep.go")
-	runGit(t, dep, "commit", "-m", "add go module")
+	runGitIsolated(t, dep, "add", "go.mod", "dep.go")
+	runGitIsolated(t, dep, "commit", "-m", "add go module")
 
 	req.TargetDir = consumer
 	req.SpawnDir = filepath.Join(req.WorkRoot, "wt")

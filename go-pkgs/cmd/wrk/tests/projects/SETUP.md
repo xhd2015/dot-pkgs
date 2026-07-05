@@ -249,7 +249,7 @@ func initProjectsRepo(t *testing.T, workRoot, name string) string {
 func setupLinkedWorktree(t *testing.T, mainRepo, wtName, branch string) string {
 	t.Helper()
 	wtDir := filepath.Join(filepath.Dir(mainRepo), wtName)
-	runGit(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
+	runGitIsolated(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
 	return wtDir
 }
 

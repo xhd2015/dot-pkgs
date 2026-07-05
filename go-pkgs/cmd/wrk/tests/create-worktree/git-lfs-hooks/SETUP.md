@@ -50,8 +50,8 @@ func initGitRepoWithLFSHooks(t *testing.T, repoDir, hooksDir string) {
 	if err := os.Chmod(filepath.Join(hooksDir, "post-checkout"), 0755); err != nil {
 		t.Fatalf("chmod post-checkout: %v", err)
 	}
-	runGit(t, repoDir, "config", "core.hookspath", hooksDir)
-	runGit(t, repoDir, "config", "filter.lfs.required", "true")
+	runGitIsolated(t, repoDir, "config", "core.hookspath", hooksDir)
+	runGitIsolated(t, repoDir, "config", "filter.lfs.required", "true")
 }
 
 func initNeutralCwd(t *testing.T, workRoot, name string) string {

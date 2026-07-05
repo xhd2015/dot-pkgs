@@ -35,8 +35,8 @@ func initDepRepoMultiSub(t *testing.T, workRoot, name string) string {
 		writeFile(t, filepath.Join(subDir, "go.mod"), "module example.com/dep/"+sub+"\n\ngo 1.22\n")
 		writeFile(t, filepath.Join(subDir, sub+".go"), "package "+sub+"\n")
 	}
-	runGit(t, dep, "add", ".")
-	runGit(t, dep, "commit", "-m", "add sub modules")
+	runGitIsolated(t, dep, "add", ".")
+	runGitIsolated(t, dep, "commit", "-m", "add sub modules")
 	return dep
 }
 
@@ -46,8 +46,8 @@ func initConsumerRepoRequiringB(t *testing.T, workRoot string) string {
 	initGitRepoOnMain(t, consumer)
 	writeFile(t, filepath.Join(consumer, "go.mod"), "module example.com/consumer\n\ngo 1.22\n\nrequire "+depModulePathB+" v0.0.0\n")
 	writeFile(t, filepath.Join(consumer, "main.go"), "package main\n")
-	runGit(t, consumer, "add", "go.mod", "main.go")
-	runGit(t, consumer, "commit", "-m", "init consumer")
+	runGitIsolated(t, consumer, "add", "go.mod", "main.go")
+	runGitIsolated(t, consumer, "commit", "-m", "init consumer")
 	consumer, err := filepath.EvalSymlinks(consumer)
 	if err != nil {
 		t.Fatalf("eval symlinks %s: %v", consumer, err)

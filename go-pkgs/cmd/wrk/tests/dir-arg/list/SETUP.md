@@ -14,7 +14,7 @@
 
 - Tests invoke `wrk <repoDir> --list` via `req.Args = []string{"--list"}`.
 - `req.TargetDir` is the repo passed as the first `wrk` argument.
-- Expected stdout is captured with `gitWorktreeList(t, req.TargetDir)` for exact comparison.
+- Expected stdout is captured with `gitWorktreeListIsolated(t, req.TargetDir)` for exact comparison.
 
 ```go
 func Setup(t *testing.T, req *Request) error {

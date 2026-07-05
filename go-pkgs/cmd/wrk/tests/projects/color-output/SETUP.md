@@ -41,6 +41,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/gitops/git"
+	"github.com/xhd2015/gitops/git/git_isolated"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 )
 
@@ -78,31 +79,31 @@ func colorProjectDirLine(t *testing.T, mainRepo string) string {
 
 func colorStatusBranchLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	return "Branch:       " + gitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+	return "Branch:       " + gitOutputIsolated(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
 }
 
 func colorStatusCommitLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	short := gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
-	subject := gitOutput(t, repoDir, "log", "-1", "--pretty=%s")
+	short := gitOutputIsolated(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	subject := gitOutputIsolated(t, repoDir, "log", "-1", "--pretty=%s")
 	return fmt.Sprintf("Commit:       %s  %s", short, subject)
 }
 
 func initColorOutputRepo(t *testing.T, path, subject string) {
 	t.Helper()
 	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(path, "README.md"), "# "+filepath.Base(path)+"\n")
-	runGit(t, path, "add", "README.md")
-	runGit(t, path, "commit", "-m", subject)
+	runGitIsolated(t, path, "add", "README.md")
+	runGitIsolated(t, path, "commit", "-m", subject)
 }
 
 func setupColorBareOrigin(t *testing.T, workRoot, name string) string {
 	t.Helper()
 	bare := filepath.Join(workRoot, name+".git")
-	runGit(t, workRoot, "init", "--bare", "-b", "main", bare)
+	runGitIsolated(t, workRoot, "-c", "init.templateDir=", "init", "--bare", "-b", "main", bare)
 	return bare
 }
 
@@ -110,19 +111,19 @@ func setupColorTrackedMainRepo(t *testing.T, workRoot, name, originBare, subject
 	t.Helper()
 	repo := filepath.Join(workRoot, name)
 	initColorOutputRepo(t, repo, subject)
-	runGit(t, repo, "remote", "add", "origin", originBare)
-	runGit(t, repo, "push", "-u", "origin", "main")
+	runGitIsolated(t, repo, "remote", "add", "origin", originBare)
+	runGitIsolated(t, repo, "push", "-u", "origin", "main")
 	return repo
 }
 
 func pushCommitToBareOrigin(t *testing.T, workRoot, originBare, filename, content, subject string) {
 	t.Helper()
 	cloneDir := filepath.Join(workRoot, "origin-push-clone")
-	runGit(t, workRoot, "clone", originBare, cloneDir)
+	runGitIsolated(t, workRoot, "clone", originBare, cloneDir)
 	writeFile(t, filepath.Join(cloneDir, filename), content)
-	runGit(t, cloneDir, "add", filename)
-	runGit(t, cloneDir, "commit", "-m", subject)
-	runGit(t, cloneDir, "push", "origin", "main")
+	runGitIsolated(t, cloneDir, "add", filename)
+	runGitIsolated(t, cloneDir, "commit", "-m", subject)
+	runGitIsolated(t, cloneDir, "push", "origin", "main")
 }
 
 func colorCompareWithRemoteField(t *testing.T, mainRepo, upstreamRef, currentBranch string) string {
@@ -198,13 +199,7 @@ func colorFormatWorktreesSummary(total, dirty, errors, prunes int) string {
 
 func colorGitCommandCombinedError(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("git %v in %s: expected failure", args, dir)
-	}
-	return strings.TrimSpace(string(out))
+	return git_isolated.MustOutputError(t, dir, args...)
 }
 
 func colorWorktreeStatusError(t *testing.T, wtPath string) string {
@@ -263,7 +258,7 @@ type colorPorcelainCounts struct {
 
 func colorGitStatusCounts(t *testing.T, repoPath string) (colorPorcelainCounts, error) {
 	t.Helper()
-	out := gitOutput(t, repoPath, "status", "--porcelain")
+	out := gitOutputIsolated(t, repoPath, "status", "--porcelain")
 	var counts colorPorcelainCounts
 	for _, line := range strings.Split(out, "\n") {
 		if line == "" {
@@ -295,7 +290,7 @@ func colorGitStatusCounts(t *testing.T, repoPath string) (colorPorcelainCounts, 
 func addColorLinkedWorktree(t *testing.T, mainRepo, relDir, branch string) string {
 	t.Helper()
 	wtDir := filepath.Join(mainRepo, filepath.FromSlash(relDir))
-	runGit(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
+	runGitIsolated(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
 	return wtDir
 }
 

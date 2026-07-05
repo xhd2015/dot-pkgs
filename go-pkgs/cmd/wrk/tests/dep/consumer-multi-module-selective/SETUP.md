@@ -34,8 +34,8 @@ func Setup(t *testing.T, req *Request) error {
 	// tools has NO dep require.
 	writeFile(t, filepath.Join(modDir2, "go.mod"), "module example.com/consumer-tools\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(modDir2, "tool.go"), "package tools\n")
-	runGit(t, consumer, "add", ".")
-	runGit(t, consumer, "commit", "-m", "add sub-modules")
+	runGitIsolated(t, consumer, "add", ".")
+	runGitIsolated(t, consumer, "commit", "-m", "add sub-modules")
 
 	dep := initDepRepo(t, req.WorkRoot, "mydep", true)
 

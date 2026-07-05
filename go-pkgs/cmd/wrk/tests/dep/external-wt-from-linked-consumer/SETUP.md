@@ -34,8 +34,8 @@ func Setup(t *testing.T, req *Request) error {
 
 	// initConsumerRepo leaves go.mod uncommitted; commit it so the linked
 	// worktree created next actually checks out a go.mod.
-	runGit(t, consumerMain, "add", "go.mod")
-	runGit(t, consumerMain, "commit", "-m", "add go.mod")
+	runGitIsolated(t, consumerMain, "add", "go.mod")
+	runGitIsolated(t, consumerMain, "commit", "-m", "add go.mod")
 
 	// Mirror `wrk $X/agent-pro`: spawn a linked worktree of the consumer and
 	// run --dep from inside it.

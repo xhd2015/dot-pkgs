@@ -38,11 +38,11 @@ func Setup(t *testing.T, req *Request) error {
 func reposInitRepo(t *testing.T, path string) {
 	t.Helper()
 	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(path, "README.md"), "# "+filepath.Base(path)+"\n")
-	runGit(t, path, "add", "README.md")
-	runGit(t, path, "commit", "-m", "init "+filepath.Base(path))
+	runGitIsolated(t, path, "add", "README.md")
+	runGitIsolated(t, path, "commit", "-m", "init "+filepath.Base(path))
 }
 ```

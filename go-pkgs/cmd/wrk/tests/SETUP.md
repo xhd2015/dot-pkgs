@@ -25,12 +25,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"unicode"
 
 	"github.com/xhd2015/doctest/assert"
+	"github.com/xhd2015/gitops/git/git_isolated"
+)
+
+const (
+	fixtureSeedMainReadme = "main-readme"
+	fixtureSeedMainGoMod  = "main-gomod"
+)
+
+type seedBuilder func(seedDir string)
+
+var (
+	fixtureSeedMu    sync.Mutex
+	fixtureSeedPaths = map[string]string{}
+	fixtureSeedOnces = map[string]*sync.Once{}
 )
 
 var buildOnce sync.Once
@@ -63,7 +78,7 @@ func getWrkBin(t *testing.T) string {
 			return
 		}
 		bin := filepath.Join(tmpDir, "wrk")
-		cmd := exec.Command("go", "build", "-a", "-o", bin, "./wrk")
+		cmd := exec.Command("go", "build", "-o", bin, "./wrk")
 		cmd.Dir = modRoot
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -112,50 +127,153 @@ func skipIfNoGit(t *testing.T) {
 	}
 }
 
-func runGit(t *testing.T, dir string, args ...string) {
+func runGitIsolated(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
+	git_isolated.MustRun(t, dir, args...)
 }
 
-func gitOutput(t *testing.T, dir string, args ...string) string {
+func gitOutputIsolated(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-	return strings.TrimSpace(string(out))
+	return git_isolated.MustOutput(t, dir, args...)
 }
 
-func gitWorktreeList(t *testing.T, dir string) string {
+func gitWorktreeListIsolated(t *testing.T, dir string) string {
 	t.Helper()
-	cmd := exec.Command("git", "worktree", "list")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			t.Fatalf("git worktree list in %s: %v\n%s", dir, err, ee.Stderr)
+	return git_isolated.WorktreeList(t, dir)
+}
+
+func doctestSessionID(t *testing.T) string {
+	t.Helper()
+	id := os.Getenv("DOCTEST_SESSION_ID")
+	if id == "" {
+		t.Fatal("DOCTEST_SESSION_ID not set")
+	}
+	return id
+}
+
+func fixtureSessionRoot(t *testing.T) string {
+	t.Helper()
+	base := os.Getenv("DOCTEST_FIXTURE_ROOT")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
 		}
-		t.Fatalf("git worktree list in %s: %v", dir, err)
+		base = filepath.Join(home, "Library", "Caches", "doctest", "fixtures")
 	}
-	return string(out)
+	return filepath.Join(base, doctestSessionID(t))
+}
+
+func isValidGitRepo(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
+func writeFileSeed(path, content string) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		panic(fmt.Sprintf("mkdir %s: %v", filepath.Dir(path), err))
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		panic(fmt.Sprintf("write %s: %v", path, err))
+	}
+}
+
+func runGitSeed(dir string, args ...string) {
+	if err := git_isolated.Run(dir, args...); err != nil {
+		panic(err.Error())
+	}
+}
+
+func buildSeedMainReadme(seedDir string) {
+	if err := git_isolated.Init(seedDir, "main"); err != nil {
+		panic(err.Error())
+	}
+	runGitSeed(seedDir, "config", "user.email", git_isolated.DefaultUserEmail)
+	runGitSeed(seedDir, "config", "user.name", git_isolated.DefaultUserName)
+	writeFileSeed(filepath.Join(seedDir, "README.md"), "# test\n")
+	runGitSeed(seedDir, "add", "README.md")
+	runGitSeed(seedDir, "commit", "-m", "init")
+}
+
+func buildSeedMainGoMod(seedDir string) {
+	buildSeedMainReadme(seedDir)
+	writeFileSeed(filepath.Join(seedDir, "go.mod"), "module example.com/myrepo\n\ngo 1.21\n")
+	runGitSeed(seedDir, "add", "go.mod")
+	runGitSeed(seedDir, "commit", "-m", "add go.mod")
+}
+
+func ensureSeed(t *testing.T, seedID string, build seedBuilder) string {
+	t.Helper()
+	fixtureSeedMu.Lock()
+	once, ok := fixtureSeedOnces[seedID]
+	if !ok {
+		once = &sync.Once{}
+		fixtureSeedOnces[seedID] = once
+	}
+	if path, ok := fixtureSeedPaths[seedID]; ok {
+		fixtureSeedMu.Unlock()
+		return path
+	}
+	fixtureSeedMu.Unlock()
+
+	once.Do(func() {
+		seedDir := filepath.Join(fixtureSessionRoot(t), "seeds", seedID)
+		if !isValidGitRepo(seedDir) {
+			_ = os.RemoveAll(seedDir)
+			if err := os.MkdirAll(seedDir, 0o755); err != nil {
+				panic(fmt.Sprintf("mkdir seed %s: %v", seedDir, err))
+			}
+			build(seedDir)
+		}
+		resolved, err := filepath.EvalSymlinks(seedDir)
+		if err == nil {
+			seedDir = resolved
+		}
+		fixtureSeedMu.Lock()
+		fixtureSeedPaths[seedID] = seedDir
+		fixtureSeedMu.Unlock()
+	})
+
+	fixtureSeedMu.Lock()
+	seedPath := fixtureSeedPaths[seedID]
+	fixtureSeedMu.Unlock()
+	if seedPath == "" {
+		t.Fatalf("seed %q not built", seedID)
+	}
+	return seedPath
+}
+
+func cloneDirCoW(src, dst string) error {
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("dest already exists: %s", dst)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	if runtime.GOOS == "darwin" {
+		return exec.Command("cp", "-cR", src, dst).Run()
+	}
+	return exec.Command("cp", "-a", src, dst).Run()
+}
+
+func cloneRepoFromSeed(t *testing.T, seedID string, build seedBuilder, dest string) {
+	t.Helper()
+	seed := ensureSeed(t, seedID, build)
+	if err := cloneDirCoW(seed, dest); err != nil {
+		t.Fatalf("clone seed %q -> %q: %v", seedID, dest, err)
+	}
+	resolved, err := filepath.EvalSymlinks(dest)
+	if err == nil {
+		dest = resolved
+	}
+	if !isValidGitRepo(dest) {
+		t.Fatalf("cloned repo %q is not a valid git repo", dest)
+	}
 }
 
 func initGitRepoOnMain(t *testing.T, path string) {
 	t.Helper()
-	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
-	writeFile(t, filepath.Join(path, "README.md"), "# test\n")
-	runGit(t, path, "add", "README.md")
-	runGit(t, path, "commit", "-m", "init")
+	cloneRepoFromSeed(t, fixtureSeedMainReadme, buildSeedMainReadme, path)
 }
 
 const wrkDate = "2026-06-30"
@@ -232,15 +350,14 @@ func assertGitFileIsWorktreeLink(t *testing.T, wtDir string) {
 
 func assertBranchExists(t *testing.T, repoDir, branch string) {
 	t.Helper()
-	cmd := exec.Command("git", "-C", repoDir, "rev-parse", "--verify", "refs/heads/"+branch)
-	if err := cmd.Run(); err != nil {
+	if err := git_isolated.Command(repoDir, "rev-parse", "--verify", "refs/heads/"+branch).Run(); err != nil {
 		t.Fatalf("branch %q should exist in %s", branch, repoDir)
 	}
 }
 
 func assertWorktreeListContains(t *testing.T, repoDir, wantPath string) {
 	t.Helper()
-	list := gitOutput(t, repoDir, "worktree", "list", "--porcelain")
+	list := gitOutputIsolated(t, repoDir, "worktree", "list", "--porcelain")
 	found := false
 	for _, line := range strings.Split(list, "\n") {
 		if strings.HasPrefix(line, "worktree ") {
@@ -258,7 +375,7 @@ func assertWorktreeListContains(t *testing.T, repoDir, wantPath string) {
 
 func assertBranchCheckedOutInWorktree(t *testing.T, wtDir, wantBranch string) {
 	t.Helper()
-	got := gitOutput(t, wtDir, "rev-parse", "--abbrev-ref", "HEAD")
+	got := gitOutputIsolated(t, wtDir, "rev-parse", "--abbrev-ref", "HEAD")
 	if got != wantBranch {
 		t.Fatalf("worktree %s: expected branch %q, got %q", wtDir, wantBranch, got)
 	}
@@ -317,15 +434,14 @@ func assertFileNotExists(t *testing.T, path string) {
 
 func assertBranchNotExists(t *testing.T, repoDir, branch string) {
 	t.Helper()
-	cmd := exec.Command("git", "-C", repoDir, "rev-parse", "--verify", "refs/heads/"+branch)
-	if err := cmd.Run(); err == nil {
+	if err := git_isolated.Command(repoDir, "rev-parse", "--verify", "refs/heads/"+branch).Run(); err == nil {
 		t.Fatalf("branch %q should not exist in %s", branch, repoDir)
 	}
 }
 
 func assertWorktreeListNotContains(t *testing.T, repoDir, wantPath string) {
 	t.Helper()
-	list := gitOutput(t, repoDir, "worktree", "list", "--porcelain")
+	list := gitOutputIsolated(t, repoDir, "worktree", "list", "--porcelain")
 	for _, line := range strings.Split(list, "\n") {
 		if strings.HasPrefix(line, "worktree ") {
 			p := strings.TrimPrefix(line, "worktree ")
@@ -341,11 +457,7 @@ func setupWrkWorktreeFromMain(t *testing.T, req *Request) (mainRepo, wtDir, bran
 	t.Helper()
 	mainRepo = filepath.Join(req.WorkRoot, "myrepo")
 	req.MainRepo = mainRepo
-	initGitRepoOnMain(t, mainRepo)
-	// wrk --done requires a consumer go.mod (it tidies after merge-back).
-	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/myrepo\n\ngo 1.21\n")
-	runGit(t, mainRepo, "add", "go.mod")
-	runGit(t, mainRepo, "commit", "-m", "add go.mod")
+	cloneRepoFromSeed(t, fixtureSeedMainGoMod, buildSeedMainGoMod, mainRepo)
 	wtDir = runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir
 	branch = branchName("main", wrkDate, 0)
@@ -356,8 +468,8 @@ func setupWrkWorktreeFromMain(t *testing.T, req *Request) (mainRepo, wtDir, bran
 func commitAheadOnWorktree(t *testing.T, wtDir, filename, content string) {
 	t.Helper()
 	writeFile(t, filepath.Join(wtDir, filename), content)
-	runGit(t, wtDir, "add", filename)
-	runGit(t, wtDir, "commit", "-m", "worktree commit")
+	runGitIsolated(t, wtDir, "add", filename)
+	runGitIsolated(t, wtDir, "commit", "-m", "worktree commit")
 }
 
 // slugify converts a task description into a path-safe slug.
@@ -452,10 +564,7 @@ func createWorktreeWithTask(t *testing.T, req *Request, taskDesc string) (mainRe
 	t.Helper()
 	mainRepo = filepath.Join(req.WorkRoot, "myrepo")
 	req.MainRepo = mainRepo
-	initGitRepoOnMain(t, mainRepo)
-	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/myrepo\ngo 1.21\n")
-	runGit(t, mainRepo, "add", "go.mod")
-	runGit(t, mainRepo, "commit", "-m", "add go.mod")
+	cloneRepoFromSeed(t, fixtureSeedMainGoMod, buildSeedMainGoMod, mainRepo)
 	slug := slugify(taskDesc)
 	wtDir = runWrkWithArgs(t, req, mainRepo, "--task", taskDesc)
 	req.WtDir = wtDir
@@ -469,10 +578,12 @@ func ensureHelpersUsed() {
 	_ = mkdirAll
 	_ = writeFile
 	_ = skipIfNoGit
-	_ = runGit
-	_ = gitOutput
-	_ = gitWorktreeList
+	_ = runGitIsolated
+	_ = gitOutputIsolated
+	_ = gitWorktreeListIsolated
 	_ = initGitRepoOnMain
+	_ = cloneRepoFromSeed
+	_ = ensureSeed
 	_ = sanitizeBranchToken
 	_ = worktreePath
 	_ = branchName

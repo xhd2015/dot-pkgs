@@ -25,8 +25,8 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, consumer)
 	// NO go.mod at repo root. No go.mod in any subdirectory.
 	writeFile(t, filepath.Join(consumer, "README.md"), "# consumer\n")
-	runGit(t, consumer, "add", "README.md")
-	runGit(t, consumer, "commit", "-m", "init consumer")
+	runGitIsolated(t, consumer, "add", "README.md")
+	runGitIsolated(t, consumer, "commit", "-m", "init consumer")
 
 	dep := initDepRepo(t, req.WorkRoot, "mydep", true)
 

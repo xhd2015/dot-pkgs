@@ -46,8 +46,8 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, mainRepo)
 	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/consumer\n\ngo 1.22\n")
 	runGoMod(t, mainRepo, "edit", "-require="+cascadeMergeBackDepModule+"@v0.0.0")
-	runGit(t, mainRepo, "add", "go.mod")
-	runGit(t, mainRepo, "commit", "-m", "add consumer go.mod")
+	runGitIsolated(t, mainRepo, "add", "go.mod")
+	runGitIsolated(t, mainRepo, "commit", "-m", "add consumer go.mod")
 
 	wtDir := runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir
@@ -58,16 +58,16 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, depRepo)
 	writeFile(t, filepath.Join(depRepo, "go.mod"), "module "+cascadeMergeBackDepModule+"\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(depRepo, "dep.go"), "package dep\n")
-	runGit(t, depRepo, "add", "go.mod", "dep.go")
-	runGit(t, depRepo, "commit", "-m", "add module")
+	runGitIsolated(t, depRepo, "add", "go.mod", "dep.go")
+	runGitIsolated(t, depRepo, "commit", "-m", "add module")
 
 	externalPath := runWrkWithArgs(t, req, wtDir, "--dep", depRepo)
 	req.ExternalWtDir = externalPath
 
 	// Commit a dep fix on the external worktree → ahead of dep main.
 	writeFile(t, filepath.Join(externalPath, "dep.go"), "package dep // fix\n")
-	runGit(t, externalPath, "add", "dep.go")
-	runGit(t, externalPath, "commit", "-m", "dep fix on worktree")
+	runGitIsolated(t, externalPath, "add", "dep.go")
+	runGitIsolated(t, externalPath, "commit", "-m", "dep fix on worktree")
 
 	req.RepoDir = wtDir
 	req.Args = []string{"--done", "--confirm-from-stdin"}

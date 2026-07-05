@@ -23,7 +23,7 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, mainRepo)
 
 	linkedWT := filepath.Join(req.WorkRoot, "linked-wt")
-	runGit(t, mainRepo, "worktree", "add", "-b", "linked-side", linkedWT)
+	runGitIsolated(t, mainRepo, "worktree", "add", "-b", "linked-side", linkedWT)
 	req.RepoDir = linkedWT
 	return nil
 }

@@ -16,7 +16,7 @@ myrepo (main) + refs/heads/main-2026-06-30 -> wrk -> myrepo-main-2026-06-30-1
 ```go
 func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, req.RepoDir)
-	runGit(t, req.RepoDir, "branch", branchName("main", wrkDate, 0))
+	runGitIsolated(t, req.RepoDir, "branch", branchName("main", wrkDate, 0))
 	return nil
 }
 ```

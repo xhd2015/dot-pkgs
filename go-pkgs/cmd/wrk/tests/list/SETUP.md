@@ -15,7 +15,7 @@ wrk --list -> git worktree list stdout unchanged
 
 - Tests invoke `wrk --list` via `req.Args = []string{"--list"}`.
 - `req.RepoDir` is the cwd passed to git discovery (`git -C cwd worktree list`).
-- Expected stdout is captured with `gitWorktreeList(t, dir)` for exact comparison.
+- Expected stdout is captured with `gitWorktreeListIsolated(t, dir)` for exact comparison.
 
 ```go
 func Setup(t *testing.T, req *Request) error {

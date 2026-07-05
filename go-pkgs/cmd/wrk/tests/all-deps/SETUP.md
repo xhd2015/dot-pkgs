@@ -253,30 +253,18 @@ func allDepsRunGo(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// allDepsRunGit runs a git command in dir with hooks disabled.
-func allDepsRunGit(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	fullArgs := append([]string{"-c", "core.hooksPath="}, args...)
-	cmd := exec.Command("git", fullArgs...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-}
-
 // initAllDepsRepo creates a git repo on branch main at path with a committed
 // go.mod (module modulePath) and one .go file (package pkgName).
 func initAllDepsRepo(t *testing.T, path, modulePath, pkgName string) {
 	t.Helper()
 	mkdirAll(t, path)
-	allDepsRunGit(t, path, "init", "-b", "main")
-	allDepsRunGit(t, path, "config", "user.email", "test@test.com")
-	allDepsRunGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(path, "go.mod"), "module "+modulePath+"\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(path, pkgName+".go"), "package "+pkgName+"\n")
-	allDepsRunGit(t, path, "add", "go.mod", pkgName+".go")
-	allDepsRunGit(t, path, "commit", "-m", "init "+modulePath)
+	runGitIsolated(t, path, "add", "go.mod", pkgName+".go")
+	runGitIsolated(t, path, "commit", "-m", "init "+modulePath)
 }
 
 // initAllDepsConsumer creates a consumer git repo on main with a go.mod that
@@ -286,9 +274,9 @@ func initAllDepsConsumer(t *testing.T, workRoot string, requires []string, extra
 	t.Helper()
 	consumer := filepath.Join(workRoot, "consumer")
 	mkdirAll(t, consumer)
-	allDepsRunGit(t, consumer, "init", "-b", "main")
-	allDepsRunGit(t, consumer, "config", "user.email", "test@test.com")
-	allDepsRunGit(t, consumer, "config", "user.name", "Test")
+	runGitIsolated(t, consumer, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, consumer, "config", "user.email", "test@test.com")
+	runGitIsolated(t, consumer, "config", "user.name", "Test")
 	var sb strings.Builder
 	sb.WriteString("module example.com/consumer\n\ngo 1.22\n")
 	for _, m := range requires {
@@ -299,8 +287,8 @@ func initAllDepsConsumer(t *testing.T, workRoot string, requires []string, extra
 	}
 	writeFile(t, filepath.Join(consumer, "go.mod"), sb.String())
 	writeFile(t, filepath.Join(consumer, "main.go"), "package main\n")
-	allDepsRunGit(t, consumer, "add", "go.mod", "main.go")
-	allDepsRunGit(t, consumer, "commit", "-m", "init consumer")
+	runGitIsolated(t, consumer, "add", "go.mod", "main.go")
+	runGitIsolated(t, consumer, "commit", "-m", "init consumer")
 	resolved, err := filepath.EvalSymlinks(consumer)
 	if err != nil {
 		return consumer
@@ -347,7 +335,7 @@ func allDepsEnsureHelpersUsed() {
 	_ = allDepsExternalAbsPath
 	_ = allDepsDepMainRepo
 	_ = allDepsRunGo
-	_ = allDepsRunGit
+
 	_ = initAllDepsRepo
 	_ = initAllDepsConsumer
 	_ = nestedExternalAbsSubPath

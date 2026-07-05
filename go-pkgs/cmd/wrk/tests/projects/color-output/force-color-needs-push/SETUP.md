@@ -21,8 +21,8 @@ func Setup(t *testing.T, req *Request) error {
 	origin := setupColorBareOrigin(t, req.WorkRoot, "origin")
 	repo := setupColorTrackedMainRepo(t, req.WorkRoot, "push", origin, "push base")
 	writeFile(t, filepath.Join(repo, "ahead.txt"), "ahead\n")
-	runGit(t, repo, "add", "ahead.txt")
-	runGit(t, repo, "commit", "-m", "ahead of upstream")
+	runGitIsolated(t, repo, "add", "ahead.txt")
+	runGitIsolated(t, repo, "commit", "-m", "ahead of upstream")
 	recordColorProject(t, req, repo)
 	req.MainRepo = repo
 	return nil

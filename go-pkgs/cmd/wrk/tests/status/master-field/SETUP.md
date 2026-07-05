@@ -54,22 +54,22 @@ func setupMainRepoWithSubject(t *testing.T, workRoot, name, subject string) stri
 func addLinkedWorktreeInRepo(t *testing.T, mainRepo, relDir, branch string) string {
 	t.Helper()
 	wtDir := filepath.Join(mainRepo, filepath.FromSlash(relDir))
-	runGit(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
+	runGitIsolated(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
 	return wtDir
 }
 
 func commitOnMain(t *testing.T, mainRepo, filename, content, subject string) {
 	t.Helper()
 	writeFile(t, filepath.Join(mainRepo, filename), content)
-	runGit(t, mainRepo, "add", filename)
-	runGit(t, mainRepo, "commit", "-m", subject)
+	runGitIsolated(t, mainRepo, "add", filename)
+	runGitIsolated(t, mainRepo, "commit", "-m", subject)
 }
 
 func commitOnWorktree(t *testing.T, wtDir, filename, content, subject string) {
 	t.Helper()
 	writeFile(t, filepath.Join(wtDir, filename), content)
-	runGit(t, wtDir, "add", filename)
-	runGit(t, wtDir, "commit", "-m", subject)
+	runGitIsolated(t, wtDir, "add", filename)
+	runGitIsolated(t, wtDir, "commit", "-m", subject)
 }
 
 func masterBriefFromResult(result *git.CompareBranchesResult) string {

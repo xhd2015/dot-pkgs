@@ -27,8 +27,8 @@ func Setup(t *testing.T, req *Request) error {
 	consumerMain := initConsumerRepo(t, req.WorkRoot, true)
 	dep := initDepRepo(t, req.WorkRoot, "mydep")
 
-	runGit(t, consumerMain, "add", "go.mod")
-	runGit(t, consumerMain, "commit", "-m", "add go.mod")
+	runGitIsolated(t, consumerMain, "add", "go.mod")
+	runGitIsolated(t, consumerMain, "commit", "-m", "add go.mod")
 
 	consumerWt := runWrkWithArgs(t, req, consumerMain, "--task", "old slug")
 	req.WtDir = consumerWt

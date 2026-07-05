@@ -16,7 +16,7 @@ myrepo (feature/foo) -> wrk -> myrepo-feature-foo-2026-06-30
 ```go
 func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, req.RepoDir)
-	runGit(t, req.RepoDir, "checkout", "-b", "feature/foo")
+	runGitIsolated(t, req.RepoDir, "checkout", "-b", "feature/foo")
 	return nil
 }
 ```

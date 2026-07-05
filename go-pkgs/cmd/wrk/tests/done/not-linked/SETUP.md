@@ -23,8 +23,8 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, mainRepo)
 	// wrk --done reaches the linked-worktree check only after the go.mod check.
 	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/myrepo\n\ngo 1.21\n")
-	runGit(t, mainRepo, "add", "go.mod")
-	runGit(t, mainRepo, "commit", "-m", "add go.mod")
+	runGitIsolated(t, mainRepo, "add", "go.mod")
+	runGitIsolated(t, mainRepo, "commit", "-m", "add go.mod")
 
 	req.RepoDir = mainRepo
 	req.Args = []string{"--done"}

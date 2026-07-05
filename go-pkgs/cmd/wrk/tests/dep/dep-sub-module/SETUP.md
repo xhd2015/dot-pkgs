@@ -34,8 +34,8 @@ func initDepRepoWithSubModule(t *testing.T, workRoot, name string) string {
 	mkdirAll(t, subDir)
 	writeFile(t, filepath.Join(subDir, "go.mod"), "module "+subModulePath+"\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(subDir, "sub.go"), "package sub\n")
-	runGit(t, dep, "add", ".")
-	runGit(t, dep, "commit", "-m", "add sub module")
+	runGitIsolated(t, dep, "add", ".")
+	runGitIsolated(t, dep, "commit", "-m", "add sub module")
 	return dep
 }
 

@@ -24,7 +24,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertContains(t, resp.Stderr, "replace")
 
 	// Merge-back: the dep fix landed in the dep repo's main.
-	depLog := gitOutput(t, req.DepPath, "log", "--oneline")
+	depLog := gitOutputIsolated(t, req.DepPath, "log", "--oneline")
 	assertContains(t, depLog, "dep fix on worktree")
 
 	// External dep worktree removed by the cascade.

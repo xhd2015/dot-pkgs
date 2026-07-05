@@ -38,17 +38,17 @@ func Setup(t *testing.T, req *Request) error {
 func initNestedSubmoduleRepo(t *testing.T, path string) {
 	t.Helper()
 	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(path, "go.mod"), "module example.com/myrepo\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(path, "root.go"), "package myrepo\n")
 	depDir := filepath.Join(path, "services", "dep")
 	mkdirAll(t, depDir)
 	writeFile(t, filepath.Join(depDir, "go.mod"), "module example.com/dep\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(depDir, "dep.go"), "package dep\n")
-	runGit(t, path, "add", ".")
-	runGit(t, path, "commit", "-m", "init myrepo with nested dep")
+	runGitIsolated(t, path, "add", ".")
+	runGitIsolated(t, path, "commit", "-m", "init myrepo with nested dep")
 }
 
 // initMultiModuleRepo creates a git repo with NO root go.mod and two nested
@@ -56,17 +56,17 @@ func initNestedSubmoduleRepo(t *testing.T, path string) {
 func initMultiModuleRepo(t *testing.T, path string) {
 	t.Helper()
 	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	mkdirAll(t, filepath.Join(path, "svc-a"))
 	mkdirAll(t, filepath.Join(path, "svc-b"))
 	writeFile(t, filepath.Join(path, "svc-a", "go.mod"), "module example.com/dep1\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(path, "svc-a", "a.go"), "package dep1\n")
 	writeFile(t, filepath.Join(path, "svc-b", "go.mod"), "module example.com/dep2\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(path, "svc-b", "b.go"), "package dep2\n")
-	runGit(t, path, "add", ".")
-	runGit(t, path, "commit", "-m", "init myrepo with two sub-modules")
+	runGitIsolated(t, path, "add", ".")
+	runGitIsolated(t, path, "commit", "-m", "init myrepo with two sub-modules")
 }
 
 func registeredEnsureHelpersUsed() {

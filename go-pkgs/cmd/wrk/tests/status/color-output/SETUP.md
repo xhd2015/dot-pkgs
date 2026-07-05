@@ -68,22 +68,22 @@ func setupColorStatusMainRepo(t *testing.T, workRoot, name, subject string) stri
 func addColorStatusLinkedWorktree(t *testing.T, mainRepo, relDir, branch string) string {
 	t.Helper()
 	wtDir := filepath.Join(mainRepo, filepath.FromSlash(relDir))
-	runGit(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
+	runGitIsolated(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
 	return wtDir
 }
 
 func commitColorStatusOnMain(t *testing.T, mainRepo, filename, content, subject string) {
 	t.Helper()
 	writeFile(t, filepath.Join(mainRepo, filename), content)
-	runGit(t, mainRepo, "add", filename)
-	runGit(t, mainRepo, "commit", "-m", subject)
+	runGitIsolated(t, mainRepo, "add", filename)
+	runGitIsolated(t, mainRepo, "commit", "-m", subject)
 }
 
 func commitColorStatusOnWorktree(t *testing.T, wtDir, filename, content, subject string) {
 	t.Helper()
 	writeFile(t, filepath.Join(wtDir, filename), content)
-	runGit(t, wtDir, "add", filename)
-	runGit(t, wtDir, "commit", "-m", subject)
+	runGitIsolated(t, wtDir, "add", filename)
+	runGitIsolated(t, wtDir, "commit", "-m", subject)
 }
 
 func colorStatusMasterBriefFromResult(result *git.CompareBranchesResult) string {
@@ -186,7 +186,7 @@ func colorStatusStdoutV2(t *testing.T, blocks ...string) string {
 func dirtyColorStatusRepo(t *testing.T, repo string) {
 	t.Helper()
 	writeFile(t, filepath.Join(repo, "added.txt"), "added\n")
-	runGit(t, repo, "add", "added.txt")
+	runGitIsolated(t, repo, "add", "added.txt")
 	writeFile(t, filepath.Join(repo, "README.md"), "# changed\n")
 }
 

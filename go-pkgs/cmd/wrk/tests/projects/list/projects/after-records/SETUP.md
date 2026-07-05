@@ -20,10 +20,10 @@ func Setup(t *testing.T, req *Request) error {
 
 	repoA := initProjectsRepo(t, req.WorkRoot, "aaa")
 	repoZ := initProjectsRepo(t, req.WorkRoot, "zzz")
-	runGit(t, repoA, "remote", "add", "origin", originA)
-	runGit(t, repoA, "push", "-u", "origin", "main")
-	runGit(t, repoZ, "remote", "add", "origin", originZ)
-	runGit(t, repoZ, "push", "-u", "origin", "main")
+	runGitIsolated(t, repoA, "remote", "add", "origin", originA)
+	runGitIsolated(t, repoA, "push", "-u", "origin", "main")
+	runGitIsolated(t, repoZ, "remote", "add", "origin", originZ)
+	runGitIsolated(t, repoZ, "push", "-u", "origin", "main")
 
 	runWrkWithArgs(t, req, repoA, "--list")
 	runWrkWithArgs(t, req, repoZ, "--list")

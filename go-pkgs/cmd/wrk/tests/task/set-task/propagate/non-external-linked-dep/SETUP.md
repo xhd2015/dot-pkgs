@@ -30,8 +30,8 @@ func Setup(t *testing.T, req *Request) error {
 
 	dep := initDepRepo(t, req.WorkRoot, "foodep")
 
-	runGit(t, consumerMain, "add", "go.mod")
-	runGit(t, consumerMain, "commit", "-m", "add go.mod")
+	runGitIsolated(t, consumerMain, "add", "go.mod")
+	runGitIsolated(t, consumerMain, "commit", "-m", "add go.mod")
 
 	consumerWt := runWrkWithArgs(t, req, consumerMain, "--task", "old slug")
 	req.WtDir = consumerWt
@@ -43,11 +43,11 @@ func Setup(t *testing.T, req *Request) error {
 	req.DepPath = dep
 
 	depBranch := branchName("main", wrkDate, 0)
-	runGit(t, dep, "worktree", "add", "-b", depBranch, depsWtDir)
+	runGitIsolated(t, dep, "worktree", "add", "-b", depBranch, depsWtDir)
 
 	writeFile(t, filepath.Join(consumerWt, ".gitignore"), "/deps\n")
-	runGit(t, consumerWt, "add", ".gitignore")
-	runGit(t, consumerWt, "commit", "-m", "ignore deps worktrees")
+	runGitIsolated(t, consumerWt, "add", ".gitignore")
+	runGitIsolated(t, consumerWt, "commit", "-m", "ignore deps worktrees")
 
 	oldGitdir, err := readWorktreeGitdir(depsWtDir)
 	if err != nil {

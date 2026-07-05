@@ -20,8 +20,8 @@ func Setup(t *testing.T, req *Request) error {
 	origin := setupRemoteBriefBareOrigin(t, req.WorkRoot, "origin")
 	repo := setupRemoteBriefTrackedRepo(t, req.WorkRoot, "ahead", origin, "ahead base")
 	writeFile(t, filepath.Join(repo, "ahead.txt"), "ahead\n")
-	runGit(t, repo, "add", "ahead.txt")
-	runGit(t, repo, "commit", "-m", "ahead of upstream")
+	runGitIsolated(t, repo, "add", "ahead.txt")
+	runGitIsolated(t, repo, "commit", "-m", "ahead of upstream")
 	recordRemoteBriefProject(t, req, repo)
 	req.MainRepo = repo
 	return nil

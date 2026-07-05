@@ -21,8 +21,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	mainRepo := filepath.Join(req.WorkRoot, "myrepo")
-	wantRoot := gitWorktreeList(t, mainRepo)
-	wantSubpath := gitWorktreeList(t, req.RepoDir)
+	wantRoot := gitWorktreeListIsolated(t, mainRepo)
+	wantSubpath := gitWorktreeListIsolated(t, req.RepoDir)
 
 	if wantRoot != wantSubpath {
 		t.Fatalf("git worktree list should match from root and subpath:\nroot:\n%q\nsubpath:\n%q", wantRoot, wantSubpath)

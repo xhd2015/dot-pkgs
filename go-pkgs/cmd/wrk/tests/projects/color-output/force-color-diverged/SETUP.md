@@ -22,8 +22,8 @@ func Setup(t *testing.T, req *Request) error {
 	origin := setupColorBareOrigin(t, req.WorkRoot, "origin")
 	repo := setupColorTrackedMainRepo(t, req.WorkRoot, "div", origin, "diverged base")
 	writeFile(t, filepath.Join(repo, "local.txt"), "local\n")
-	runGit(t, repo, "add", "local.txt")
-	runGit(t, repo, "commit", "-m", "local only")
+	runGitIsolated(t, repo, "add", "local.txt")
+	runGitIsolated(t, repo, "commit", "-m", "local only")
 	pushCommitToBareOrigin(t, req.WorkRoot, origin, "remote.txt", "remote\n", "remote only")
 	recordColorProject(t, req, repo)
 	req.MainRepo = repo

@@ -15,7 +15,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("exit code %d stderr=%q", resp.ExitCode, resp.Stderr)
 	}
 
-	want := gitWorktreeList(t, req.RepoDir)
+	want := gitWorktreeListIsolated(t, req.RepoDir)
 	if resp.Stdout != want {
 		t.Fatalf("stdout mismatch:\nwant:\n%q\ngot:\n%q", want, resp.Stdout)
 	}

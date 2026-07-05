@@ -47,6 +47,7 @@ import (
 	"github.com/xhd2015/doctest/assert"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/gitops/git"
+	"github.com/xhd2015/gitops/git/git_isolated"
 )
 
 var buildOnce sync.Once
@@ -81,7 +82,7 @@ func getWrkBin(t *testing.T) string {
 			return
 		}
 		bin := filepath.Join(tmpDir, "wrk")
-		cmd := exec.Command("go", "build", "-a", "-o", bin, "./wrk")
+		cmd := exec.Command("go", "build", "-o", bin, "./wrk")
 		cmd.Dir = modRoot
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -139,25 +140,14 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-func runGit(t *testing.T, dir string, args ...string) {
+func runGitIsolated(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
+	git_isolated.MustRun(t, dir, args...)
 }
 
-func gitOutput(t *testing.T, dir string, args ...string) string {
+func gitOutputIsolated(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-	return strings.TrimSpace(string(out))
+	return git_isolated.MustOutput(t, dir, args...)
 }
 
 func assertErrIsNil(t *testing.T, err error) {
@@ -216,20 +206,20 @@ func statusOutputBlockCount(stdout string) int {
 func initMainRepo(t *testing.T, path, subject string) {
 	t.Helper()
 	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(path, "README.md"), "# "+filepath.Base(path)+"\n")
-	runGit(t, path, "add", "README.md")
-	runGit(t, path, "commit", "-m", subject)
+	runGitIsolated(t, path, "add", "README.md")
+	runGitIsolated(t, path, "commit", "-m", subject)
 }
 
 func initMainRepoWithGoMod(t *testing.T, path, subject string) {
 	t.Helper()
 	initMainRepo(t, path, subject)
 	writeFile(t, filepath.Join(path, "go.mod"), "module example.com/"+filepath.Base(path)+"\n\ngo 1.21\n")
-	runGit(t, path, "add", "go.mod")
-	runGit(t, path, "commit", "-m", "add go.mod")
+	runGitIsolated(t, path, "add", "go.mod")
+	runGitIsolated(t, path, "commit", "-m", "add go.mod")
 }
 
 func runWrkFrom(t *testing.T, req *Request, dir string) string {
@@ -280,19 +270,19 @@ func createSecondExternalWrkWorktree(t *testing.T, req *Request, mainRepo string
 func addInTreeLinkedWorktree(t *testing.T, mainRepo, relDir, branch string) string {
 	t.Helper()
 	wtDir := filepath.Join(mainRepo, filepath.FromSlash(relDir))
-	runGit(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
+	runGitIsolated(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
 	return wtDir
 }
 
 func statusBranchLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	return "Branch:       " + gitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+	return "Branch:       " + gitOutputIsolated(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
 }
 
 func statusCommitLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	short := gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
-	subject := gitOutput(t, repoDir, "log", "-1", "--pretty=%s")
+	short := gitOutputIsolated(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	subject := gitOutputIsolated(t, repoDir, "log", "-1", "--pretty=%s")
 	return fmt.Sprintf("Commit:       %s  %s", short, subject)
 }
 
@@ -302,7 +292,7 @@ type porcelainCounts struct {
 
 func gitStatusCounts(t *testing.T, repoPath string) porcelainCounts {
 	t.Helper()
-	out := gitOutput(t, repoPath, "status", "--porcelain", "--untracked-files=no")
+	out := gitOutputIsolated(t, repoPath, "status", "--porcelain", "--untracked-files=no")
 	var counts porcelainCounts
 	for _, line := range strings.Split(out, "\n") {
 		if line == "" {
@@ -422,9 +412,7 @@ func appendedErrorStatusColored(t *testing.T, wtPath string) string {
 
 func gitCommandCombinedError(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
+	out, err := git_isolated.Command(dir, args...).CombinedOutput()
 	if err == nil {
 		t.Fatalf("git %v in %s: expected failure", args, dir)
 	}

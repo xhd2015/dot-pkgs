@@ -30,7 +30,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	mainRepo := filepath.Join(req.WorkRoot, "myrepo")
-	want := gitWorktreeList(t, mainRepo)
+	want := gitWorktreeListIsolated(t, mainRepo)
 	if resp.Stdout != want {
 		t.Fatalf("stdout mismatch:\nwant:\n%q\ngot:\n%q", want, resp.Stdout)
 	}

@@ -50,11 +50,11 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, filepath.Join(mainRepo, "sub"))
 	writeFile(t, filepath.Join(mainRepo, "sub", "go.mod"),
 		"module example.com/myrepo/sub\n\ngo 1.22\n\nreplace example.com/foo => ./local-foo\n")
-	runGit(t, mainRepo, "add", "go.mod", "sub/go.mod")
+	runGitIsolated(t, mainRepo, "add", "go.mod", "sub/go.mod")
 	// --no-verify bypasses the project's go-no-local-replace pre-commit hook,
 	// which would otherwise reject committing sub/go.mod's local replace. This
 	// test exercises wrk --done's guard, not the hook.
-	runGit(t, mainRepo, "commit", "--no-verify", "-m", "add main + sub module")
+	runGitIsolated(t, mainRepo, "commit", "--no-verify", "-m", "add main + sub module")
 
 	wtDir := runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir

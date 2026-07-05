@@ -160,18 +160,18 @@ func assertProjectsStreamsIncrementally(t *testing.T, probe projectsStreamProbe,
 func initStreamingStatusRepo(t *testing.T, path, subject string) {
 	t.Helper()
 	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(path, "README.md"), "# "+filepath.Base(path)+"\n")
-	runGit(t, path, "add", "README.md")
-	runGit(t, path, "commit", "-m", subject)
+	runGitIsolated(t, path, "add", "README.md")
+	runGitIsolated(t, path, "commit", "-m", subject)
 }
 
 func setupStreamingBareOrigin(t *testing.T, workRoot, name string) string {
 	t.Helper()
 	bare := filepath.Join(workRoot, name+".git")
-	runGit(t, workRoot, "init", "--bare", "-b", "main", bare)
+	runGitIsolated(t, workRoot, "-c", "init.templateDir=", "init", "--bare", "-b", "main", bare)
 	return bare
 }
 
@@ -179,15 +179,15 @@ func setupStreamingTrackedMainRepo(t *testing.T, workRoot, name, originBare, sub
 	t.Helper()
 	repo := filepath.Join(workRoot, name)
 	initStreamingStatusRepo(t, repo, subject)
-	runGit(t, repo, "remote", "add", "origin", originBare)
-	runGit(t, repo, "push", "-u", "origin", "main")
+	runGitIsolated(t, repo, "remote", "add", "origin", originBare)
+	runGitIsolated(t, repo, "push", "-u", "origin", "main")
 	return repo
 }
 
 func addStreamingLinkedWorktree(t *testing.T, mainRepo, relDir, branch string) string {
 	t.Helper()
 	wtDir := filepath.Join(mainRepo, filepath.FromSlash(relDir))
-	runGit(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
+	runGitIsolated(t, mainRepo, "worktree", "add", "-b", branch, wtDir)
 	return wtDir
 }
 
@@ -216,14 +216,14 @@ func setupSlowManyWorktreesRepo(t *testing.T, req *Request, name string, worktre
 
 func streamingStatusBranchLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	branch := gitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+	branch := gitOutputIsolated(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
 	return "Branch:       " + branch
 }
 
 func streamingStatusCommitLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	short := gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
-	subject := gitOutput(t, repoDir, "log", "-1", "--pretty=%s")
+	short := gitOutputIsolated(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	subject := gitOutputIsolated(t, repoDir, "log", "-1", "--pretty=%s")
 	return fmt.Sprintf("Commit:       %s  %s", short, subject)
 }
 

@@ -68,8 +68,8 @@ func initDepRepo(t *testing.T, workRoot, name string) string {
 	initGitRepoOnMain(t, dep)
 	writeFile(t, filepath.Join(dep, "go.mod"), "module "+depModulePath+"\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(dep, "dep.go"), "package dep\n")
-	runGit(t, dep, "add", "go.mod", "dep.go")
-	runGit(t, dep, "commit", "-m", "add go module")
+	runGitIsolated(t, dep, "add", "go.mod", "dep.go")
+	runGitIsolated(t, dep, "commit", "-m", "add go module")
 	return dep
 }
 

@@ -31,8 +31,8 @@ func Setup(t *testing.T, req *Request) error {
 	req.MainRepo = mainRepo
 	initGitRepoOnMain(t, mainRepo)
 	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/consumer\n\ngo 1.22\n")
-	runGit(t, mainRepo, "add", "go.mod")
-	runGit(t, mainRepo, "commit", "-m", "add consumer go.mod")
+	runGitIsolated(t, mainRepo, "add", "go.mod")
+	runGitIsolated(t, mainRepo, "commit", "-m", "add consumer go.mod")
 
 	wtDir := runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir
@@ -43,18 +43,18 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepoOnMain(t, depRepo)
 	writeFile(t, filepath.Join(depRepo, "go.mod"), "module example.com/foodep\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(depRepo, "foo.go"), "package foo\n")
-	runGit(t, depRepo, "add", "go.mod", "foo.go")
-	runGit(t, depRepo, "commit", "-m", "add module")
+	runGitIsolated(t, depRepo, "add", "go.mod", "foo.go")
+	runGitIsolated(t, depRepo, "commit", "-m", "add module")
 
 	depsWtDir := filepath.Join(wtDir, "deps", "foo")
 	req.DepsLinkedWtDir = depsWtDir
 	depBranch := branchName("main", wrkDate, 0)
-	runGit(t, depRepo, "worktree", "add", "-b", depBranch, depsWtDir)
+	runGitIsolated(t, depRepo, "worktree", "add", "-b", depBranch, depsWtDir)
 
 	// Keep consumer wt clean so --done is not blocked by untracked deps/ files.
 	writeFile(t, filepath.Join(wtDir, ".gitignore"), "/deps\n")
-	runGit(t, wtDir, "add", ".gitignore")
-	runGit(t, wtDir, "commit", "-m", "ignore deps worktrees")
+	runGitIsolated(t, wtDir, "add", ".gitignore")
+	runGitIsolated(t, wtDir, "commit", "-m", "ignore deps worktrees")
 
 	req.RepoDir = wtDir
 	req.Args = []string{"--done", "--confirm-from-stdin"}

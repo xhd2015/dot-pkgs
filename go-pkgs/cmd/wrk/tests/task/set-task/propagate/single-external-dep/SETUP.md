@@ -33,8 +33,8 @@ func Setup(t *testing.T, req *Request) error {
 	dep := initDepRepo(t, req.WorkRoot, "mydep")
 
 	// Commit consumer go.mod so linked worktree can be created
-	runGit(t, consumerMain, "add", "go.mod")
-	runGit(t, consumerMain, "commit", "-m", "add go.mod")
+	runGitIsolated(t, consumerMain, "add", "go.mod")
+	runGitIsolated(t, consumerMain, "commit", "-m", "add go.mod")
 
 	// Spawn consumer worktree with --task
 	consumerWt := runWrkWithArgs(t, req, consumerMain, "--task", "old slug")

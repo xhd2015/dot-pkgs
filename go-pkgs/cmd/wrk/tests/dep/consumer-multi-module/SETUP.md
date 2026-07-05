@@ -34,8 +34,8 @@ func Setup(t *testing.T, req *Request) error {
 	writeFile(t, filepath.Join(modDir1, "main.go"), "package main\n")
 	writeFile(t, filepath.Join(modDir2, "go.mod"), "module example.com/consumer-tools\n\ngo 1.22\n\nrequire "+depModulePath+" v0.0.0\n")
 	writeFile(t, filepath.Join(modDir2, "tool.go"), "package tools\n")
-	runGit(t, consumer, "add", ".")
-	runGit(t, consumer, "commit", "-m", "add sub-modules")
+	runGitIsolated(t, consumer, "add", ".")
+	runGitIsolated(t, consumer, "commit", "-m", "add sub-modules")
 
 	dep := initDepRepo(t, req.WorkRoot, "mydep", true)
 

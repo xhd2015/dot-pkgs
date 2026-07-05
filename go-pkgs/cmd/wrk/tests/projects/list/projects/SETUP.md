@@ -31,25 +31,25 @@ func Setup(t *testing.T, req *Request) error {
 func setupBareOriginForList(t *testing.T, workRoot, name string) string {
 	t.Helper()
 	bare := filepath.Join(workRoot, name+".git")
-	runGit(t, workRoot, "init", "--bare", "-b", "main", bare)
+	runGitIsolated(t, workRoot, "-c", "init.templateDir=", "init", "--bare", "-b", "main", bare)
 	return bare
 }
 
 func projectListBranchLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	return "Branch:       " + gitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+	return "Branch:       " + gitOutputIsolated(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
 }
 
 func projectListCommitLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	short := gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
-	subject := gitOutput(t, repoDir, "log", "-1", "--pretty=%s")
+	short := gitOutputIsolated(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	subject := gitOutputIsolated(t, repoDir, "log", "-1", "--pretty=%s")
 	return fmt.Sprintf("Commit:       %s  %s", short, subject)
 }
 
 func projectListCompareRemoteField(t *testing.T, mainRepo string) string {
 	t.Helper()
-	upstream := gitOutput(t, mainRepo, "rev-parse", "--abbrev-ref", "@{upstream}")
+	upstream := gitOutputIsolated(t, mainRepo, "rev-parse", "--abbrev-ref", "@{upstream}")
 	if upstream == "" {
 		return "Remote:       (no upstream)"
 	}

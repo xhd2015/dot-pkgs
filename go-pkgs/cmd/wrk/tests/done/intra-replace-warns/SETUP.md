@@ -44,12 +44,12 @@ func Setup(t *testing.T, req *Request) error {
 	// Consumer module with an intra-repo filesystem replace.
 	writeFile(t, filepath.Join(mainRepo, "go.mod"),
 		"module example.com/consumer\n\ngo 1.22\n\nreplace example.com/foo => ./submod\n")
-	runGit(t, mainRepo, "add", "go.mod", "submod")
+	runGitIsolated(t, mainRepo, "add", "go.mod", "submod")
 	// --no-verify bypasses the project's go-no-local-replace pre-commit hook,
 	// which would otherwise reject committing an intra-repo replace. This test
 	// exercises wrk --done's guard, not the hook; the worktree must be clean so
 	// merge-back can proceed after the warn.
-	runGit(t, mainRepo, "commit", "--no-verify", "-m", "add consumer with intra-repo replace")
+	runGitIsolated(t, mainRepo, "commit", "--no-verify", "-m", "add consumer with intra-repo replace")
 
 	wtDir := runWrkFrom(t, req, mainRepo)
 	req.WtDir = wtDir

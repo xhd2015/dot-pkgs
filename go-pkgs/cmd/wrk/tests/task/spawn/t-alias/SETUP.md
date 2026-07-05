@@ -22,10 +22,10 @@ func Setup(t *testing.T, req *Request) error {
 	mainRepo := filepath.Join(req.WorkRoot, "myrepo")
 	req.MainRepo = mainRepo
 	initGitRepoOnMain(t, mainRepo)
-	runGit(t, mainRepo, "branch", "-m", "master")
+	runGitIsolated(t, mainRepo, "branch", "-m", "master")
 	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/myrepo\ngo 1.21\n")
-	runGit(t, mainRepo, "add", "go.mod")
-	runGit(t, mainRepo, "commit", "-m", "add go.mod")
+	runGitIsolated(t, mainRepo, "add", "go.mod")
+	runGitIsolated(t, mainRepo, "commit", "-m", "add go.mod")
 
 	req.TaskDesc = "fix login bug"
 	req.TaskFlag = "-t"

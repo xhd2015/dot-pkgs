@@ -66,8 +66,8 @@ func initSavedDepRepo(t *testing.T, workRoot, parent, basename string) string {
 	initGitRepoOnMain(t, repoPath)
 	writeFile(t, filepath.Join(repoPath, "go.mod"), "module "+depModulePath+"\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(repoPath, "dep.go"), "package dep\n")
-	runGit(t, repoPath, "add", "go.mod", "dep.go")
-	runGit(t, repoPath, "commit", "-m", "add go module")
+	runGitIsolated(t, repoPath, "add", "go.mod", "dep.go")
+	runGitIsolated(t, repoPath, "commit", "-m", "add go module")
 	repoPath, err := filepath.EvalSymlinks(repoPath)
 	if err != nil {
 		t.Fatalf("eval symlinks %s: %v", repoPath, err)

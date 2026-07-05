@@ -29,13 +29,13 @@ func Setup(t *testing.T, req *Request) error {
 
 	writeFile(t, filepath.Join(repo, "rename-me.txt"), "old name\n")
 	writeFile(t, filepath.Join(repo, "delete-me.txt"), "delete me\n")
-	runGit(t, repo, "add", "rename-me.txt", "delete-me.txt")
-	runGit(t, repo, "commit", "-m", "add dirty fixtures")
+	runGitIsolated(t, repo, "add", "rename-me.txt", "delete-me.txt")
+	runGitIsolated(t, repo, "commit", "-m", "add dirty fixtures")
 
 	writeFile(t, filepath.Join(repo, "README.md"), "# changed\n")
 	writeFile(t, filepath.Join(repo, "added.txt"), "added\n")
-	runGit(t, repo, "add", "added.txt")
-	runGit(t, repo, "mv", "rename-me.txt", "renamed.txt")
+	runGitIsolated(t, repo, "add", "added.txt")
+	runGitIsolated(t, repo, "mv", "rename-me.txt", "renamed.txt")
 	if err := os.Remove(filepath.Join(repo, "delete-me.txt")); err != nil {
 		t.Fatalf("remove delete fixture: %v", err)
 	}

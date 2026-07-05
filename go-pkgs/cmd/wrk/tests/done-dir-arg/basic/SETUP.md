@@ -18,7 +18,7 @@ func Setup(t *testing.T, req *Request) error {
 	mainRepo, wtDir, branch := setupWrkWorktreeFromMain(t, req)
 
 	commitAheadOnWorktree(t, wtDir, "feature-work", "already merged")
-	runGit(t, mainRepo, "merge", "--ff-only", branch)
+	runGitIsolated(t, mainRepo, "merge", "--ff-only", branch)
 
 	req.RepoDir = req.WorkRoot
 	req.Args = []string{"--done", wtDir}

@@ -85,13 +85,13 @@ func remoteBriefCompareField(t *testing.T, mainRepo, upstreamRef, currentBranch 
 
 func remoteBriefBranchLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	return "Branch:       " + gitOutput(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+	return "Branch:       " + gitOutputIsolated(t, repoDir, "rev-parse", "--abbrev-ref", "HEAD")
 }
 
 func remoteBriefCommitLine(t *testing.T, repoDir string) string {
 	t.Helper()
-	short := gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
-	subject := gitOutput(t, repoDir, "log", "-1", "--pretty=%s")
+	short := gitOutputIsolated(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	subject := gitOutputIsolated(t, repoDir, "log", "-1", "--pretty=%s")
 	return fmt.Sprintf("Commit:       %s  %s", short, subject)
 }
 
@@ -111,18 +111,18 @@ func remoteBriefStatusBlockTemplate(t *testing.T, mainRepo, statusLine, remoteFi
 func initRemoteBriefRepo(t *testing.T, path, subject string) {
 	t.Helper()
 	mkdirAll(t, path)
-	runGit(t, path, "init", "-b", "main")
-	runGit(t, path, "config", "user.email", "test@test.com")
-	runGit(t, path, "config", "user.name", "Test")
+	runGitIsolated(t, path, "-c", "init.templateDir=", "init", "-b", "main")
+	runGitIsolated(t, path, "config", "user.email", "test@test.com")
+	runGitIsolated(t, path, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(path, "README.md"), "# "+filepath.Base(path)+"\n")
-	runGit(t, path, "add", "README.md")
-	runGit(t, path, "commit", "-m", subject)
+	runGitIsolated(t, path, "add", "README.md")
+	runGitIsolated(t, path, "commit", "-m", subject)
 }
 
 func setupRemoteBriefBareOrigin(t *testing.T, workRoot, name string) string {
 	t.Helper()
 	bare := filepath.Join(workRoot, name+".git")
-	runGit(t, workRoot, "init", "--bare", "-b", "main", bare)
+	runGitIsolated(t, workRoot, "-c", "init.templateDir=", "init", "--bare", "-b", "main", bare)
 	return bare
 }
 
@@ -130,19 +130,19 @@ func setupRemoteBriefTrackedRepo(t *testing.T, workRoot, name, originBare, subje
 	t.Helper()
 	repo := filepath.Join(workRoot, name)
 	initRemoteBriefRepo(t, repo, subject)
-	runGit(t, repo, "remote", "add", "origin", originBare)
-	runGit(t, repo, "push", "-u", "origin", "main")
+	runGitIsolated(t, repo, "remote", "add", "origin", originBare)
+	runGitIsolated(t, repo, "push", "-u", "origin", "main")
 	return repo
 }
 
 func pushCommitToRemoteBriefOrigin(t *testing.T, workRoot, originBare, filename, content, subject string) {
 	t.Helper()
 	cloneDir := filepath.Join(workRoot, "origin-push-clone")
-	runGit(t, workRoot, "clone", originBare, cloneDir)
+	runGitIsolated(t, workRoot, "clone", originBare, cloneDir)
 	writeFile(t, filepath.Join(cloneDir, filename), content)
-	runGit(t, cloneDir, "add", filename)
-	runGit(t, cloneDir, "commit", "-m", subject)
-	runGit(t, cloneDir, "push", "origin", "main")
+	runGitIsolated(t, cloneDir, "add", filename)
+	runGitIsolated(t, cloneDir, "commit", "-m", subject)
+	runGitIsolated(t, cloneDir, "push", "origin", "main")
 }
 
 func assertRemoteBriefBlocksSeparated(t *testing.T, stdout string, wantBlocks int) {

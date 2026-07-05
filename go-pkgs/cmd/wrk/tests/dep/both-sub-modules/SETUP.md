@@ -33,8 +33,8 @@ func initDepRepoWithSubBoth(t *testing.T, workRoot, name string) string {
 	mkdirAll(t, subDir)
 	writeFile(t, filepath.Join(subDir, "go.mod"), "module "+depSubModulePath+"\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(subDir, "sub.go"), "package sub\n")
-	runGit(t, dep, "add", ".")
-	runGit(t, dep, "commit", "-m", "add sub module")
+	runGitIsolated(t, dep, "add", ".")
+	runGitIsolated(t, dep, "commit", "-m", "add sub module")
 	return dep
 }
 
@@ -45,8 +45,8 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, modDir)
 	writeFile(t, filepath.Join(modDir, "go.mod"), "module example.com/consumer\n\ngo 1.22\n\nrequire "+depSubModulePath+" v0.0.0\n")
 	writeFile(t, filepath.Join(modDir, "main.go"), "package main\n")
-	runGit(t, consumer, "add", ".")
-	runGit(t, consumer, "commit", "-m", "add sub-module")
+	runGitIsolated(t, consumer, "add", ".")
+	runGitIsolated(t, consumer, "commit", "-m", "add sub-module")
 
 	dep := initDepRepoWithSubBoth(t, req.WorkRoot, "mydep")
 

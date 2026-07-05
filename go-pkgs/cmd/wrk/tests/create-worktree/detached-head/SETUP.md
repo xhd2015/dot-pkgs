@@ -22,9 +22,9 @@ import (
 func Setup(t *testing.T, req *Request) error {
 	repoDir := filepath.Join(req.WorkRoot, "myrepo")
 	initGitRepoOnMain(t, repoDir)
-	runGit(t, repoDir, "checkout", "--detach")
+	runGitIsolated(t, repoDir, "checkout", "--detach")
 	req.RepoDir = repoDir
-	req.HashToken = gitOutput(t, repoDir, "rev-parse", "--short=7", "HEAD")
+	req.HashToken = gitOutputIsolated(t, repoDir, "rev-parse", "--short=7", "HEAD")
 	return nil
 }
 ```
