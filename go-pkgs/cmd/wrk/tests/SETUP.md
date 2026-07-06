@@ -17,17 +17,19 @@ wrk --list from cwd -> git worktree list stdout unchanged
 
 ## Context
 
-Each test runs the `wrk` CLI in an isolated environment. The binary is built once and reused across all tests. Each leaf gets its own temp directory and isolated `WRK_HOME` at `{WorkRoot}/.wrk`.
+Each test runs the `wrk` CLI in an isolated environment. The `wrk` binary is built once per doctest session (`{DOCTEST_FIXTURE_ROOT}/{DOCTEST_SESSION_ID}/bin/wrk`, file-locked across leaf processes). Each leaf gets its own temp directory and isolated `WRK_HOME` at `{WorkRoot}/.wrk`.
 
 ```go
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
+	"syscall"
 	"testing"
 	"unicode"
 
@@ -42,16 +44,6 @@ const (
 
 type seedBuilder func(seedDir string)
 
-var (
-	fixtureSeedMu    sync.Mutex
-	fixtureSeedPaths = map[string]string{}
-	fixtureSeedOnces = map[string]*sync.Once{}
-)
-
-var buildOnce sync.Once
-var builtWrkBin string
-var buildWrkErr error
-
 func findModuleRoot(dir string) string {
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
@@ -65,32 +57,69 @@ func findModuleRoot(dir string) string {
 	}
 }
 
+func fixtureCacheBase(t *testing.T) string {
+	t.Helper()
+	base := os.Getenv("DOCTEST_FIXTURE_ROOT")
+	if base != "" {
+		return base
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(home, "Library", "Caches", "doctest", "fixtures")
+}
+
+func fixtureSessionRoot(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(fixtureCacheBase(t), DOCTEST_SESSION_ID)
+}
+
+func sessionWrkBin(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(fixtureSessionRoot(t), "bin", "wrk")
+}
+
+func withFlock(t *testing.T, lockPath string, fn func()) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("mkdir lock dir: %v", err)
+	}
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatalf("open lock %s: %v", lockPath, err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatalf("flock %s: %v", lockPath, err)
+	}
+	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
+	fn()
+}
+
 func getWrkBin(t *testing.T) string {
 	t.Helper()
-	buildOnce.Do(func() {
+	bin := sessionWrkBin(t)
+	if _, err := os.Stat(bin); err == nil {
+		return bin
+	}
+	lockPath := filepath.Join(fixtureSessionRoot(t), "bin", ".lock")
+	withFlock(t, lockPath, func() {
+		if _, err := os.Stat(bin); err == nil {
+			return
+		}
 		modRoot := filepath.Dir(filepath.Dir(DOCTEST_ROOT))
 		if modRoot == "" {
 			modRoot = findModuleRoot(DOCTEST_ROOT)
 		}
-		tmpDir, err := os.MkdirTemp("", "wrk-doc-test")
-		if err != nil {
-			buildWrkErr = fmt.Errorf("create temp dir: %w", err)
-			return
-		}
-		bin := filepath.Join(tmpDir, "wrk")
 		cmd := exec.Command("go", "build", "-o", bin, "./wrk")
 		cmd.Dir = modRoot
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			buildWrkErr = fmt.Errorf("build wrk: %w\n%s", err, out)
-			return
+			t.Fatalf("build wrk: %v\n%s", err, out)
 		}
-		builtWrkBin = bin
 	})
-	if buildWrkErr != nil {
-		t.Fatal(buildWrkErr)
-	}
-	return builtWrkBin
+	return bin
 }
 
 func Setup(t *testing.T, req *Request) error {
@@ -142,28 +171,6 @@ func gitWorktreeListIsolated(t *testing.T, dir string) string {
 	return git_isolated.WorktreeList(t, dir)
 }
 
-func doctestSessionID(t *testing.T) string {
-	t.Helper()
-	id := os.Getenv("DOCTEST_SESSION_ID")
-	if id == "" {
-		t.Fatal("DOCTEST_SESSION_ID not set")
-	}
-	return id
-}
-
-func fixtureSessionRoot(t *testing.T) string {
-	t.Helper()
-	base := os.Getenv("DOCTEST_FIXTURE_ROOT")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			t.Fatal(err)
-		}
-		base = filepath.Join(home, "Library", "Caches", "doctest", "fixtures")
-	}
-	return filepath.Join(base, doctestSessionID(t))
-}
-
 func isValidGitRepo(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, ".git"))
 	return err == nil
@@ -204,43 +211,32 @@ func buildSeedMainGoMod(seedDir string) {
 
 func ensureSeed(t *testing.T, seedID string, build seedBuilder) string {
 	t.Helper()
-	fixtureSeedMu.Lock()
-	once, ok := fixtureSeedOnces[seedID]
-	if !ok {
-		once = &sync.Once{}
-		fixtureSeedOnces[seedID] = once
-	}
-	if path, ok := fixtureSeedPaths[seedID]; ok {
-		fixtureSeedMu.Unlock()
-		return path
-	}
-	fixtureSeedMu.Unlock()
-
-	once.Do(func() {
-		seedDir := filepath.Join(fixtureSessionRoot(t), "seeds", seedID)
-		if !isValidGitRepo(seedDir) {
-			_ = os.RemoveAll(seedDir)
-			if err := os.MkdirAll(seedDir, 0o755); err != nil {
-				panic(fmt.Sprintf("mkdir seed %s: %v", seedDir, err))
-			}
-			build(seedDir)
-		}
-		resolved, err := filepath.EvalSymlinks(seedDir)
-		if err == nil {
+	seedsDir := filepath.Join(fixtureSessionRoot(t), "seeds")
+	seedDir := filepath.Join(seedsDir, seedID)
+	if isValidGitRepo(seedDir) {
+		if resolved, err := filepath.EvalSymlinks(seedDir); err == nil {
 			seedDir = resolved
 		}
-		fixtureSeedMu.Lock()
-		fixtureSeedPaths[seedID] = seedDir
-		fixtureSeedMu.Unlock()
+		return seedDir
+	}
+	lockPath := filepath.Join(seedsDir, ".lock-"+seedID)
+	withFlock(t, lockPath, func() {
+		if isValidGitRepo(seedDir) {
+			return
+		}
+		_ = os.RemoveAll(seedDir)
+		if err := os.MkdirAll(seedDir, 0o755); err != nil {
+			t.Fatalf("mkdir seed %s: %v", seedDir, err)
+		}
+		build(seedDir)
 	})
-
-	fixtureSeedMu.Lock()
-	seedPath := fixtureSeedPaths[seedID]
-	fixtureSeedMu.Unlock()
-	if seedPath == "" {
+	if resolved, err := filepath.EvalSymlinks(seedDir); err == nil {
+		seedDir = resolved
+	}
+	if !isValidGitRepo(seedDir) {
 		t.Fatalf("seed %q not built", seedID)
 	}
-	return seedPath
+	return seedDir
 }
 
 func cloneDirCoW(src, dst string) error {
@@ -472,6 +468,139 @@ func commitAheadOnWorktree(t *testing.T, wtDir, filename, content string) {
 	runGitIsolated(t, wtDir, "commit", "-m", "worktree commit")
 }
 
+const cascadeAheadExternalDepModule = "example.com/dep"
+
+// setupConsumerWithAheadExternalDep creates a consumer linked wt plus an external
+// dep worktree with a commit ahead of dep main (cascade confirmation required).
+func setupConsumerWithAheadExternalDep(t *testing.T, req *Request) {
+	t.Helper()
+	skipIfNoGit(t)
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Fatalf("go not found: %v", err)
+	}
+
+	mainRepo := filepath.Join(req.WorkRoot, "consumer")
+	req.MainRepo = mainRepo
+	initGitRepoOnMain(t, mainRepo)
+	writeFile(t, filepath.Join(mainRepo, "go.mod"), "module example.com/consumer\n\ngo 1.22\n")
+	runGoModInDir(t, mainRepo, "edit", "-require="+cascadeAheadExternalDepModule+"@v0.0.0")
+	runGitIsolated(t, mainRepo, "add", "go.mod")
+	runGitIsolated(t, mainRepo, "commit", "-m", "add consumer go.mod")
+
+	wtDir := runWrkFrom(t, req, mainRepo)
+	req.WtDir = wtDir
+	req.WtBranch = branchName("main", wrkDate, 0)
+
+	depRepo := filepath.Join(req.WorkRoot, "mydep")
+	req.DepPath = depRepo
+	initGitRepoOnMain(t, depRepo)
+	writeFile(t, filepath.Join(depRepo, "go.mod"), "module "+cascadeAheadExternalDepModule+"\n\ngo 1.22\n")
+	writeFile(t, filepath.Join(depRepo, "dep.go"), "package dep\n")
+	runGitIsolated(t, depRepo, "add", "go.mod", "dep.go")
+	runGitIsolated(t, depRepo, "commit", "-m", "add module")
+
+	externalPath := runWrkWithArgs(t, req, wtDir, "--dep", depRepo)
+	req.ExternalWtDir = externalPath
+
+	writeFile(t, filepath.Join(externalPath, "dep.go"), "package dep // ahead fix\n")
+	runGitIsolated(t, externalPath, "add", "dep.go")
+	runGitIsolated(t, externalPath, "commit", "-m", "dep fix on external worktree")
+}
+
+func runGoModInDir(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("go", append([]string{"mod"}, args...)...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go mod %v: %v\n%s", args, err, out)
+	}
+}
+
+func buildWrkCLIArgs(req *Request) []string {
+	var args []string
+	if req.TargetDir != "" {
+		args = append(args, req.TargetDir)
+	}
+	if req.SpawnDir != "" {
+		args = append(args, req.SpawnDir)
+	}
+	if req.TaskDesc != "" {
+		taskFlag := req.TaskFlag
+		if taskFlag == "" {
+			taskFlag = "--task"
+		}
+		args = append(args, taskFlag, req.TaskDesc)
+	}
+	if req.SetTaskDesc != "" {
+		args = append(args, "--set-task", req.SetTaskDesc)
+	}
+	args = append(args, req.Args...)
+	return args
+}
+
+func execScriptTTYWrk(t *testing.T, req *Request, bin string, args []string) (*Response, error) {
+	t.Helper()
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		scriptArgs := append([]string{"-q", "/dev/null", bin}, args...)
+		cmd = exec.Command("script", scriptArgs...)
+	case "linux":
+		quoted := make([]string, len(args))
+		for i, a := range args {
+			quoted[i] = "'" + strings.ReplaceAll(a, "'", `'"'"'`) + "'"
+		}
+		shellCmd := bin + " " + strings.Join(quoted, " ")
+		cmd = exec.Command("script", "-q", "-c", shellCmd, "/dev/null")
+	default:
+		t.Skipf("script TTY helper not implemented for %s", runtime.GOOS)
+	}
+	cmd.Dir = req.RepoDir
+	cmd.Env = wrkEnv(req)
+	return captureCommandOutput(cmd, req.StdinInput)
+}
+
+func captureCommandOutput(cmd *exec.Cmd, stdinInput string) (*Response, error) {
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if stdinInput != "" {
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		if _, err := io.WriteString(stdin, stdinInput); err != nil {
+			return nil, err
+		}
+		stdin.Close()
+		err = cmd.Wait()
+		exitCode := 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				exitCode = ee.ExitCode()
+			} else {
+				return nil, err
+			}
+		}
+		return &Response{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}, nil
+	}
+
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			exitCode = ee.ExitCode()
+		} else {
+			return nil, err
+		}
+	}
+	return &Response{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}, nil
+}
+
 // slugify converts a task description into a path-safe slug.
 // Rules: lowercase, non-letter-non-digit → "-", collapse runs of "-",
 // trim leading/trailing "-", truncate to 64 runes.
@@ -605,6 +734,11 @@ func ensureHelpersUsed() {
 	_ = assertWorktreeListNotContains
 	_ = setupWrkWorktreeFromMain
 	_ = commitAheadOnWorktree
+	_ = setupConsumerWithAheadExternalDep
+	_ = runGoModInDir
+	_ = buildWrkCLIArgs
+	_ = execScriptTTYWrk
+	_ = captureCommandOutput
 	_ = slugify
 	_ = worktreePathWithTask
 	_ = branchNameWithTask

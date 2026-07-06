@@ -61,6 +61,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var addPath string
 	var removePath string
 	var confirmFromStdin bool
+	var assumeYes bool
 	var noInModuleReplace bool
 	var depPath string
 	var allDeps bool
@@ -84,6 +85,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		String("--add", &addPath).
 		String("--rm", &removePath).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
+		Bool("-y,--yes", &assumeYes).
 		Bool("--no-in-module-replace", &noInModuleReplace).
 		Bool("--all-deps", &allDeps).
 		Bool("--dry-run", &dryRun).
@@ -169,7 +171,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
-		return runSetTask(workDir, setTaskDesc)
+		return runSetTask(workDir, setTaskDesc, assumeYes)
 	}
 
 	if taskFlagSet && strings.TrimSpace(taskDesc) == "" {
@@ -252,10 +254,10 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runList(workDir)
 	}
 	if done {
-		return runDone(workDir, confirmFromStdin, noInModuleReplace)
+		return runDone(workDir, confirmFromStdin, assumeYes, noInModuleReplace)
 	}
 	if mergeBack {
-		return runMergeBack(workDir, confirmFromStdin)
+		return runMergeBack(workDir, confirmFromStdin, assumeYes)
 	}
 	return runCreate(workDir, origWd, spawnTarget, taskDesc)
 }
@@ -296,6 +298,7 @@ Flags:
   --dry-run                       with --all-deps: plan only, no writes
   --task <desc>                   append task slug to worktree/branch names
   --set-task <desc>               rename worktree/branch to match new task
+  -y, --yes                       auto-confirm Y/n prompts (own worktree; cascade on TTY only)
   --help, -h                      show this help and exit
 
 Environment:
@@ -451,7 +454,7 @@ func runList(workDir string) error {
 	return nil
 }
 
-func runDone(workDir string, confirmFromStdin, noInModuleReplace bool) error {
+func runDone(workDir string, confirmFromStdin, assumeYes, noInModuleReplace bool) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -470,7 +473,10 @@ func runDone(workDir string, confirmFromStdin, noInModuleReplace bool) error {
 	if err != nil {
 		return err
 	}
-	if err := cascadeLinkedWorktrees(consumerTop, checkoutRoot, confirmFromStdin); err != nil {
+	if err := checkCascadeNonInteractive(consumerTop, checkoutRoot); err != nil {
+		return err
+	}
+	if err := cascadeLinkedWorktrees(consumerTop, checkoutRoot, confirmFromStdin, assumeYes); err != nil {
 		return err
 	}
 
@@ -494,7 +500,7 @@ func runDone(workDir string, confirmFromStdin, noInModuleReplace bool) error {
 		TargetPath: "",
 		Remove:     true,
 		Confirm: func(plan worktree.MergeBackPlan) (bool, error) {
-			return worktree.PromptConfirmPlan(plan, confirmFromStdin)
+			return worktree.PromptConfirmPlan(plan, confirmFromStdin, assumeYes)
 		},
 	})
 	if err != nil {
@@ -504,7 +510,7 @@ func runDone(workDir string, confirmFromStdin, noInModuleReplace bool) error {
 	return nil
 }
 
-func runMergeBack(workDir string, confirmFromStdin bool) error {
+func runMergeBack(workDir string, confirmFromStdin, assumeYes bool) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -524,7 +530,7 @@ func runMergeBack(workDir string, confirmFromStdin bool) error {
 		TargetPath: "",
 		Remove:     false,
 		Confirm: func(plan worktree.MergeBackPlan) (bool, error) {
-			return worktree.PromptConfirmPlan(plan, confirmFromStdin)
+			return worktree.PromptConfirmPlan(plan, confirmFromStdin, assumeYes)
 		},
 	})
 	if err != nil {
@@ -534,7 +540,44 @@ func runMergeBack(workDir string, confirmFromStdin bool) error {
 	return nil
 }
 
-func cascadeLinkedWorktrees(consumerTop, checkoutRoot string, confirmFromStdin bool) error {
+func checkCascadeNonInteractive(consumerTop, checkoutRoot string) error {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return nil
+	}
+	repos, err := discoverStatusRepos(context.Background(), consumerTop)
+	if err != nil {
+		return err
+	}
+	cleanCheckout := filepath.Clean(checkoutRoot)
+	for _, repo := range repos {
+		if repo.RepoType == scan_repo.RepoTypeMain {
+			continue
+		}
+		if repo.RepoType != scan_repo.RepoTypeWorktree {
+			continue
+		}
+		if !worktree.IsLinked(repo.Path) {
+			continue
+		}
+		if filepath.Clean(repo.Path) == cleanCheckout {
+			continue
+		}
+		mainRepo, err := worktree.ResolveMainRepo(repo.Path)
+		if err != nil {
+			return err
+		}
+		inclusion, err := worktree.HeadIncludedInMain(mainRepo, repo.Path)
+		if err != nil {
+			return err
+		}
+		if inclusion.Relation == "ahead" || inclusion.Relation == "diverged" {
+			return fmt.Errorf("wrk --done: cannot cascade merge-back non-interactively: linked worktree %s is %s and needs confirmation", repo.Path, inclusion.Relation)
+		}
+	}
+	return nil
+}
+
+func cascadeLinkedWorktrees(consumerTop, checkoutRoot string, confirmFromStdin, assumeYes bool) error {
 	repos, err := discoverStatusRepos(context.Background(), consumerTop)
 	if err != nil {
 		return err
@@ -557,7 +600,7 @@ func cascadeLinkedWorktrees(consumerTop, checkoutRoot string, confirmFromStdin b
 		if filepath.Clean(repo.Path) == cleanCheckout {
 			continue
 		}
-		if err := mergeBackExternalWorktree(repo.Path, confirmFromStdin); err != nil {
+		if err := mergeBackExternalWorktree(repo.Path, confirmFromStdin, assumeYes); err != nil {
 			return err
 		}
 	}
@@ -575,46 +618,17 @@ func cascadeLinkedWorktrees(consumerTop, checkoutRoot string, confirmFromStdin b
 // ensures dep work committed on the external worktree is merged back into the
 // dep repo before the worktree is removed. Relation to dep main: already-included
 // → remove only; ahead/diverged → prompt (via confirmFromStdin). A
-// non-interactive ahead/diverged worktree falls back to force-removal.
-func mergeBackExternalWorktree(externalPath string, confirmFromStdin bool) error {
+// non-interactive ahead/diverged worktree errors (no force-removal fallback).
+func mergeBackExternalWorktree(externalPath string, confirmFromStdin, assumeYes bool) error {
 	_, err := worktree.MergeBack(worktree.MergeBackOptions{
 		SourcePath: externalPath,
 		TargetPath: "",
 		Remove:     true,
 		Confirm: func(plan worktree.MergeBackPlan) (bool, error) {
-			return worktree.PromptConfirmPlan(plan, confirmFromStdin)
+			return worktree.PromptConfirmPlan(plan, confirmFromStdin, assumeYes)
 		},
 	})
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, worktree.ErrConfirmationRequired) {
-		return err
-	}
-	return forceRemoveWorktree(externalPath)
-}
-
-func forceRemoveWorktree(wtPath string) error {
-	mainRepo, err := worktree.ReadMainRepo(wtPath)
-	if err != nil {
-		return err
-	}
-	branch, err := worktree.ReadBranch(wtPath)
-	if err != nil {
-		return err
-	}
-
-	removeCmd := gitCommand("-C", mainRepo, "worktree", "remove", "--force", wtPath)
-	if out, err := removeCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git worktree remove: %w\n%s", err, out)
-	}
-	if branch != "" && branch != "HEAD" {
-		branchCmd := gitCommand("-C", mainRepo, "branch", "-D", branch)
-		if out, err := branchCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git branch -D: %w\n%s", err, out)
-		}
-	}
-	return nil
+	return err
 }
 
 func runDep(workDir string, depArg string, wrkHome string) error {
@@ -1510,7 +1524,7 @@ func parseBranchNaming(branch string) (branchBase, date, slug string, suffix int
 // runSetTask renames a linked worktree via git worktree move to include a new
 // task slug in the directory and branch names. Requires TTY confirmation (or
 // WRK_SET_TASK_CONFIRM=1 env var) before executing the move.
-func runSetTask(workDir string, taskDesc string) error {
+func runSetTask(workDir string, taskDesc string, assumeYes bool) error {
 	if strings.TrimSpace(taskDesc) == "" {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
@@ -1631,8 +1645,8 @@ func runSetTask(workDir string, taskDesc string) error {
 		nested = append(nested, nestedWT{oldPath: repo.Path, relPath: rel})
 	}
 
-	// TTY check (escape hatch for testing via WRK_SET_TASK_CONFIRM=1)
-	if os.Getenv("WRK_SET_TASK_CONFIRM") != "1" {
+	// TTY check (escape hatch for testing via WRK_SET_TASK_CONFIRM=1; -y bypasses)
+	if !assumeYes && os.Getenv("WRK_SET_TASK_CONFIRM") != "1" {
 		if !term.IsTerminal(int(os.Stdout.Fd())) {
 			return fmt.Errorf("wrk: --set-task requires a terminal (tty)")
 		}

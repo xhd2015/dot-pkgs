@@ -30,8 +30,12 @@ func FormatPlanPrompt(plan MergeBackPlan) string {
 }
 
 // PromptConfirmPlan prompts the user to confirm a merge-back plan.
+// When assumeYes is true, confirmation is granted immediately without prompting.
 // When confirmFromStdin is true, confirmation is read from piped stdin.
-func PromptConfirmPlan(plan MergeBackPlan, confirmFromStdin bool) (bool, error) {
+func PromptConfirmPlan(plan MergeBackPlan, confirmFromStdin, assumeYes bool) (bool, error) {
+	if assumeYes {
+		return true, nil
+	}
 	isTTY := term.IsTerminal(int(os.Stdin.Fd()))
 	if !isTTY {
 		if stdinIsPipe() {

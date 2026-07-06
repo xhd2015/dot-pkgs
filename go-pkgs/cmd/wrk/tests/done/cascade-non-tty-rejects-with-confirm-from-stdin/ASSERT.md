@@ -1,8 +1,8 @@
 ## Expected
 
-- Non-zero exit code (pre-flight cascade guard rejects before any merge-back).
-- External dependency worktree under `external/` still exists.
-- Dep fix committed on the external worktree was **not** merged into dep main.
+- Non-zero exit code (`--confirm-from-stdin` does not apply to cascaded ahead/diverged worktrees on non-TTY).
+- External dependency worktree still exists.
+- Dep fix commit was not merged into dep main.
 - Consumer linked worktree still exists.
 
 ## Exit Code
@@ -13,7 +13,7 @@
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
 	if resp.ExitCode == 0 {
-		t.Fatalf("expected non-zero exit (option A: no cascade merge on non-TTY), got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
+		t.Fatalf("expected non-zero exit (option A cascade guard), got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
 	}
 
 	assertFileExists(t, req.ExternalWtDir)

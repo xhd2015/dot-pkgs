@@ -166,7 +166,7 @@ func runWorktreeMergeBack(worktreePath, mainRepo string) (*wt.MergeBackResult, e
 		DryRun:     dryRun,
 		Remove:     true,
 		Confirm: func(plan wt.MergeBackPlan) (bool, error) {
-			return wt.PromptConfirmPlan(plan, confirmFromStdin)
+			return wt.PromptConfirmPlan(plan, confirmFromStdin, false)
 		},
 	})
 	if err != nil {

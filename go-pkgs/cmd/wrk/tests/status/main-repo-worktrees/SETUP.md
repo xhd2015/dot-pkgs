@@ -41,7 +41,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
@@ -49,10 +49,6 @@ import (
 	"github.com/xhd2015/gitops/git"
 	"github.com/xhd2015/gitops/git/git_isolated"
 )
-
-var buildOnce sync.Once
-var builtWrkBin string
-var buildWrkErr error
 
 const wrkDate = "2026-06-30"
 
@@ -69,32 +65,69 @@ func findModuleRoot(dir string) string {
 	}
 }
 
+func fixtureCacheBase(t *testing.T) string {
+	t.Helper()
+	base := os.Getenv("DOCTEST_FIXTURE_ROOT")
+	if base != "" {
+		return base
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(home, "Library", "Caches", "doctest", "fixtures")
+}
+
+func fixtureSessionRoot(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(fixtureCacheBase(t), DOCTEST_SESSION_ID)
+}
+
+func sessionWrkBin(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(fixtureSessionRoot(t), "bin", "wrk")
+}
+
+func withFlock(t *testing.T, lockPath string, fn func()) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("mkdir lock dir: %v", err)
+	}
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatalf("open lock %s: %v", lockPath, err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatalf("flock %s: %v", lockPath, err)
+	}
+	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
+	fn()
+}
+
 func getWrkBin(t *testing.T) string {
 	t.Helper()
-	buildOnce.Do(func() {
+	bin := sessionWrkBin(t)
+	if _, err := os.Stat(bin); err == nil {
+		return bin
+	}
+	lockPath := filepath.Join(fixtureSessionRoot(t), "bin", ".lock")
+	withFlock(t, lockPath, func() {
+		if _, err := os.Stat(bin); err == nil {
+			return
+		}
 		modRoot := findModuleRoot(DOCTEST_ROOT)
 		if modRoot == "" {
 			modRoot = filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(DOCTEST_ROOT))))
 		}
-		tmpDir, err := os.MkdirTemp("", "wrk-main-repo-wt-status")
-		if err != nil {
-			buildWrkErr = fmt.Errorf("create temp dir: %w", err)
-			return
-		}
-		bin := filepath.Join(tmpDir, "wrk")
 		cmd := exec.Command("go", "build", "-o", bin, "./wrk")
 		cmd.Dir = modRoot
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			buildWrkErr = fmt.Errorf("build wrk: %w\n%s", err, out)
-			return
+			t.Fatalf("build wrk: %v\n%s", err, out)
 		}
-		builtWrkBin = bin
 	})
-	if buildWrkErr != nil {
-		t.Fatal(buildWrkErr)
-	}
-	return builtWrkBin
+	return bin
 }
 
 func Setup(t *testing.T, req *Request) error {

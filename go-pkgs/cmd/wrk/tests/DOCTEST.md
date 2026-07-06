@@ -19,10 +19,11 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **token** — `sanitize(base-branch)` for normal branches (`/` → `-` in path only); for detached HEAD, 7-char short commit hash from `git rev-parse --short=7 HEAD` (not literal `HEAD`).
 - **Git source** — cwd must be inside a git checkout (main repo, linked worktree, or nested subdirectory); basename resolves from the checkout root when cwd is a linked worktree or nested subpath.
 - **wrk --dep** — spawns a dependency worktree under `{consumerTop}/external/` as a worktree of the DEP repo (`git -C <depMain> worktree add`), so it is registered under `<depMain>/.git/worktrees/` (NOT the consumer's); the dep already holds its own objects, so no remote/fetch into the consumer is needed. **Consumer module discovery**: scans the full consumer tree (`gotool/mod/scan.Scan`) for all Go modules — consumers without a root `go.mod` (module lives in a subdirectory like `go-pkgs/`) are supported. **Dep module discovery**: likewise scans the dep tree for all Go modules. Matches each dep module against every consumer module's `require`/`replace` directives; for every matching consumer module, runs `gotool.Replace` + `gotool.Tidy`. Appends `/external` to `.gitignore` when missing, prints external worktree abs path on stdout. Naming: `{basename}-{token}-{WRK_DATE}[-N]` (same rules as create; basename from dep main repo); the branch lives in the dep repo, so the `-N` collision check runs against `depMain` (path under `consumerTop/external/` + branch in dep repo).
-- **wrk --done** — resolves checkout root via `ShowToplevel(cwd)`; requires a linked worktree (not main repo); clean worktree; implicit `--rm`. **Cascade**: `scan_repo.Scan(consumerTop)` discovers every git directory under the checkout; for each row where `RepoType == worktree` and `IsLinked(path)` and `path != checkoutRoot`, run `mergeBackExternalWorktree(path)` in scan path order (path-sorted). This covers `external/*` dep worktrees **and** manually linked worktrees elsewhere (e.g. `deps/foo`). Skip `RepoTypeMain` nested repos (no merge-back/delete). Each cascaded worktree is a dep-repo worktree (registered under `<depMain>/.git/worktrees/`), so `MergeBack` resolves its main repo from the worktree's `.git` gitdir (the dep main) and merges the dep branch back into the dep repo (the branch shares the dep's history, so merge-base resolves); this ensures dep work committed on a nested linked worktree is merged back before removal. Relation to dep main: already-included → remove only; ahead/diverged → prompt (`--confirm-from-stdin`), non-interactive ahead/diverged falls back to force-removal. The consumer's own `checkoutRoot` is excluded (finished by the final `MergeBack` in `runDone`). **Guard**: scan **every** Go module under the checkout (`gotool/mod/scan.Scan`) — main + all sub-modules — and classify each filesystem/local `replace` (`./`, `../`, or absolute path without version) by resolving its target relative to the module's `go.mod` dir: **intra-repo** = target dir exists AND `git -C <target> rev-parse --show-toplevel` equals the consumer's toplevel (a `../../`/`./sub` nested-module reference back into the same repo); **extra-repo** = everything else (`./external/foo` dep worktree, non-existent target, absolute path to another checkout, sibling outside) (`./external/foo` dep worktree, non-existent target, absolute/sibling outside). The guard names the offending `<top>/<m.Dir>/go.mod` file and each `replace <Old> => <New>` directive in its message. Default (no flag): intra-repo → **WARN to stderr and proceed** (exit 0, merge-back runs); extra-repo → **error, block**. `--no-in-module-replace` (opt-in, valid only with `--done`) → **all** local replaces block (fully-strict). A checkout with no `go.mod` at all yields zero modules → guard is a no-op → `--done` proceeds (and the linked-worktree check inside `MergeBack` still runs for a main-repo cwd, producing `not a linked worktree`). Branch relation to main: already-included → remove only; ahead/diverged → prompt then merge/rebase.
+- **wrk --done** — resolves checkout root via `ShowToplevel(cwd)`; requires a linked worktree (not main repo); clean worktree; implicit `--rm`. **Cascade**: `scan_repo.Scan(consumerTop)` discovers every git directory under the checkout; for each row where `RepoType == worktree` and `IsLinked(path)` and `path != checkoutRoot`, run `mergeBackExternalWorktree(path)` in scan path order (path-sorted). This covers `external/*` dep worktrees **and** manually linked worktrees elsewhere (e.g. `deps/foo`). Skip `RepoTypeMain` nested repos (no merge-back/delete). Each cascaded worktree is a dep-repo worktree (registered under `<depMain>/.git/worktrees/`), so `MergeBack` resolves its main repo from the worktree's `.git` gitdir (the dep main) and merges the dep branch back into the dep repo (the branch shares the dep's history, so merge-base resolves); this ensures dep work committed on a nested linked worktree is merged back before removal. Relation to dep main: already-included → remove only; ahead/diverged → prompt (TTY / `-y` on TTY / `--confirm-from-stdin` on own worktree only). **Non-TTY pre-flight guard (option A)**: if stdin is not a terminal and any cascaded linked worktree needs ahead/diverged confirmation, reject `--done` before any cascade mutation — `-y` and `--confirm-from-stdin` do not bypass. No force-removal fallback. The consumer's own `checkoutRoot` is excluded (finished by the final `MergeBack` in `runDone`). **Guard**: scan **every** Go module under the checkout (`gotool/mod/scan.Scan`) — main + all sub-modules — and classify each filesystem/local `replace` (`./`, `../`, or absolute path without version) by resolving its target relative to the module's `go.mod` dir: **intra-repo** = target dir exists AND `git -C <target> rev-parse --show-toplevel` equals the consumer's toplevel (a `../../`/`./sub` nested-module reference back into the same repo); **extra-repo** = everything else (`./external/foo` dep worktree, non-existent target, absolute path to another checkout, sibling outside) (`./external/foo` dep worktree, non-existent target, absolute/sibling outside). The guard names the offending `<top>/<m.Dir>/go.mod` file and each `replace <Old> => <New>` directive in its message. Default (no flag): intra-repo → **WARN to stderr and proceed** (exit 0, merge-back runs); extra-repo → **error, block**. `--no-in-module-replace` (opt-in, valid only with `--done`) → **all** local replaces block (fully-strict). A checkout with no `go.mod` at all yields zero modules → guard is a no-op → `--done` proceeds (and the linked-worktree check inside `MergeBack` still runs for a main-repo cwd, producing `not a linked worktree`). Branch relation to main: already-included → remove only; ahead/diverged → prompt then merge/rebase (or `-y` / `--confirm-from-stdin` on own worktree).
 - **wrk --list** — runs `git -C <cwd> worktree list`; prints stdout unchanged; cwd must be inside a git work tree (main repo, linked worktree, or nested subpath). Mutually exclusive with no-args create and `--done`.
 - **wrk --status** — standalone reporting mode; cwd must be inside a git work tree. Resolves the effective cwd's checkout root with git toplevel discovery, calls `scan_repo.Scan(context.Background(), scan_repo.Options{Roots: []string{Root}})`, and prints every discovered git directory in scan path order. Each block includes `Dir` relative to the initial toplevel (`.` for the root), current branch, short commit hash plus subject, and `Status` as either `clean` or `dirty (<added> added, <changed> changed, <renamed> renamed, <deleted> deleted)`. **Main repo checkout cwd only** (`worktree.IsMainRepo(checkoutRoot)`): the scan block with `Dir: .` (root checkout) also includes `Remote:` — same brief upstream labels as `--projects` (`identical`, `needs push`, `needs pull`, `diverged`, `(no upstream)`); field order is `Dir`, `Branch`, `Commit`, `Status`, `Remote` (no `Worktrees:`). `Remote:` uses local upstream tracking refs by default; with `--fetch`, fetch upstream for the main repo first then compare. Nested independent `RepoTypeMain` sub-repos and **linked worktree blocks** do **not** show `Remote:`. Running from a **linked worktree cwd** omits `Remote:` on all blocks (append phase also skipped). **Linked worktrees only** (`worktree.IsLinked`) also include one-line `Master:` — brief branch-relation label comparing main repo's current branch vs the worktree's current branch via `git.CompareBranches` (`identical`, `needs merge back(+N commit(s))`, `needs fast forward(+N commit(s))`, `diverged(N commit(s))`). Main checkout blocks (other than `Remote:` above) and nested independent `RepoTypeMain` repos do **not** show `Master:`. When stdout is a TTY or `--color` is set, `Status: clean` is green; dirty status uses granular red/grey segments (same rules as `--projects`); `Master:` and `Remote:` values follow `--projects` color rules when applicable. Without color: plain text. **Append phase (main repo only)**: when `worktree.IsMainRepo(checkoutRoot)`, after all scan blocks (blank line between every block), append one block per **external** linked worktree from `worktree.ListLinked(mainRepo)` in porcelain order, skipping paths already in scan (`scanPaths` dedup — in-tree linked wts like `myrepo/wt-linked` are scan-only). Appended healthy blocks use absolute normalized `Dir` (`storage.NormalizePath`) with full fields (`Branch`, `Commit`, `Status`, `Master:`). Appended **broken** (alive checkout, git fails) blocks are minimal: `Dir` + `Status: error: <git stderr>` only (red `error: …` when `--color`/TTY; run continues). Appended **prunable** (`worktree.IsDead`) blocks are minimal: `Dir` + `Status: prunable` only (plain text). Running from a linked worktree cwd skips the append phase entirely. Mutually exclusive with `--done`, `--list`, `--dep`, `--all-deps`, create target arguments, and other modes.
-- **--confirm-from-stdin** — when set with piped `StdinInput`, reads Y/n from stdin for merge-back confirmation (required for non-TTY ahead/diverged cases).
+- **-y / --yes** — universal top-level bool flag; no-op on commands without Y/n prompts (create, `--list`, basename `Select [1-N]`, etc.). Auto-confirms `Proceed? [Y/n]` on own-worktree `--done` / `--merge-back` (stdin check) and `--set-task` rename (stdout check) without reading stdin. On non-TTY, own-worktree ahead/diverged merge-back succeeds with `-y` (no `--confirm-from-stdin` needed). **Cascade guard**: when any cascaded linked worktree needs ahead/diverged confirmation and stdin is non-TTY, `--done` is rejected before mutations — `-y` and `--confirm-from-stdin` do not apply to cascaded worktrees. On TTY, `-y` auto-confirms both consumer and cascaded ahead/diverged worktrees. Recorded in `events.jsonl` `args` when passed.
+- **--confirm-from-stdin** — when set with piped `StdinInput`, reads Y/n from stdin for **own-worktree** merge-back confirmation on non-TTY ahead/diverged cases. Superseded by `-y` when `-y` is set (no stdin read). Does **not** confirm cascaded ahead/diverged worktrees on non-TTY (option A pre-flight guard).
 - **--no-in-module-replace** — bool flag (no value); valid ONLY with `--done`. Restores the fully-strict local-replace guard: every filesystem/local `replace` (intra-repo or extra-repo) blocks `--done`. Without it (default), intra-repo replaces — whose target dir exists and shares the consumer's `git rev-parse --show-toplevel` (`../../`/`./sub` nested-module reference) — only WARN and `--done` proceeds; extra-repo replaces (`./external/foo` dep worktree, non-existent/absolute/sibling) still block. Bare `wrk --no-in-module-replace`, or with any other mode (`--dep`/`--list`/no-args create/`--all-deps`) → non-zero exit, stderr `wrk: --no-in-module-replace is only valid with --done`.
 - **Request.Args** — CLI arguments passed to `wrk` after optional `<dir>` (empty → no-args create; `["--dep", depPath]` for dep tests; `["--done"]` or `["--done", "--confirm-from-stdin"]` for done tests; `["--list"]` for list tests).
 - **Request.TargetDir** — when set, prepended as the first positional argument to `wrk` (`wrk <dir> ...`); used by `dir-arg/` tests to run from `WorkRoot` while targeting a repo elsewhere.
@@ -31,7 +32,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **deps/** — manually linked worktrees may also live under `{consumerTop}/deps/...` (or any path under the checkout); created via `git -C <depMain> worktree add` into the consumer tree. `--done` cascade discovers them via `scan_repo.Scan`, same as `external/*`.
 - **runGitIsolated** / **gitOutputIsolated** / **gitWorktreeListIsolated** — thin wrappers over `github.com/xhd2015/gitops/git/git_isolated` (`MustRun`, `MustOutput`, `WorktreeList`).
 - **git_isolated** — hook-free git runner; ignores global/system gitconfig; repo-local `core.hookspath` still applies.
-- **Session fixtures** — `initGitRepoOnMain` clones seed `main-readme` from `{DOCTEST_FIXTURE_ROOT}/{DOCTEST_SESSION_ID}/seeds/` (macOS `cp -c`, Linux `cp -a`) instead of per-test `git init`.
+- **Session fixtures** — doctest injects `DOCTEST_SESSION_ID` (referenced directly in harness code, not via `os.Getenv`). Seeds live at `{DOCTEST_FIXTURE_ROOT}/{DOCTEST_SESSION_ID}/seeds/` (macOS `cp -c`, Linux `cp -a`); `getWrkBin` builds once per session to `{DOCTEST_FIXTURE_ROOT}/{DOCTEST_SESSION_ID}/bin/wrk` with a file lock across leaf processes.
 - **Request.StdinInput** — when non-empty, piped to wrk stdin before wait (mvd merge-back pattern).
 - **wrk --all-deps** — automates `--dep` for every dependency discoverable from registered projects: scans the consumer tree (`gotool/mod/scan.Scan`) for all Go modules and builds the union of required-module sets and existing local `Replace` sets; loads candidate dep repos from `{WRK_HOME}/projects.json` via `storage.ListProjects` (lexicographically sorted absolute main-repo paths — same order as `wrk --projects`); for each registered project path that is a git main repo, scans it with `gotool/mod/scan.Scan` and matches module paths against required modules; skips self, modules not required, already-replaced modules (tolerated, not errored — unlike `--done`), already-seen modules, missing project paths, and non-git project paths (all skipped silently); for each match links an external worktree under `{consumerTop}/external/` via the shared `linkExternalDep` core and records a `replace` in every consumer module that requires it (sub-module `Dir` when `m.Dir != "."`); runs `go mod tidy` in each affected consumer module (skipped when zero deps linked). Consumers without a root `go.mod` (module lives in a subdirectory) are supported via module scanning. Stdout: one line per linked dep in **registered project path order** (lexicographic), with matched modules within each project in `mod/scan` Dir order: `wrk <module-path> at ./external/<name>[/<subdir>]` (path relative to `consumerTop`), then a final summary `wrked <N> deps`. Empty or absent `projects.json` → single line `wrked 0 deps`, exit 0, no tidy, no `external/` created, no replaces.
 - **Removed from --all-deps** — `--scan-root` flag and `WRK_SCAN_ROOT` env var (and `resolveScanRoot()` / `scan_repo.Scan` in the `--all-deps` code path). Passing `--scan-root` → non-zero exit; stderr mentions unknown/unexpected flag or `scan-root` removed.
@@ -144,7 +145,11 @@ wrk tests
 │   ├── from-subpath/             # cwd nested inside linked wt; uses checkout root
 │   ├── external-cascade/         # cascade removes external/* wt; guard blocks parent (names go.mod + directive)
 │   ├── cascade-merge-base/       # cascade must remove dep wt, not crash "failed to find merge base" (dep branch shares no history with consumer main)
-│   ├── cascade-dep-merge-back/   # ahead dep wt → cascade ff-merges dep branch into dep repo, then removes wt (merge-back, not discard)
+│   ├── cascade-force-removal/    # bug: non-TTY ahead cascade must error, not force-remove
+│   │   ├── ahead-non-tty-errors/
+│   │   └── ahead-non-tty-with-y-still-errors/
+│   ├── cascade-non-tty-rejects-with-confirm-from-stdin/ # option A: --confirm-from-stdin cannot confirm cascade on non-TTY
+│   ├── cascade-dep-merge-back/   # regression: ahead dep + --confirm-from-stdin on non-TTY → pre-flight error (no cascade merge)
 │   ├── cascade-non-external-linked/ # manual deps/foo linked wt (not under external/) → cascade removes it, consumer merge-back exit 0
 │   ├── cascade-external-and-deps/ # external/* + deps/foo both linked → cascade removes both, consumer merge-back exit 0
 │   ├── local-replace-blocks/     # extra-repo fs replace (non-existent ./external/foo) → guard blocks + names go.mod + directive
@@ -281,6 +286,19 @@ wrk tests
                 ├── empty-desc/        # empty description → error
                 ├── mutually-exclusive/# with --list → mutual exclusion error
                 └── missing-dir/       # non-existent dir → "does not exist"
+├── yes-flag/                     # universal -y / --yes flag
+│   ├── done/
+│   │   ├── ahead-non-tty/        # wrk --done -y on own ahead wt (non-TTY)
+│   │   └── ahead-no-prompt/      # TTY + -y: no Proceed? shown (label: tty)
+│   ├── merge-back/
+│   │   └── ahead-non-tty/        # wrk --merge-back -y merges, keeps wt
+│   ├── set-task/
+│   │   └── rename-non-tty/       # wrk --set-task -y renames without TTY error
+│   ├── no-op/
+│   │   └── create-with-yes/      # wrk -y create same as bare wrk
+│   └── cascade/
+│       ├── non-tty-rejects/      # ahead external + wrk --done -y → error
+│       └── tty-auto-yes/         # TTY + -y auto-confirms cascade merge (label: tty)
 └── projects/                     # project persistence + event logging
     ├── auto-record/              # auto-record main repo on every invocation
     │   ├── no-dir/               # effective work dir = process cwd
@@ -444,7 +462,17 @@ wrk tests
 | 62 | done/not-linked-no-go-mod | main repo without go.mod; `--done` → `not a linked worktree` (not `no go.mod found`) |
 | 63 | done/sub-module-replace-blocks | main go.mod clean but `sub/go.mod` has local replace → guard blocks `--done` (names go.mod + directive) |
 | 64 | done/cascade-merge-base | cascade must remove dep wt, not crash `failed to find merge base` (dep branch vs consumer main share no history) |
-| 65 | done/cascade-dep-merge-back | ahead dep wt + `--confirm-from-stdin` → cascade ff-merges dep branch into dep repo, removes wt (merge-back, not discard) |
+| 65 | done/cascade-force-removal/ahead-non-tty-errors | ahead external dep + non-TTY `--done` → error; dep wt + commits preserved (no force-remove) |
+| 65a | done/cascade-force-removal/ahead-non-tty-with-y-still-errors | same + `-y` → still errors (cascade guard) |
+| 65b | done/cascade-non-tty-rejects-with-confirm-from-stdin | ahead external + `--confirm-from-stdin` on non-TTY → error before mutations |
+| 65c | done/cascade-dep-merge-back | regression: ahead dep + `--confirm-from-stdin` on non-TTY → error (option A; no cascade merge) |
+| 120 | yes-flag/done/ahead-non-tty | `wrk --done -y` merges own ahead wt on non-TTY |
+| 121 | yes-flag/done/ahead-no-prompt | TTY + `wrk --done -y` shows no `Proceed?` (label: tty) |
+| 122 | yes-flag/merge-back/ahead-non-tty | `wrk --merge-back -y` merges, keeps worktree |
+| 123 | yes-flag/set-task/rename-non-tty | `wrk --set-task -y` renames on non-TTY |
+| 124 | yes-flag/no-op/create-with-yes | `wrk -y` create same as bare `wrk` |
+| 125 | yes-flag/cascade/non-tty-rejects | ahead external + `wrk --done -y` on non-TTY → error |
+| 126 | yes-flag/cascade/tty-auto-yes | TTY + `wrk --done -y` merges cascade + consumer (label: tty) |
 | 65a | done/cascade-non-external-linked | manual `deps/foo` linked wt (not under `external/`) → cascade removes it, consumer `--done` exit 0 |
 | 65b | done/cascade-external-and-deps | `external/*` + `deps/foo` both linked → cascade removes both, consumer `--done` exit 0 |
 | 66 | done/intra-replace-warns | intra-repo `replace example.com/foo => ./submod` (existing, same toplevel) → WARN, exit 0, merge-back proceeds |
@@ -624,6 +652,12 @@ doctest test ./tests/all-deps/registered/basic
 # Run a dry-run leaf
 doctest test ./tests/all-deps/registered/dry-run/basic
 
+# Run yes-flag / cascade guard leaves (expect RED until -y + option A implemented)
+doctest vet ./tests/yes-flag
+doctest test ./tests/yes-flag
+doctest test ./tests/done/cascade-force-removal
+doctest test ./tests/done/cascade-non-tty-rejects-with-confirm-from-stdin
+
 # Run a done cascade leaf
 doctest test ./tests/done/external-cascade
 doctest test ./tests/done/cascade-non-external-linked
@@ -694,10 +728,6 @@ doctest test ./tests/projects/basename-fallback/ambiguous/tty-select
 
 ```go
 import (
-	"bytes"
-	"io"
-	"os"
-	"os/exec"
 	"testing"
 )
 
@@ -733,6 +763,7 @@ type Request struct {
 	ProjectsPerfLog    string // perf-profile tests: WRK_PROJECTS_PERF_LOG path
 	FakeHome           string // git-lfs-hook tests: temp home with .local/bin/git-lfs
 	UseMinimalPath     bool   // git-lfs-hook tests: run wrk with PATH=/usr/bin:/bin
+	UseScriptTTY       bool   // yes-flag tests: run wrk under `script` fake TTY (darwin/linux)
 }
 
 type Response struct {
@@ -743,79 +774,15 @@ type Response struct {
 
 func Run(t *testing.T, req *Request) (*Response, error) {
 	bin := getWrkBin(t)
+	args := buildWrkCLIArgs(req)
 
-	var args []string
-	if req.TargetDir != "" {
-		args = append(args, req.TargetDir)
+	if req.UseScriptTTY {
+		return execScriptTTYWrk(t, req, bin, args)
 	}
-	if req.SpawnDir != "" {
-		args = append(args, req.SpawnDir)
-	}
-	if req.TaskDesc != "" {
-		taskFlag := req.TaskFlag
-		if taskFlag == "" {
-			taskFlag = "--task"
-		}
-		args = append(args, taskFlag, req.TaskDesc)
-	}
-	if req.SetTaskDesc != "" {
-		args = append(args, "--set-task", req.SetTaskDesc)
-	}
-	args = append(args, req.Args...)
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = req.RepoDir
 	cmd.Env = wrkEnv(req)
-
-	if req.StdinInput != "" {
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			return nil, err
-		}
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		if err := cmd.Start(); err != nil {
-			return nil, err
-		}
-		if _, err := io.WriteString(stdin, req.StdinInput); err != nil {
-			return nil, err
-		}
-		stdin.Close()
-		err = cmd.Wait()
-		exitCode := 0
-		if err != nil {
-			if ee, ok := err.(*exec.ExitError); ok {
-				exitCode = ee.ExitCode()
-			} else {
-				return nil, err
-			}
-		}
-		return &Response{
-			Stdout:   stdout.String(),
-			Stderr:   stderr.String(),
-			ExitCode: exitCode,
-		}, nil
-	}
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	exitCode := 0
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			exitCode = ee.ExitCode()
-		} else {
-			return nil, err
-		}
-	}
-
-	return &Response{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		ExitCode: exitCode,
-	}, nil
+	return captureCommandOutput(cmd, req.StdinInput)
 }
 ```
