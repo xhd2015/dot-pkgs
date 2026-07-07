@@ -12,7 +12,7 @@ HEAD 1234567890abcdef
 branch refs/heads/feature
 `
 
-	entries := parsePorcelain(input)
+	entries := ParseListPorcelain(input)
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 worktrees, got %d", len(entries))
 	}
@@ -31,7 +31,7 @@ branch refs/heads/feature
 }
 
 func TestParsePorcelainEmpty(t *testing.T) {
-	entries := parsePorcelain("")
+	entries := ParseListPorcelain("")
 	if len(entries) != 0 {
 		t.Fatalf("expected 0 worktrees, got %d", len(entries))
 	}
@@ -45,7 +45,7 @@ worktree /path/to/repo
 HEAD abc
 branch refs/heads/main
 `
-	entries := parsePorcelain(input)
+	entries := ParseListPorcelain(input)
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 worktrees, got %d", len(entries))
 	}

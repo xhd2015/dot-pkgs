@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/status"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/storage"
 	"github.com/xhd2015/gitops/git"
@@ -30,7 +31,7 @@ type projectStatusData struct {
 	branch          string
 	short           string
 	subject         string
-	counts          statusCounts
+	counts          status.WrkCounts
 	remoteLine      string
 	remoteRelation  git.BranchRelation
 	dirtyWorktrees  int
@@ -124,7 +125,7 @@ func startFetchAsync(mainRepoPath string, fetchEnabled bool) chan fetchAsyncResu
 	return ch
 }
 
-func startRemoteCompareAsync(mainRepoPath string, fetchCh chan fetchAsyncResult, branchReady *sync.WaitGroup, mainStatusReady *sync.WaitGroup, branchFailed func() bool, branch func() string, counts func() statusCounts, colorEnabled bool) chan remoteAsyncResult {
+func startRemoteCompareAsync(mainRepoPath string, fetchCh chan fetchAsyncResult, branchReady *sync.WaitGroup, mainStatusReady *sync.WaitGroup, branchFailed func() bool, branch func() string, counts func() status.WrkCounts, colorEnabled bool) chan remoteAsyncResult {
 	ch := make(chan remoteAsyncResult, 1)
 	go func() {
 		fetch := <-fetchCh
@@ -139,7 +140,7 @@ func startRemoteCompareAsync(mainRepoPath string, fetchCh chan fetchAsyncResult,
 			return
 		}
 		c := counts()
-		isClean := c.added == 0 && c.changed == 0 && c.renamed == 0 && c.deleted == 0
+		isClean := c.Added == 0 && c.Changed == 0 && c.Renamed == 0 && c.Deleted == 0
 		remoteColor := colorEnabled && isClean
 
 		var (
@@ -210,7 +211,7 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool, fetchEnabled bo
 	mainStatusReady.Add(1)
 
 	fetchCh := startFetchAsync(mainRepoPath, fetchEnabled)
-	remoteCh := startRemoteCompareAsync(mainRepoPath, fetchCh, &branchReady, &mainStatusReady, branchFailed, func() string { return data.branch }, func() statusCounts { return data.counts }, colorEnabled)
+	remoteCh := startRemoteCompareAsync(mainRepoPath, fetchCh, &branchReady, &mainStatusReady, branchFailed, func() string { return data.branch }, func() status.WrkCounts { return data.counts }, colorEnabled)
 
 	preludeWG.Add(4)
 	go func() {
@@ -251,7 +252,7 @@ func gatherProjectStatus(mainRepoPath string, colorEnabled bool, fetchEnabled bo
 		if linkedRes.err == nil {
 			skip = skipUntrackedRelPaths(mainRepoPath, linkedRes.entries)
 		}
-		counts, err := projectsPerfTimedValue(mainRepoPath, "main_status", func() (statusCounts, error) {
+		counts, err := projectsPerfTimedValue(mainRepoPath, "main_status", func() (status.WrkCounts, error) {
 			return gitProjectStatusCountsWithSkip(mainRepoPath, skip)
 		})
 		if err != nil {
@@ -481,10 +482,10 @@ func skipUntrackedRelPaths(mainRepo string, linked []worktree.Entry) map[string]
 	return skip
 }
 
-func gitProjectStatusCountsWithSkip(repoPath string, skipUntracked map[string]struct{}) (statusCounts, error) {
+func gitProjectStatusCountsWithSkip(repoPath string, skipUntracked map[string]struct{}) (status.WrkCounts, error) {
 	out, err := gitOutputNoOptionalLocks(repoPath, "status", "--porcelain")
 	if err != nil {
-		return statusCounts{}, err
+		return status.WrkCounts{}, err
 	}
 	return parseProjectStatusCounts(out, skipUntracked), nil
 }

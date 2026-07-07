@@ -71,7 +71,19 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 
 		gitDir, repoType, resolveErr := resolveGitDir(path, gitPath, info)
 		if resolveErr != nil {
-			return resolveErr
+			repo := Repo{
+				Path:  path,
+				Name:  filepath.Base(path),
+				Error: resolveErr.Error(),
+			}
+			if onRepo != nil {
+				if err := onRepo(repo); err != nil {
+					return err
+				}
+			} else {
+				repos = append(repos, repo)
+			}
+			return nil
 		}
 
 		repo := Repo{

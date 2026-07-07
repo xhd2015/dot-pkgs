@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 	"github.com/xhd2015/gitops/git"
 )
@@ -304,7 +306,7 @@ func migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch string) error {
 	}
 
 	// Check if stash was actually created (dirty worktree may have been clean).
-	stashList, err := gitOutput(sourceAbs, "stash", "list", "-1")
+	stashList, err := cmd.Run(context.Background(), sourceAbs, "stash", "list", "-1")
 	if err != nil {
 		return err
 	}
@@ -336,19 +338,6 @@ func migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch string) error {
 	}
 
 	return nil
-}
-
-func gitOutput(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return string(out), fmt.Errorf("git %v: %w\n%s", args, err, exitErr.Stderr)
-		}
-		return string(out), err
-	}
-	return strings.TrimSpace(string(out)), nil
 }
 
 func runGit(dir string, args ...string) error {

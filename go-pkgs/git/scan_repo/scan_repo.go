@@ -22,9 +22,20 @@ type Repo struct {
 	Name     string
 	GitDir   string
 	RepoType RepoType
+	Error    string `json:"error,omitempty"`
 
 	Remotes   []Remote
 	Worktrees []Worktree
+}
+
+type RootError struct {
+	Root  string
+	Error string
+}
+
+type Result struct {
+	Repos      []Repo
+	RootErrors []RootError
 }
 
 type Remote struct {
@@ -58,89 +69,117 @@ var defaultIgnoreDirs = []string{
 	".git", "node_modules", "vendor", ".venv", "__pycache__", "dist", "build", "target",
 }
 
-func Scan(ctx context.Context, opts Options) ([]Repo, error) {
+func Scan(ctx context.Context, opts Options) (Result, error) {
 	if len(opts.Roots) == 0 {
-		return nil, fmt.Errorf("at least one root is required")
+		return Result{}, fmt.Errorf("at least one root is required")
 	}
 
 	ignore, err := buildIgnoreConfig(opts)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
 
-	var repos []Repo
+	var result Result
 	for _, root := range opts.Roots {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return Result{}, ctx.Err()
 		default:
 		}
 
 		absRoot, err := validateRoot(root)
 		if err != nil {
-			return nil, err
+			result.RootErrors = append(result.RootErrors, RootError{
+				Root:  root,
+				Error: err.Error(),
+			})
+			continue
 		}
 
 		if opts.OnRepo != nil {
-			_, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, func(repo Repo) error {
+			_, walkErr := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, func(repo Repo) error {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
 				default:
 				}
-				repo, err := enrichRepo(ctx, repo, opts)
-				if err != nil {
-					return err
+				repo = enrichRepo(ctx, repo, opts)
+				if onErr := opts.OnRepo(repo); onErr != nil {
+					repo.Error = appendRepoError(repo.Error, onErr.Error())
 				}
-				repos = append(repos, repo)
-				return opts.OnRepo(repo)
+				result.Repos = append(result.Repos, repo)
+				return nil
 			})
-			if err != nil {
-				return nil, err
+			if walkErr != nil {
+				if walkErr == ctx.Err() {
+					return Result{}, walkErr
+				}
+				result.RootErrors = append(result.RootErrors, RootError{
+					Root:  root,
+					Error: walkErr.Error(),
+				})
 			}
 			continue
 		}
 
-		found, err := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil)
-		if err != nil {
-			return nil, err
+		found, walkErr := walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil)
+		if walkErr != nil {
+			if walkErr == ctx.Err() {
+				return Result{}, walkErr
+			}
+			result.RootErrors = append(result.RootErrors, RootError{
+				Root:  root,
+				Error: walkErr.Error(),
+			})
+			continue
 		}
-		repos = append(repos, found...)
+		result.Repos = append(result.Repos, found...)
 	}
 
-	sort.Slice(repos, func(i, j int) bool {
-		return repos[i].Path < repos[j].Path
+	sort.Slice(result.Repos, func(i, j int) bool {
+		return result.Repos[i].Path < result.Repos[j].Path
 	})
 
 	if opts.OnRepo == nil {
-		for i := range repos {
-			enriched, err := enrichRepo(ctx, repos[i], opts)
-			if err != nil {
-				return nil, err
-			}
-			repos[i] = enriched
+		for i := range result.Repos {
+			result.Repos[i] = enrichRepo(ctx, result.Repos[i], opts)
 		}
 	}
 
-	return repos, nil
+	return result, nil
 }
 
-func enrichRepo(ctx context.Context, repo Repo, opts Options) (Repo, error) {
+func enrichRepo(ctx context.Context, repo Repo, opts Options) Repo {
+	if repo.Error != "" {
+		return repo
+	}
 	if opts.ListRemotes {
 		remotes, err := listRemotes(ctx, repo.Path)
 		if err != nil {
-			return repo, err
+			repo.Error = appendRepoError(repo.Error, err.Error())
+			return repo
 		}
 		repo.Remotes = remotes
 	}
 	if opts.ListWorktrees && repo.RepoType == RepoTypeMain {
 		worktrees, err := listWorktrees(ctx, repo.Path)
 		if err != nil {
-			return repo, err
+			repo.Error = appendRepoError(repo.Error, err.Error())
+			return repo
 		}
 		repo.Worktrees = worktrees
 	}
-	return repo, nil
+	return repo
+}
+
+func appendRepoError(existing, msg string) string {
+	if msg == "" {
+		return existing
+	}
+	if existing == "" {
+		return msg
+	}
+	return existing + "; " + msg
 }
 
 type ignoreConfig struct {

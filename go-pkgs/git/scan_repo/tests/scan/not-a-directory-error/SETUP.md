@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: file root (not directory) returns error
+**Feature**: file root (not directory) recorded as RootError; scan continues
 
 ```
-root is a regular file -> error: not a directory
+root is a regular file -> RootErrors entry; err nil
 ```
 
 ## Steps

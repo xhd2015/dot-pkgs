@@ -83,7 +83,7 @@ func RunCLI(args []string) error {
 		normalizedIgnoreDirs = append(normalizedIgnoreDirs, norm)
 	}
 
-	repos, err := Scan(context.Background(), Options{
+	result, err := Scan(context.Background(), Options{
 		Roots:              roots,
 		MaxDepth:           maxDepth,
 		IgnoreDirs:         normalizedIgnoreDirs,
@@ -96,6 +96,7 @@ func RunCLI(args []string) error {
 		fmt.Fprintln(os.Stderr, err)
 		return err
 	}
+	repos := result.Repos
 
 	if jsonOut {
 		if repos == nil {

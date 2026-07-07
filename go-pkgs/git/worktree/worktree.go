@@ -2,12 +2,14 @@ package worktree
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd"
 	gitops "github.com/xhd2015/gitops/git"
 )
 
@@ -112,12 +114,16 @@ func ReadMainRepo(linkedPath string) (string, error) {
 
 // ReadBranch returns the current branch name, or "HEAD" when detached.
 func ReadBranch(worktreePath string) (string, error) {
-	cmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--abbrev-ref", "HEAD")
-	out, err := cmd.Output()
+	return ReadBranchCtx(context.Background(), worktreePath)
+}
+
+// ReadBranchCtx is ReadBranch with cancellation support.
+func ReadBranchCtx(ctx context.Context, worktreePath string) (string, error) {
+	branch, err := cmd.Run(ctx, worktreePath, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse --abbrev-ref HEAD: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return branch, nil
 }
 
 // ResolveMainRepo returns the main repository for path, whether path is a main
@@ -138,14 +144,16 @@ func ResolveMainRepo(path string) (string, error) {
 
 // List returns all worktrees including the main checkout.
 func List(repoPath string) ([]Entry, error) {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	cmd.Dir = repoPath
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-	out, err := cmd.Output()
+	return ListCtx(context.Background(), repoPath)
+}
+
+// ListCtx is List with cancellation support.
+func ListCtx(ctx context.Context, repoPath string) ([]Entry, error) {
+	out, err := cmd.Run(ctx, repoPath, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, fmt.Errorf("git worktree list: %w", err)
 	}
-	entries := parsePorcelain(string(out))
+	entries := ParseListPorcelain(out)
 	for i := range entries {
 		entries[i].IsMain = IsMainRepo(entries[i].Path)
 	}
@@ -167,7 +175,8 @@ func ListLinked(repoPath string) ([]Entry, error) {
 	return linked, nil
 }
 
-func parsePorcelain(output string) []Entry {
+// ParseListPorcelain parses `git worktree list --porcelain` output into entries.
+func ParseListPorcelain(output string) []Entry {
 	var entries []Entry
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	var current Entry

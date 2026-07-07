@@ -4,21 +4,22 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	gitcmd "github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/checkout"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/status"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/storage"
 	"github.com/xhd2015/gitops/git"
 )
 
-type statusCounts struct {
-	added   int
-	changed int
-	renamed int
-	deleted int
+var wrkCheckoutOpts = checkout.Options{
+	StatusStyle:        status.StyleWrk,
+	PorcelainUntracked: false,
 }
 
 type statusBlockPrintOpts struct {
@@ -179,7 +180,8 @@ func runRepos(workDir string) error {
 }
 
 func discoverStatusRepos(ctx context.Context, root string) ([]scan_repo.Repo, error) {
-	return scan_repo.Scan(ctx, scan_repo.Options{Roots: []string{root}})
+	result, err := scan_repo.Scan(ctx, scan_repo.Options{Roots: []string{root}})
+	return result.Repos, err
 }
 
 func printAppendedLinkedBlock(mainRepo, repoPath string, colorEnabled bool) {
@@ -191,36 +193,21 @@ func printAppendedLinkedBlock(mainRepo, repoPath string, colorEnabled bool) {
 		return
 	}
 
-	branch, err := gitOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
+	meta := checkout.Enrich(context.Background(), repoPath, wrkCheckoutOpts)
+	if meta.Error != "" {
 		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
 		return
 	}
-	short, err := gitOutput(repoPath, "rev-parse", "--short=7", "HEAD")
-	if err != nil {
-		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
-		return
-	}
-	subject, err := gitOutput(repoPath, "log", "-1", "--pretty=%s")
-	if err != nil {
-		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
-		return
-	}
-	counts, err := gitStatusCounts(repoPath)
-	if err != nil {
-		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
-		return
-	}
-	masterBrief, _, err := masterBriefForRepo(repoPath, branch, colorEnabled)
+	masterBrief, _, err := masterBriefForRepo(repoPath, meta.Branch, colorEnabled)
 	if err != nil {
 		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
 		return
 	}
 
 	fmt.Printf("Dir:          %s\n", dirLine)
-	fmt.Printf("Branch:       %s\n", branch)
-	fmt.Printf("Commit:       %s  %s\n", short, subject)
-	fmt.Printf("Status:       %s\n", formatStatusCounts(counts, colorEnabled, true))
+	fmt.Printf("Branch:       %s\n", meta.Branch)
+	fmt.Printf("Commit:       %s  %s\n", meta.CommitSHA, meta.CommitMsg)
+	fmt.Printf("Status:       %s\n", formatStatusText(meta.Status, colorEnabled, true))
 	fmt.Printf("Master:       %s\n", masterBrief)
 }
 
@@ -246,21 +233,9 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool,
 		}
 	}
 
-	branch, err := gitOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return err
-	}
-	short, err := gitOutput(repoPath, "rev-parse", "--short=7", "HEAD")
-	if err != nil {
-		return err
-	}
-	subject, err := gitOutput(repoPath, "log", "-1", "--pretty=%s")
-	if err != nil {
-		return err
-	}
-	counts, err := gitStatusCounts(repoPath)
-	if err != nil {
-		return err
+	meta := checkout.Enrich(context.Background(), repoPath, wrkCheckoutOpts)
+	if meta.Error != "" {
+		return fmt.Errorf("%s", meta.Error)
 	}
 
 	hasMaster := worktree.IsLinked(repoPath)
@@ -269,22 +244,23 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool,
 	}
 	var masterBrief string
 	if hasMaster {
-		masterBrief, _, err = masterBriefForRepo(repoPath, branch, colorEnabled)
+		var err error
+		masterBrief, _, err = masterBriefForRepo(repoPath, meta.Branch, colorEnabled)
 		if err != nil {
 			return err
 		}
 	}
 
 	fmt.Printf("Dir:          %s\n", filepath.ToSlash(rel))
-	fmt.Printf("Branch:       %s\n", branch)
-	fmt.Printf("Commit:       %s  %s\n", short, subject)
+	fmt.Printf("Branch:       %s\n", meta.Branch)
+	fmt.Printf("Commit:       %s  %s\n", meta.CommitSHA, meta.CommitMsg)
 
-	statusLine := formatStatusCounts(counts, colorEnabled, true)
+	statusLine := formatStatusText(meta.Status, colorEnabled, true)
 	fmt.Printf("Status:       %s\n", statusLine)
 	if hasMaster {
 		fmt.Printf("Master:       %s\n", masterBrief)
 	} else if showRemote && rel == "." {
-		remoteLine, err := formatStatusRemoteLine(repoPath, branch, colorEnabled, fetchEnabled, counts)
+		remoteLine, err := formatStatusRemoteLine(repoPath, meta.Branch, colorEnabled, fetchEnabled, meta.Status == "clean")
 		if err != nil {
 			return err
 		}
@@ -293,7 +269,7 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool,
 	return nil
 }
 
-func formatStatusRemoteLine(mainRepoPath, currentBranch string, colorEnabled bool, fetchEnabled bool, counts statusCounts) (string, error) {
+func formatStatusRemoteLine(mainRepoPath, currentBranch string, colorEnabled bool, fetchEnabled bool, isClean bool) (string, error) {
 	upstream, err := gitUpstreamRef(mainRepoPath)
 	if err != nil {
 		return "", err
@@ -306,7 +282,6 @@ func formatStatusRemoteLine(mainRepoPath, currentBranch string, colorEnabled boo
 			return "Remote:       error: " + err.Error(), nil
 		}
 	}
-	isClean := counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0
 	remoteColor := colorEnabled && isClean
 	result, err := git.CompareBranches(mainRepoPath, upstream, currentBranch)
 	if err != nil {
@@ -315,11 +290,11 @@ func formatStatusRemoteLine(mainRepoPath, currentBranch string, colorEnabled boo
 	return "Remote:       " + FormatRemoteBrief(result, remoteColor), nil
 }
 
-func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelation git.BranchRelation, dirtyWorktrees, worktreeErrors int) bool {
+func projectBlockUsesColor(colorEnabled bool, counts status.WrkCounts, remoteRelation git.BranchRelation, dirtyWorktrees, worktreeErrors int) bool {
 	if !colorEnabled {
 		return false
 	}
-	if counts.added != 0 || counts.changed != 0 || counts.renamed != 0 || counts.deleted != 0 {
+	if counts.Added != 0 || counts.Changed != 0 || counts.Renamed != 0 || counts.Deleted != 0 {
 		return true
 	}
 	if dirtyWorktrees > 0 {
@@ -336,14 +311,14 @@ func projectBlockUsesColor(colorEnabled bool, counts statusCounts, remoteRelatio
 	}
 }
 
-func statusBlockUsesColor(colorEnabled bool, counts statusCounts, hasMaster bool, masterRelation git.BranchRelation) bool {
+func statusBlockUsesColor(colorEnabled bool, counts status.WrkCounts, hasMaster bool, masterRelation git.BranchRelation) bool {
 	if !colorEnabled {
 		return false
 	}
-	if counts.added != 0 || counts.changed != 0 || counts.renamed != 0 || counts.deleted != 0 {
+	if counts.Added != 0 || counts.Changed != 0 || counts.Renamed != 0 || counts.Deleted != 0 {
 		return true
 	}
-	if counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0 {
+	if counts.Added == 0 && counts.Changed == 0 && counts.Renamed == 0 && counts.Deleted == 0 {
 		return true
 	}
 	if hasMaster {
@@ -360,7 +335,7 @@ func masterBriefForRepo(repoPath, wtBranch string, colorEnabled bool) (string, g
 	if err != nil {
 		return "", 0, err
 	}
-	mainBranch, err := gitOutput(mainRepo, "rev-parse", "--abbrev-ref", "HEAD")
+	mainBranch, err := gitcmd.Run(context.Background(), mainRepo, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return "", 0, err
 	}
@@ -392,21 +367,16 @@ func formatCompareWithRemote(mainRepoPath, currentBranch string, colorEnabled bo
 }
 
 func gitUpstreamRef(repoPath string) (string, error) {
-	cmd := gitCommandWithEnv(repoPath, []string{"GIT_OPTIONAL_LOCKS=0"}, "rev-parse", "--abbrev-ref", "@{upstream}")
-	out, err := cmd.Output()
-	if err != nil {
+	upstream, ok, err := gitcmd.RunOptional(context.Background(), repoPath, "rev-parse", "--abbrev-ref", "@{upstream}")
+	if err != nil || !ok {
+		// Match legacy gitOutput behavior: missing upstream is not an error.
 		return "", nil
 	}
-	return strings.TrimSpace(string(out)), nil
+	return upstream, nil
 }
 
 func gitWorktreeIsClean(repoPath string) (bool, error) {
-	out, err := gitCombinedOutput(repoPath, "status", "--porcelain")
-	if err != nil {
-		return false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
-	}
-	counts := parseStatusCounts(strings.TrimSpace(string(out)))
-	return counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0, nil
+	return worktree.IsCleanWrk(repoPath)
 }
 
 func gitCombinedOutput(repoPath string, args ...string) ([]byte, error) {
@@ -423,68 +393,32 @@ func gitCombinedOutputError(repoPath string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func gitWorktreeStatusCounts(repoPath string) (statusCounts, error) {
-	clean, err := gitWorktreeIsClean(repoPath)
-	if err != nil {
-		return statusCounts{}, err
-	}
-	if clean {
-		return statusCounts{}, nil
-	}
-	return statusCounts{changed: 1}, nil
-}
-
 func gitOutputNoOptionalLocks(repoPath string, args ...string) (string, error) {
-	return gitOutput(repoPath, args...)
+	return gitcmd.Run(context.Background(), repoPath, args...)
 }
 
-func gitOutput(repoPath string, args ...string) (string, error) {
-	cmd := gitCommandWithEnv(repoPath, []string{"GIT_OPTIONAL_LOCKS=0"}, args...)
-	out, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-			return "", fmt.Errorf("%s", strings.TrimSpace(string(exitErr.Stderr)))
-		}
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+func parseProjectStatusCounts(out string, skipUntracked map[string]struct{}) status.WrkCounts {
+	if len(skipUntracked) == 0 {
+		return status.ParsePorcelainWrk(out)
 	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func gitStatusCounts(repoPath string) (statusCounts, error) {
-	out, err := gitOutput(repoPath, "status", "--porcelain", "--untracked-files=no")
-	if err != nil {
-		return statusCounts{}, err
-	}
-	return parseStatusCounts(out), nil
-}
-
-func parseProjectStatusCounts(out string, skipUntracked map[string]struct{}) statusCounts {
-	var counts statusCounts
+	var filtered strings.Builder
 	for _, line := range strings.Split(out, "\n") {
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "??") && len(skipUntracked) > 0 {
+		if strings.HasPrefix(line, "??") {
 			path := strings.TrimSpace(line[3:])
 			path = strings.TrimSuffix(path, "/")
 			if _, ok := skipUntracked[path]; ok {
 				continue
 			}
 		}
-		countStatusLine(&counts, line)
-	}
-	return counts
-}
-
-func parseStatusCounts(out string) statusCounts {
-	var counts statusCounts
-	for _, line := range strings.Split(out, "\n") {
-		if line == "" {
-			continue
+		if filtered.Len() > 0 {
+			filtered.WriteByte('\n')
 		}
-		countStatusLine(&counts, line)
+		filtered.WriteString(line)
 	}
-	return counts
+	return status.ParsePorcelainWrk(filtered.String())
 }
 
 func gitFetchQuiet(repoPath string) error {
@@ -524,48 +458,45 @@ func gitFetchUpstreamQuietNoOptionalLocks(repoPath, upstream string) error {
 	return nil
 }
 
-func countStatusLine(counts *statusCounts, line string) {
-	if strings.HasPrefix(line, "??") {
-		counts.added++
-		return
-	}
-	if len(line) < 2 {
-		counts.changed++
-		return
-	}
-
-	x := line[0]
-	y := line[1]
-	switch {
-	case x == 'R' || y == 'R':
-		counts.renamed++
-	case x == 'A' || y == 'A':
-		counts.added++
-	case x == 'D' || y == 'D':
-		counts.deleted++
-	default:
-		counts.changed++
-	}
+func formatStatusCounts(counts status.WrkCounts, colorEnabled bool, greenClean bool) string {
+	return formatStatusText(status.FormatWrk(counts), colorEnabled, greenClean)
 }
 
-func formatStatusCounts(counts statusCounts, colorEnabled bool, greenClean bool) string {
-	if counts.added == 0 && counts.changed == 0 && counts.renamed == 0 && counts.deleted == 0 {
+func formatStatusText(plain string, colorEnabled bool, greenClean bool) string {
+	if plain == "clean" {
 		if colorEnabled && greenClean {
 			return colorize("clean", ansiGreen)
 		}
 		return "clean"
 	}
 	if !colorEnabled {
-		return fmt.Sprintf("dirty (%d added, %d changed, %d renamed, %d deleted)",
-			counts.added, counts.changed, counts.renamed, counts.deleted)
+		return plain
 	}
-	return colorize("dirty", ansiRed) + " (" +
-		strings.Join([]string{
-			formatStatusCountSegment(counts.added, "added"),
-			formatStatusCountSegment(counts.changed, "changed"),
-			formatStatusCountSegment(counts.renamed, "renamed"),
-			formatStatusCountSegment(counts.deleted, "deleted"),
-		}, ", ") + ")"
+	if !strings.HasPrefix(plain, "dirty (") || !strings.HasSuffix(plain, ")") {
+		return plain
+	}
+	inner := strings.TrimSuffix(strings.TrimPrefix(plain, "dirty ("), ")")
+	return colorize("dirty", ansiRed) + " (" + colorizeStatusSegments(inner) + ")"
+}
+
+func colorizeStatusSegments(inner string) string {
+	parts := strings.Split(inner, ", ")
+	for i, part := range parts {
+		fields := strings.SplitN(part, " ", 2)
+		if len(fields) != 2 {
+			continue
+		}
+		n, err := strconv.Atoi(fields[0])
+		if err != nil {
+			continue
+		}
+		if n > 0 {
+			parts[i] = formatStatusCountSegment(n, fields[1])
+		} else {
+			parts[i] = colorize(part, ansiGrey)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func formatStatusCountSegment(n int, kind string) string {

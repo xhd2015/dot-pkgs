@@ -2,12 +2,13 @@ package scan_repo
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 )
 
 func ParseRemoteOwnerRepo(raw string) (owner, repo string, ok bool) {
@@ -110,11 +111,29 @@ func listRemotes(ctx context.Context, repoPath string) ([]Remote, error) {
 }
 
 func listWorktrees(ctx context.Context, repoPath string) ([]Worktree, error) {
-	out, err := gitOutput(ctx, repoPath, "worktree", "list", "--porcelain")
+	entries, err := worktree.ListCtx(ctx, repoPath)
 	if err != nil {
 		return nil, err
 	}
-	return parseWorktrees(out, repoPath), nil
+	return scanWorktreesFromEntries(entries, repoPath), nil
+}
+
+func scanWorktreesFromEntries(entries []worktree.Entry, mainPath string) []Worktree {
+	mainClean := absLikePath(mainPath)
+	worktrees := make([]Worktree, 0, len(entries))
+	for _, entry := range entries {
+		path := absLikePath(entry.Path)
+		head := entry.HEAD
+		if head == "" && entry.Branch != "" {
+			head = "refs/heads/" + entry.Branch
+		}
+		worktrees = append(worktrees, Worktree{
+			Path:   path,
+			Head:   head,
+			IsMain: path == mainClean,
+		})
+	}
+	return worktrees
 }
 
 func absLikePath(path string) string {
@@ -132,62 +151,10 @@ func absLikePath(path string) string {
 	return filepath.Clean(abs)
 }
 
-func parseWorktrees(output, mainPath string) []Worktree {
-	mainClean := absLikePath(mainPath)
-	var worktrees []Worktree
-	var current *Worktree
-
-	flush := func() {
-		if current == nil {
-			return
-		}
-		current.Path = absLikePath(current.Path)
-		current.IsMain = current.Path == mainClean
-		worktrees = append(worktrees, *current)
-		current = nil
-	}
-
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			flush()
-			continue
-		}
-		switch {
-		case strings.HasPrefix(line, "worktree "):
-			flush()
-			current = &Worktree{Path: strings.TrimPrefix(line, "worktree ")}
-		case current != nil && strings.HasPrefix(line, "HEAD "):
-			current.Head = strings.TrimPrefix(line, "HEAD ")
-		case current != nil && strings.HasPrefix(line, "branch "):
-			current.Head = strings.TrimPrefix(line, "branch ")
-		}
-	}
-	flush()
-	return worktrees
-}
-
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {
-	out, ok, err := gitOptionalOutput(ctx, dir, args...)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return "", fmt.Errorf("git %s in %s returned no output", strings.Join(args, " "), dir)
-	}
-	return out, nil
+	return cmd.Run(ctx, dir, args...)
 }
 
 func gitOptionalOutput(ctx context.Context, dir string, args ...string) (string, bool, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = dir
-	output, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(output))
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 && text == "" {
-			return "", false, nil
-		}
-		return "", false, fmt.Errorf("git %s in %s: %w\n%s", strings.Join(args, " "), dir, err, output)
-	}
-	return text, true, nil
+	return cmd.RunOptional(ctx, dir, args...)
 }

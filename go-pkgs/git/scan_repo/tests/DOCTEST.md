@@ -31,7 +31,8 @@ Optional enrichment lists remotes and worktrees via git subprocesses.
 
 **Scan (discovery)**
 
-- Require at least one root; each root must exist and be a directory.
+- Require at least one root; invalid roots (missing path, not a directory) are
+  recorded in `RootErrors` and scanning continues for remaining roots.
 - Expand `~`, absolutize and clean paths; sort results by `Path` ascending.
 - Apply default ignore basenames unioned with `IgnoreDirBasenames`.
 - Skip directories whose normalized full path is listed in `IgnoreDirs`.
@@ -80,8 +81,9 @@ scan-repo
 │   │   ├── external-linked/      # wt root + external/mydep linked wt → 2 rows
 │   │   └── nested-main/          # wt root + vendor/nested main repo → 2 rows
 │   ├── empty-roots-error/
-│   ├── missing-root-error/
-│   └── not-a-directory-error/
+│   ├── missing-root-error/          # RootError; scan err nil
+│   ├── not-a-directory-error/       # RootError; scan err nil
+│   └── root-failure-isolated/       # good root + bad root → partial result
 ├── enrich-remotes/            [ListRemotes=true, ListWorktrees=false]
 │   ├── no-remotes/
 │   ├── single-origin/
@@ -120,8 +122,9 @@ scan-repo
 | `scan/nested-under-checkout/external-linked` | Scan | Scan from wt root finds nested `external/mydep` linked wt |
 | `scan/nested-under-checkout/nested-main` | Scan | Scan from wt root finds nested `vendor/nested` main repo |
 | `scan/empty-roots-error` | Scan | No roots → error |
-| `scan/missing-root-error` | Scan | Missing root path → error |
-| `scan/not-a-directory-error` | Scan | File root → error |
+| `scan/missing-root-error` | Scan | Missing root path → RootError; err nil |
+| `scan/not-a-directory-error` | Scan | File root → RootError; err nil |
+| `scan/root-failure-isolated` | Scan | Valid repo + missing root → 1 repo + 1 RootError |
 | `enrich-remotes/no-remotes` | Enrich | Git init, empty Remotes |
 | `enrich-remotes/single-origin` | Enrich | Single origin remote parsed |
 | `enrich-remotes/multiple-remotes` | Enrich | origin + upstream remotes |
@@ -167,11 +170,12 @@ type Request struct {
 }
 
 type Response struct {
-	Repos   []scan_repo.Repo
-	Found   *scan_repo.Repo
-	Owner   string
-	Repo    string
-	ParseOK bool
+	Repos      []scan_repo.Repo
+	RootErrors []scan_repo.RootError
+	Found      *scan_repo.Repo
+	Owner      string
+	Repo       string
+	ParseOK    bool
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -188,7 +192,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		}
 		return &Response{Found: found}, nil
 	}
-	repos, err := scan_repo.Scan(context.Background(), scan_repo.Options{
+	result, err := scan_repo.Scan(context.Background(), scan_repo.Options{
 		Roots:                req.Roots,
 		MaxDepth:             req.MaxDepth,
 		IgnoreDirs:           req.IgnoreDirs,
@@ -200,6 +204,6 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Response{Repos: repos}, nil
+	return &Response{Repos: result.Repos, RootErrors: result.RootErrors}, nil
 }
 ```

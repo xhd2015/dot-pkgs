@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: non-existent root path returns error
+**Feature**: non-existent root path recorded as RootError; scan continues
 
 ```
-root path does not exist -> error wrapping path
+root path does not exist -> RootErrors entry; err nil
 ```
 
 ## Steps

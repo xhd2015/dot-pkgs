@@ -1,11 +1,12 @@
 ## Expected
 
-- `resp` is nil.
+- `err` is nil.
+- `resp.Repos` is empty.
+- Exactly one `RootError` for the missing root path.
 
 ## Errors
 
-- `err` is non-nil.
-- Error message contains the missing root path.
+- Scan returns fatal error instead of recording RootError.
 
 ```go
 import (
@@ -14,14 +15,22 @@ import (
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
-	if err == nil {
-		t.Fatal("expected error for missing root")
+	if err != nil {
+		t.Fatalf("expected nil scan error, got %v", err)
 	}
-	if resp != nil {
-		t.Fatalf("expected nil response, got %v", resp)
+	if len(resp.Repos) != 0 {
+		t.Fatalf("expected 0 repos, got %d", len(resp.Repos))
 	}
-	if !strings.Contains(err.Error(), req.Roots[0]) {
-		t.Fatalf("error should contain root path %q, got: %v", req.Roots[0], err)
+	if len(resp.RootErrors) != 1 {
+		t.Fatalf("expected 1 root error, got %d: %v", len(resp.RootErrors), resp.RootErrors)
+	}
+	missing := req.Roots[0]
+	re := resp.RootErrors[0]
+	if re.Root != missing {
+		t.Fatalf("RootError.Root = %q, want %q", re.Root, missing)
+	}
+	if !strings.Contains(re.Error, missing) {
+		t.Fatalf("RootError.Error should contain root path %q, got %q", missing, re.Error)
 	}
 }
 ```
