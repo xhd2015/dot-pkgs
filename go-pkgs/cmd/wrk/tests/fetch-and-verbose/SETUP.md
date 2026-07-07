@@ -231,6 +231,14 @@ func assertStderrVerboseFormat(t *testing.T, stderr string) {
 	}
 }
 
+func assertStderrContainsWorktreeAddOutput(t *testing.T, stderr string) {
+	t.Helper()
+	if strings.Contains(stderr, "Preparing worktree") || strings.Contains(stderr, "HEAD is now at") {
+		return
+	}
+	t.Fatalf("stderr should contain git worktree add subprocess output (Preparing worktree or HEAD is now at), got %q", stderr)
+}
+
 func assertStdoutNoRemoteField(t *testing.T, stdout string) {
 	t.Helper()
 	if strings.Contains(stdout, "Remote:") {
@@ -268,6 +276,7 @@ func ensureFetchVerboseHelpersUsed() {
 	_ = assertStderrContainsGitSubcommand
 	_ = assertStderrNoGitSubcommand
 	_ = assertStderrVerboseFormat
+	_ = assertStderrContainsWorktreeAddOutput
 	_ = assertStdoutNoRemoteField
 	_ = assertFetchInvalidModeStderr
 	_ = resolvePath

@@ -71,7 +71,7 @@ func resolveDirArg(dir string, allowBasenameFallback bool, wrkHome string) (stri
 
 // resolveSourceWorkDir resolves the effective workDir from an optional sourceDir
 // positional. When sourceDir is absent, returns the process cwd.
-func resolveSourceWorkDir(origWd, sourceDir string, createMode bool, wrkHome string) (string, error) {
+func resolveSourceWorkDir(origWd, sourceDir string, allowBasenameFallback bool, wrkHome string) (string, error) {
 	if sourceDir == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -81,7 +81,7 @@ func resolveSourceWorkDir(origWd, sourceDir string, createMode bool, wrkHome str
 	}
 
 	_ = origWd // resolveDirArg already resolves relative paths against process cwd.
-	return resolveDirArg(sourceDir, createMode, wrkHome)
+	return resolveDirArg(sourceDir, allowBasenameFallback, wrkHome)
 }
 
 func resolveBasenameFromProjects(wrkHome, basename string) (string, error) {

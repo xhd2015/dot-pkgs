@@ -52,7 +52,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **Request.ProjectsPerfLog** — perf-profile tests: path written to `WRK_PROJECTS_PERF_LOG`.
 - **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. **Never aborts** the run due to per-project or per-worktree git failures (exit 0 unless `projects.json` is unreadable); errors surface inline in stdout blocks; stderr stays empty for these cases (unless `-v` is set). **Default (no `--fetch`)**: skip `git fetch`; `Remote:` uses `git.CompareBranches` against local upstream tracking refs. **With `--fetch`**: run scoped upstream fetch (`gitFetchUpstreamQuietNoOptionalLocks`) before `Remote:` comparison per project. **Healthy main repo** blocks include absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs push(+N commit(s))`, `needs pull(N commit(s) behind)`, `diverged(N commit(s))`, `(no upstream)` when the branch has no upstream, or `error: ...` inline when fetch/compare fails), and `Worktrees:` (four spaces after colon, aligned with other fields) with composable summary segments: `N total` and `M dirty` always; `K error` only when K > 0 (alive linked worktree path exists but `git status` fails); `P prune` only when P > 0 (registered in `git worktree list` but checkout directory missing per `worktree.IsDead`). After the `Worktrees:` line, each broken (alive, git-fails) worktree emits `  <absolute-path>  error: <full git stderr message>` (two-space indent); no per-path lines for prunable/dead worktrees. **Broken main repo** blocks omit Branch, Commit, Remote, and Worktrees entirely — only `Dir:` and `Status:       error: <full git stderr message>`. When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, `N dirty` when N > 0, `K error` when K > 0, broken-main `Status: error: ...` value, and per-worktree `error: ...` detail values; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs push(...)` and `needs pull(...)`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs merge back(+N commit(s))` and `needs fast forward(+N commit(s))` apply only to `--status` `Master:` (not `Remote:`).
 - **--fetch** — bool flag (no value); valid ONLY with `--projects` or `--status`. Default false (no network fetch). Bare `wrk --fetch`, or `--fetch` with any other mode (`--list`/`--done`/`--dep`/no-args create/etc.) → non-zero exit, stderr `wrk: --fetch is only valid with --projects or --status`. With `--projects` or `--status` from **main repo checkout cwd**: run scoped upstream fetch before `Remote:` comparison. From **linked worktree cwd** with `--status --fetch`: silently ignored (no fetch, no error, no `Remote:` added). Combinable with `--color`. Recorded in `events.jsonl` `args` when passed.
-- **-v / --verbose** — global bool flag; valid with **any** wrk mode; does not change mode selection or stdout content. When set, log **major** git subprocesses (mutating/network: `worktree add`/`remove`/`move`, `fetch` when executed, `checkout`, `branch` `-D`/`-m`/`-b`, `merge`, `rebase`, `stash`) to **stderr** as one line per invocation before the command runs: `[YYYY-MM-DD HH:MM:SS] $ git <args...>` (local timezone, format `2006-01-02 15:04:05`; include `-C <dir>` when used). **Not logged**: read-only introspection (`rev-parse`, `log`, `status`, `diff`, `merge-base`, `rev-list --count`, `worktree list`, `show-toplevel`, `config`, etc.) and non-git commands. When `-v` is off: zero stderr logging overhead. Recorded in `events.jsonl` `args` when passed.
+- **-v / --verbose** — global bool flag; valid with **any** wrk mode; does not change mode selection or stdout content. When set, log **major** git subprocesses (mutating/network: `worktree add`/`remove`/`move`, `fetch` when executed, `checkout`, `branch` `-D`/`-m`/`-b`, `merge`, `rebase`, `stash`) to **stderr** as one line per invocation before the command runs: `[YYYY-MM-DD HH:MM:SS] $ git <args...>` (local timezone, format `2006-01-02 15:04:05`; include `-C <dir>` when used). **Create mode only**: additionally stream `git worktree add` subprocess stdout+stderr to process stderr as the command runs (after the pre-command log line; e.g. `Preparing worktree (new branch '…')`, `HEAD is now at <hash>`); success and failure paths; applies to both `-b` new-branch and `--no-checkout` add invocations in `createWorktree` — does **not** stream separate `checkout` output on the branch-collision path. **Not logged**: read-only introspection (`rev-parse`, `log`, `status`, `diff`, `merge-base`, `rev-list --count`, `worktree list`, `show-toplevel`, `config`, etc.) and non-git commands. When `-v` is off: zero stderr logging overhead (create mode still captures `worktree add` via `CombinedOutput` silently). Recorded in `events.jsonl` `args` when passed.
 - **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **Stdout trailing newline** — all wrk modes that print non-empty stdout end with `\n` after the last content line (shell prompt stays on its own line). Empty stdout has no bytes.
 - **Stdout assertions** — doctest leaves use `assert.Output` with `version: 2` full-match templates only (no `<contains>` for stdout). Multi-block stdout (e.g. `--status` scan blocks, `--projects` project blocks) is asserted with one v2 template covering the entire stdout; blocks are joined with `\n\n`. Stderr error messages continue to use `<contains>` partial match.
@@ -63,7 +63,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
-- **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; and `--dep <dir>` via `runDep` with `allowBasenameFallback=true`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--status`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup.
+- **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup.
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
 - **Request.BasenameEnv** — basename-fallback tests: extra env var appended when running wrk (e.g. `WRK_BASENAME_CONFIRM=1`).
 - **Request.SelectedSavedRepo** — basename-fallback tty-select: absolute path of the saved project chosen via stdin index.
@@ -187,7 +187,9 @@ wrk tests
 │   │   ├── list/
 │   │   │   └── no-log/         # worktree list is minor → empty stderr
 │   │   ├── create/
-│   │   │   ├── basic/          # worktree add logged
+│   │   │   ├── basic/          # worktree add pre-command log
+│   │   │   ├── streams-output/ # worktree add subprocess output streamed
+│   │   │   ├── branch-collision/ # --no-checkout add path streams add output
 │   │   │   └── no-minor/       # no rev-parse/status lines
 │   │   ├── projects/
 │   │   │   ├── no-fetch/       # minor reads only → empty stderr
@@ -225,6 +227,18 @@ wrk tests
 │   │   ├── force-color-master-merge-back/   # orange needs merge back
 │   │   ├── force-color-master-diverged/   # red diverged
 │   │   └── no-color-pipe/        # pipe without --color → no ANSI, brief Master:
+│   ├── basename-fallback/        # wrk <basename> --status → saved projects.json lookup (same core as create/--dep)
+│   │   ├── single-match/
+│   │   │   └── status/           # one saved project → status block for saved root
+│   │   ├── cwd-exists/
+│   │   │   └── no-fallback/      # ./myrepo in cwd (not git); saved exists → git error, no fallback
+│   │   ├── path-with-separator/
+│   │   │   └── no-fallback/      # wrk saved/myrepo --status missing → no fallback
+│   │   ├── no-match/
+│   │   │   └── error/            # zero matches → does not exist
+│   │   └── ambiguous/
+│   │       ├── tty-select/       # WRK_BASENAME_CONFIRM + stdin selects saved repo
+│   │       └── non-tty/          # error listing candidates
 │   └── invalid-mode/
 │       └── with-list/            # --status with --list is mutually exclusive
 │   └── main-repo-worktrees/      # nested DOCTEST: append external linked wts from main repo
@@ -596,6 +610,12 @@ wrk tests
 | 117 | dep/basename-fallback/no-match/error | No saved dep, no local path → `does not exist` |
 | 118 | dep/basename-fallback/ambiguous/tty-select | Two saved deps same basename; TTY + stdin selects one; `--dep` succeeds |
 | 119 | dep/basename-fallback/ambiguous/non-tty | Two saved deps same basename; non-TTY → error listing candidates |
+| 120 | status/basename-fallback/single-match/status | Saved project; neutral cwd; `wrk myrepo --status` → one clean block for saved root |
+| 121 | status/basename-fallback/cwd-exists/no-fallback | `./myrepo` in cwd (not git); saved exists → `is not a git repository`, no fallback |
+| 122 | status/basename-fallback/no-match/error | No cwd entry, no saved project → `does not exist` |
+| 123 | status/basename-fallback/path-with-separator/no-fallback | `wrk saved/myrepo --status` missing → no fallback, normal error |
+| 124 | status/basename-fallback/ambiguous/tty-select | Two saved projects same basename; TTY + stdin selects one → status for chosen repo |
+| 125 | status/basename-fallback/ambiguous/non-tty | Two saved projects same basename; non-TTY → error listing candidates |
 
 ## How to Run
 
@@ -631,6 +651,12 @@ doctest vet ./tests/status/master-field
 doctest test ./tests/status/master-field
 doctest vet ./tests/status/color-output
 doctest test ./tests/status/color-output
+
+# Run --status basename-fallback leaves (expect RED until resolveSourceWorkDir enables status fallback)
+doctest vet ./tests/status/basename-fallback
+doctest test ./tests/status/basename-fallback
+doctest test ./tests/status/basename-fallback/single-match/status
+doctest test ./tests/status/basename-fallback/ambiguous/tty-select
 
 # Run main-repo-worktrees append leaves (expect RED until append phase implemented)
 doctest vet ./tests/status/main-repo-worktrees

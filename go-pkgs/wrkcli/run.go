@@ -142,7 +142,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	// Resolve sourceDir to absolute; default to process cwd when absent.
 	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
 	createMode := isCreateMode(projects, addFlagSet, removeFlagSet, setTaskFlagSet, repos, status, depPath, allDeps, list, done, mergeBack)
-	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode, wrkHome)
+	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode || status, wrkHome)
 	if err != nil {
 		return err
 	}
@@ -1431,15 +1431,12 @@ func branchExists(repo, branch string) bool {
 func createWorktree(sourceDir, wtPath, branch string, branchPreExists bool) error {
 	if !branchPreExists {
 		cmd := gitCommand("-C", sourceDir, "worktree", "add", "-b", branch, wtPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git worktree add: %w\n%s", err, out)
-		}
-		return nil
+		return runGitWorktreeAdd(cmd)
 	}
 
 	cmd := gitCommand("-C", sourceDir, "worktree", "add", "--no-checkout", wtPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git worktree add: %w\n%s", err, out)
+	if err := runGitWorktreeAdd(cmd); err != nil {
+		return err
 	}
 
 	checkout := gitCommand("-C", wtPath, "checkout", "--ignore-other-worktrees", branch)

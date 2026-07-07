@@ -71,3 +71,20 @@ func gitCommandWithEnv(repoPath string, extraEnv []string, args ...string) *exec
 	cmd.Env = append(os.Environ(), extraEnv...)
 	return cmd
 }
+
+// runGitWorktreeAdd runs git worktree add. When verbose, streams stdout+stderr to
+// os.Stderr so git's own progress lines appear alongside the pre-command log.
+func runGitWorktreeAdd(cmd *exec.Cmd) error {
+	if invocationVerbose {
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("git worktree add: %w", err)
+		}
+		return nil
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git worktree add: %w\n%s", err, out)
+	}
+	return nil
+}
