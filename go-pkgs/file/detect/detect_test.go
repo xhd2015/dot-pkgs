@@ -3,6 +3,7 @@ package detect
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -89,6 +90,57 @@ func TestDetectFileType(t *testing.T) {
 		}
 		if !isBin {
 			t.Fatal("file with null bytes should be binary")
+		}
+	})
+
+	t.Run("is executable ELF", func(t *testing.T) {
+		data := make([]byte, 104)
+		copy(data, []byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0})
+		data[18] = 0x3e
+		path := filepath.Join(dir, "stub")
+		if err := os.WriteFile(path, data, 0755); err != nil {
+			t.Fatal(err)
+		}
+		isExec, desc, err := IsExecutableBinary(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !isExec {
+			t.Fatal("ELF stub should be executable")
+		}
+		if desc == "" || !strings.Contains(desc, "ELF") {
+			t.Fatalf("description = %q, want ELF executable", desc)
+		}
+	})
+
+	t.Run("sqlite is not executable", func(t *testing.T) {
+		data := make([]byte, 32)
+		copy(data, []byte("SQLite format 3\x00"))
+		path := filepath.Join(dir, "opencode.db")
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+		isExec, _, err := IsExecutableBinary(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if isExec {
+			t.Fatal("SQLite database should not be executable")
+		}
+	})
+
+	t.Run("jpeg is not executable", func(t *testing.T) {
+		data := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
+		path := filepath.Join(dir, "photo.jpg")
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+		isExec, _, err := IsExecutableBinary(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if isExec {
+			t.Fatal("JPEG image should not be executable")
 		}
 	})
 

@@ -7,6 +7,82 @@ import (
 	"os"
 )
 
+// IsExecutableBinary reports whether path is an ELF, Mach-O, or PE executable.
+// Images, SQLite databases, archives, fonts, and other non-executable binaries
+// return false.
+func IsExecutableBinary(path string) (bool, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, "", err
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return false, "", err
+	}
+	if stat.IsDir() {
+		return false, "", nil
+	}
+	if stat.Size() == 0 {
+		return false, "", nil
+	}
+
+	buf := make([]byte, 512)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return false, "", err
+	}
+	buf = buf[:n]
+
+	if desc, ok := detectExecutableByMagic(buf); ok {
+		return true, desc, nil
+	}
+	return false, "", nil
+}
+
+func detectExecutableByMagic(buf []byte) (string, bool) {
+	if len(buf) < 4 {
+		return "", false
+	}
+
+	be := binary.BigEndian
+	le := binary.LittleEndian
+	magic4be := be.Uint32(buf[:4])
+	magic4le := le.Uint32(buf[:4])
+
+	if s := detectMachO(buf, magic4be, magic4le, be, le); s != "" {
+		return s, true
+	}
+	if s := detectELF(buf, magic4be); s != "" {
+		return s, true
+	}
+	if s := detectPE(buf, magic4le); s != "" {
+		return s, true
+	}
+	if s := detectPEFromMZ(buf); s != "" {
+		return s, true
+	}
+	return "", false
+}
+
+func detectPEFromMZ(buf []byte) string {
+	if len(buf) < 2 || buf[0] != 'M' || buf[1] != 'Z' {
+		return ""
+	}
+	if len(buf) < 0x40 {
+		return "PE executable"
+	}
+	peOffset := binary.LittleEndian.Uint32(buf[0x3C:0x40])
+	if int(peOffset)+4 > len(buf) {
+		return "PE executable"
+	}
+	if !matchBytes(buf, int(peOffset), []byte{'P', 'E', 0, 0}) {
+		return ""
+	}
+	return detectPE(buf[peOffset:], binary.LittleEndian.Uint32(buf[peOffset:peOffset+4]))
+}
+
 func DetectFileType(path string) (string, bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
