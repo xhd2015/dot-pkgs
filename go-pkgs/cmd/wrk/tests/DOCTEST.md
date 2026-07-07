@@ -60,8 +60,9 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **Run profile labels** — seven leaves are labeled `slow` (>10s cold: 12-worktree perf fixtures, multi-repo `--projects`, linked `--list`, output-streaming probe); `many-worktrees-parallel` is also `flaky` (timing budget). Discovery runs (`doctest test ./tests`) skip labeled leaves; run them with `doctest test --label slow ./tests`.
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **wrk --rm `<dir>`** — standalone mode; `--rm <dir>` (no `--remove` alias); `--rm` consumes the next argument as `<dir>`; mutually exclusive with all other modes; requires non-empty path (`wrk: --rm requires a path argument`). Help text: `--rm <dir>  remove a recorded main repository path`. Resolves target: `filepath.Abs` + `storage.NormalizePath`; if path exists and is inside a git work tree → resolve to main repo via `worktree.ShowToplevel` + `worktree.ResolveMainRepo` (same as `--add`); if path does not exist → use normalized absolute path as-is (stale/moved entries). **Success (entry removed)**: exit 0; stdout = removed main-repo absolute path (single line, trimmed). **Idempotent (not in projects.json)**: exit 0; empty stdout; no error. Does not delete worktrees, git repos, or events.jsonl history. Appends event `command: "rm"`, `args: ["--rm", "<path-arg>"]`, `exit_code: 0`. Auto-record still runs before remove.
+- **wrk --where `<basename>`** — standalone read-only lookup mode; `--where` consumes the next argument as a **basename only** (no path separators, not absolute); loads `{WRK_HOME}/projects.json` via `storage.FindProjectsByBasename(wrkHome, basename)` matching `filepath.Base(NormalizePath(p.Path)) == basename`; **does not** stat cwd, `filepath.Abs(name)`, or resolve paths on disk (unlike create-mode basename fallback). **0 matches** → non-zero exit, stderr no-match message, empty stdout. **1 match** → exit 0, stdout = one full absolute path + trailing `\n`. **2+ matches** → exit 0, stdout = all matching full paths sorted lexicographically, one per line, trailing `\n` after last line (no TTY prompt). **Empty/missing arg** (`wrk --where`) → non-zero exit, stderr `wrk: --where requires a path argument`. **Non-basename input** (contains `/` or `\`, or absolute path) → non-zero exit, basename-only rejection. **Mutually exclusive** with all other modes (`--status`, `--list`, `--projects`, create, etc.). **Extra positionals** → non-zero exit, `wrk: unexpected arguments`. No writes (no git ops, no worktree creation, no `projects.json` mutation). Appends event `command: "where"`, `args: ["--where", "<basename>"]`. Auto-record still runs on invocation.
 - **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
-- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
+- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`, `where`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
 - **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup.
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
@@ -400,6 +401,22 @@ wrk tests
         │   └── non-tty/          # error listing candidates
         └── other-mode/
             └── no-fallback/      # wrk basename --list → no lookup
+└── where/                        # wrk --where basename lookup (projects.json only)
+    ├── single-match/
+    │   └── basic/                # one match → stdout saved abs path
+    ├── ambiguous/
+    │   └── two-matches/          # two matches → stdout both paths sorted
+    ├── no-match/
+    │   └── error/                # zero matches → stderr no-match
+    ├── non-basename/
+    │   ├── path-with-separator/  # sub/spl → basename-only rejection
+    │   └── absolute-path/        # /abs/.../spl → basename-only rejection
+    ├── empty-arg/
+    │   └── error/                # wrk --where (no value) → requires argument
+    ├── mutual-exclusion/
+    │   └── with-status/          # --where spl --status → mutually exclusive
+    └── cwd-exists/
+        └── no-local-fallback/    # ./spl in cwd (non-git) + saved spl → saved path only
 ```
 
 ## Test Case Index
@@ -616,6 +633,14 @@ wrk tests
 | 123 | status/basename-fallback/path-with-separator/no-fallback | `wrk saved/myrepo --status` missing → no fallback, normal error |
 | 124 | status/basename-fallback/ambiguous/tty-select | Two saved projects same basename; TTY + stdin selects one → status for chosen repo |
 | 125 | status/basename-fallback/ambiguous/non-tty | Two saved projects same basename; non-TTY → error listing candidates |
+| 126 | where/single-match/basic | One saved `spl`; `wrk --where spl` → stdout saved abs path |
+| 127 | where/ambiguous/two-matches | Two saved `spl`; `wrk --where spl` → both paths sorted, exit 0 |
+| 128 | where/no-match/error | No saved `spl`; `wrk --where spl` → stderr no-match, empty stdout |
+| 129 | where/non-basename/path-with-separator | Saved `spl`; `wrk --where sub/spl` → basename-only rejection |
+| 130 | where/non-basename/absolute-path | Saved `spl`; `wrk --where <abs-path>` → basename-only rejection |
+| 131 | where/empty-arg/error | `wrk --where` (no value) → requires argument |
+| 132 | where/mutual-exclusion/with-status | Saved `spl`; `wrk --where spl --status` → mutually exclusive |
+| 133 | where/cwd-exists/no-local-fallback | `./spl` in cwd (non-git) + saved `spl` → stdout saved path only |
 
 ## How to Run
 
@@ -750,6 +775,12 @@ doctest vet ./tests/projects/basename-fallback
 doctest test ./tests/projects/basename-fallback
 doctest test ./tests/projects/basename-fallback/single-match/create
 doctest test ./tests/projects/basename-fallback/ambiguous/tty-select
+
+# Run --where leaves (expect RED until runWhere is implemented)
+doctest vet ./tests/where
+doctest test ./tests/where
+doctest test ./tests/where/single-match/basic
+doctest test ./tests/where/ambiguous/two-matches
 ```
 
 ```go
