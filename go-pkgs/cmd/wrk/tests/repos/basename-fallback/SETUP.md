@@ -1,38 +1,38 @@
 # Scenario
 
-**Feature**: wrk basename fallback to saved projects (create mode only)
+**Feature**: wrk --repos basename fallback to saved projects.json lookup
 
 ```
-# basename missing from cwd -> lookup projects.json by filepath.Base(path)
-wrk <basename> (create mode) -> stat(cwd/<basename>) fails -> match saved projects
+# wrk <basename> --repos missing from cwd -> lookup projects.json by filepath.Base(path)
+neutral cwd -> wrk myrepo --repos -> stat(cwd/myrepo) fails -> match saved projects -> repo paths for saved root
 
-# match count drives outcome
+# match count drives outcome (same core as create-mode basename)
 0 matches -> wrk: <candidate> does not exist
-1 match   -> create worktree from saved project path
+1 match   -> resolve saved path -> discover repos under saved checkout root
 2+ matches -> TTY numbered prompt OR non-TTY error listing candidates
 
 # fallback skipped
 ./<basename> exists in cwd (even non-git) -> use cwd path, no lookup
 <dir> contains path separator -> no lookup
---done / other non-create modes (except --list, --status, --repos) -> no lookup
 ```
 
 ## Preconditions
 
 - Project persistence (`projects.json`, `wrk --add`) is available.
-- Tests seed saved projects via `wrk --add` or pre-populated `projects.json`.
+- `wrk --repos` is active (`req.Args = []string{"--repos"}` from parent `repos/SETUP.md`).
 - Cwd for basename tests is a neutral directory without a matching local entry unless the scenario requires one.
 
 ## Steps
 
-- Descendants configure saved project paths, cwd, `<dir>` basename argument, and mode flags.
-- TTY selection tests set `WRK_BASENAME_CONFIRM=1` and pipe the selection index on stdin.
+- Descendants configure saved project paths, cwd, `<dir>` basename argument, and optional `WRK_BASENAME_CONFIRM` + stdin for TTY selection.
+- Command form: `wrk <basename> --repos` via `req.TargetDir` + inherited `req.Args`.
 
 ## Context
 
-- Basename: no path separator, not absolute (`myrepo` yes; `sub/foo`, `/abs`, `../x` no).
+- Basename: no path separator, not absolute (`myrepo` yes; `saved/myrepo`, `/abs`, `../x` no).
 - Ambiguous candidates are sorted lexicographically by absolute path before display.
-- `WRK_BASENAME_CONFIRM=1` bypasses TTY detection for tests (same pattern as `WRK_SET_TASK_CONFIRM`).
+- `WRK_BASENAME_CONFIRM=1` bypasses TTY detection for tests (same pattern as create-mode basename fallback).
+- Helpers mirror `projects/basename-fallback/SETUP.md`.
 
 ```go
 import (
@@ -41,8 +41,22 @@ import (
 )
 
 func Setup(t *testing.T, req *Request) error {
-	ensureBasenameFallbackHelpersUsed()
+	ensureReposBasenameFallbackHelpersUsed()
 	return nil
+}
+
+// resolvePath returns an absolute, symlink-canonicalized path for assertions.
+func resolvePath(t *testing.T, path string) string {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("abs %s: %v", path, err)
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs
+	}
+	return resolved
 }
 
 // initSavedGitRepo creates a git repo at workRoot/parent/basename and returns its path.
@@ -67,14 +81,6 @@ func initNeutralCwd(t *testing.T, workRoot, name string) string {
 	return cwd
 }
 
-// initNonGitBasenameDir creates a non-git directory named basename directly under workRoot.
-func initNonGitBasenameDir(t *testing.T, workRoot, basename string) string {
-	t.Helper()
-	path := filepath.Join(workRoot, basename)
-	mkdirAll(t, path)
-	return path
-}
-
 // sortedSavedPaths returns lexicographically sorted absolute paths.
 func sortedSavedPaths(t *testing.T, paths ...string) []string {
 	t.Helper()
@@ -86,11 +92,11 @@ func sortedSavedPaths(t *testing.T, paths ...string) []string {
 	return out
 }
 
-func ensureBasenameFallbackHelpersUsed() {
+func ensureReposBasenameFallbackHelpersUsed() {
+	_ = resolvePath
 	_ = initSavedGitRepo
 	_ = recordSavedProject
 	_ = initNeutralCwd
-	_ = initNonGitBasenameDir
 	_ = sortedSavedPaths
 }
 ```

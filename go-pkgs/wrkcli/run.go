@@ -142,7 +142,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	// Resolve sourceDir to absolute; default to process cwd when absent.
 	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
 	createMode := isCreateMode(projects, addFlagSet, removeFlagSet, setTaskFlagSet, repos, status, depPath, allDeps, list, done, mergeBack)
-	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode || status, wrkHome)
+	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode || status || list || repos, wrkHome)
 	if err != nil {
 		return err
 	}

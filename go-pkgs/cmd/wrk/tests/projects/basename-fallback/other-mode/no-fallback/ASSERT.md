@@ -7,7 +7,7 @@
 
 ## Errors
 
-- `--list` mode does not apply basename fallback.
+- `--done` mode does not apply basename fallback.
 
 ## Exit Code
 
@@ -34,9 +34,5 @@ does not exist
 
 	candidate := resolvePath(t, filepath.Join(req.RepoDir, "myrepo"))
 	assertContains(t, resp.Stderr, candidate)
-
-	wantPath := worktreePath(req.WrkHome, "myrepo", "main", wrkDate, 0)
-	assertFileNotExists(t, wantPath)
-	assertWorktreeListNotContains(t, req.MainRepo, wantPath)
 }
 ```

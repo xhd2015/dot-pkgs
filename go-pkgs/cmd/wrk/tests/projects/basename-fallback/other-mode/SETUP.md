@@ -1,10 +1,10 @@
 # Scenario
 
-**Feature**: non-create modes skip basename fallback
+**Feature**: non-create modes skip basename fallback (except --list, --status, and --repos)
 
 ```
-# saved project exists but mode is not create -> no lookup
-wrk <basename> --list -> normal missing-dir error
+# saved project exists but mode is not create/list/status -> no lookup
+wrk <basename> --done -> normal missing-dir error
 ```
 
 ## Steps
