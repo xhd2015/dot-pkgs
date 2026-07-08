@@ -16,6 +16,7 @@ type Meta struct {
 	CommitSHA string
 	CommitMsg string
 	Status    string
+	OriginURL string
 	Error     string
 }
 
@@ -25,7 +26,11 @@ type Options struct {
 	PorcelainUntracked bool // default true when unset
 }
 
-func Enrich(ctx context.Context, repoPath string, opts Options) Meta {
+func Enrich(ctx context.Context, repoPath string, opts Options) (meta Meta) {
+	defer func() {
+		enrichOrigin(ctx, repoPath, &meta)
+	}()
+
 	shortLen := opts.ShortSHALength
 	if shortLen <= 0 {
 		shortLen = defaultShortSHALength
@@ -33,25 +38,27 @@ func Enrich(ctx context.Context, repoPath string, opts Options) Meta {
 
 	if _, err := cmd.Run(ctx, repoPath, "rev-parse", "--verify", "HEAD"); err != nil {
 		if isUnbornHEADError(err) {
-			return Meta{Error: "no commits (HEAD unborn)"}
+			meta.Error = "no commits (HEAD unborn)"
+			return meta
 		}
-		return Meta{Error: normalizeEnrichError(err)}
+		meta.Error = normalizeEnrichError(err)
+		return meta
 	}
 
 	branch, err := cmd.Run(ctx, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
-		return Meta{Error: normalizeEnrichError(err)}
+		meta.Error = normalizeEnrichError(err)
+		return meta
 	}
 
 	sha, err := cmd.Run(ctx, repoPath, "rev-parse", fmt.Sprintf("--short=%d", shortLen), "HEAD")
 	if err != nil {
-		return Meta{Error: normalizeEnrichError(err)}
+		meta.Error = normalizeEnrichError(err)
+		return meta
 	}
 
-	meta := Meta{
-		Branch:    branch,
-		CommitSHA: sha,
-	}
+	meta.Branch = branch
+	meta.CommitSHA = sha
 
 	msg, err := cmd.Run(ctx, repoPath, "log", "-1", "--format=%s")
 	if err != nil {
@@ -76,6 +83,14 @@ func Enrich(ctx context.Context, repoPath string, opts Options) Meta {
 		meta.Status = status.Format(status.ParsePorcelain(porcelain), status.FormatBackup)
 	}
 	return meta
+}
+
+func enrichOrigin(ctx context.Context, repoPath string, meta *Meta) {
+	url, ok, err := cmd.RunOptional(ctx, repoPath, "config", "--get", "remote.origin.url")
+	if err != nil || !ok {
+		return
+	}
+	meta.OriginURL = url
 }
 
 func mergeErrors(existing, msg string) string {
