@@ -9,6 +9,7 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/xhd2015/gitops v0.0.24
 	github.com/xhd2015/less-flags v1.0.0
+	github.com/xhd2015/skills v0.0.16
 	golang.org/x/term v0.43.0
 	golang.org/x/tools v0.45.0
 )
@@ -16,7 +17,9 @@ require (
 require (
 	github.com/xhd2015/go-coverage v1.0.41 // indirect
 	github.com/xhd2015/go-inspect v0.0.49 // indirect
-	github.com/xhd2015/xgo v1.0.40 // indirect
+	github.com/xhd2015/less-gen v0.0.19 // indirect
+	github.com/xhd2015/xgo v1.0.49-0.20240916074001-40aa40fc7623 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (

@@ -61,6 +61,23 @@ func validateWhereFlagArg(args []string) error {
 }
 
 func run(origWd string, args []string, ctx *invocationContext) error {
+	if len(args) > 0 && args[0] == "skill" {
+		wrkHome, err := resolveWrkHome()
+		if err != nil {
+			return err
+		}
+		ctx.wrkHome = wrkHome
+		ctx.workDir = origWd
+		ctx.command = "skill"
+		ctx.eventArgs = args[1:]
+		if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
+			return err
+		}
+		if err := ctx.autoRecord(); err != nil {
+			return err
+		}
+		return runSkill(origWd, args[1:], wrkHome)
+	}
 	if hasArg(args, "--bash-integration") {
 		ctx.skipEvent = true
 		return runBashIntegration(args)
@@ -342,9 +359,14 @@ Flags:
   -y, --yes                       auto-confirm Y/n prompts (own worktree; cascade on TTY only)
   --help, -h                      show this help and exit
 
+Skill commands:
+  wrk skill list                  list available skills (wrk)
+  wrk skill show [--header]       print wrk SKILL.md (full or YAML header only)
+  wrk skill install [flags]       install wrk SKILL.md to agent directories
+
 Environment:
-  WRK_HOME   worktree storage root (default: ~/.wrk)
-  WRK_DATE   override the run date (YYYY-MM-DD) used in worktree/branch names
+  WRK_HOME        worktree storage root (default: ~/.wrk)
+  WRK_DATE        override the run date (YYYY-MM-DD) used in worktree/branch names
 `
 }
 
