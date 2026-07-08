@@ -61,6 +61,11 @@ func validateWhereFlagArg(args []string) error {
 }
 
 func run(origWd string, args []string, ctx *invocationContext) error {
+	if hasArg(args, "--bash-integration") {
+		ctx.skipEvent = true
+		return runBashIntegration(args)
+	}
+
 	if err := validateWhereFlagArg(args); err != nil {
 		return err
 	}

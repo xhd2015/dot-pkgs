@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -9,6 +10,10 @@ import (
 
 func main() {
 	if err := run(); err != nil {
+		var exitErr wrkcli.ExitCodeError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.Code)
+		}
 		fmt.Fprint(os.Stderr, err.Error())
 		os.Exit(1)
 	}
