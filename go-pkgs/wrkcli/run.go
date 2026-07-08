@@ -161,7 +161,11 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	// Resolve sourceDir to absolute; default to process cwd when absent.
 	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
 	createMode := isCreateMode(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, repos, status, depPath, allDeps, list, done, mergeBack)
-	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode || status || list || repos, wrkHome)
+	dirHint := &DirHintOptions{
+		RawArgs:     args,
+		Positionals: remaining,
+	}
+	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode || status || list || repos, wrkHome, dirHint)
 	if err != nil {
 		return err
 	}
@@ -276,7 +280,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runStatus(workDir, colorEnabled, fetchFlag)
 	}
 	if depPath != "" {
-		return runDep(workDir, depPath, wrkHome)
+		return runDep(workDir, depPath, wrkHome, args)
 	}
 	if allDeps {
 		return runAllDeps(workDir, dryRun)
@@ -663,7 +667,7 @@ func mergeBackExternalWorktree(externalPath string, confirmFromStdin, assumeYes 
 	return err
 }
 
-func runDep(workDir string, depArg string, wrkHome string) error {
+func runDep(workDir string, depArg string, wrkHome string, rawArgs []string) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -677,7 +681,10 @@ func runDep(workDir string, depArg string, wrkHome string) error {
 	if err != nil {
 		return err
 	}
-	depPath, err := resolveDirArg(depArg, true, wrkHome)
+	depPath, err := resolveDirArg(depArg, true, wrkHome, &DirHintOptions{
+		RawArgs: rawArgs,
+		DepMode: true,
+	})
 	if err != nil {
 		return err
 	}

@@ -37,16 +37,31 @@ func isCreateMode(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlag
 	return true
 }
 
+// DirHintOptions carries CLI context for reconstructing guided file-collision hints.
+type DirHintOptions struct {
+	RawArgs     []string
+	Positionals []string
+	DepMode     bool
+}
+
 // resolveDirArg resolves dir to an absolute path: Abs → stat → optional basename
 // fallback via resolveBasenameFromProjects when allowBasenameFallback is true.
-func resolveDirArg(dir string, allowBasenameFallback bool, wrkHome string) (string, error) {
+func resolveDirArg(dir string, allowBasenameFallback bool, wrkHome string, hint *DirHintOptions) (string, error) {
 	absCandidate, err := filepath.Abs(dir)
 	if err != nil {
 		return "", fmt.Errorf("resolve dir: %w", err)
 	}
-	if _, err := os.Stat(absCandidate); err == nil {
+	info, err := os.Stat(absCandidate)
+	if err == nil {
+		if info.IsDir() {
+			return absCandidate, nil
+		}
+		if allowBasenameFallback && isBasename(dir) {
+			return "", fileCollisionGuidedError(wrkHome, dir, absCandidate, hint)
+		}
 		return absCandidate, nil
-	} else if !os.IsNotExist(err) {
+	}
+	if !os.IsNotExist(err) {
 		return "", fmt.Errorf("stat dir: %w", err)
 	}
 
@@ -69,9 +84,90 @@ func resolveDirArg(dir string, allowBasenameFallback bool, wrkHome string) (stri
 	return "", fmt.Errorf("wrk: %s does not exist", absCandidate)
 }
 
+func fileCollisionGuidedError(wrkHome, basename, filePath string, hint *DirHintOptions) error {
+	matches, err := storage.FindProjectsByBasename(wrkHome, basename)
+	if err != nil {
+		return err
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "wrk: %s exists and is a file", filePath)
+	if len(matches) == 0 {
+		return errors.New(b.String())
+	}
+
+	fmt.Fprintf(&b, "\n%q matches registered project(s):", basename)
+	for _, p := range matches {
+		fmt.Fprintf(&b, "\n  %s", p)
+	}
+
+	resolvedDir := matches[0]
+	if len(matches) > 1 {
+		resolvedDir = "<full-path>"
+	}
+	fmt.Fprintf(&b, "\nuse `%s` instead", reconstructHintCommand(hint, resolvedDir))
+	return errors.New(b.String())
+}
+
+func reconstructHintCommand(hint *DirHintOptions, resolvedDir string) string {
+	if hint == nil {
+		return "wrk " + resolvedDir
+	}
+	if hint.DepMode {
+		return reconstructDepHint(hint.RawArgs, resolvedDir)
+	}
+	return reconstructInvocationHint(hint.RawArgs, hint.Positionals, resolvedDir, 0)
+}
+
+func reconstructDepHint(rawArgs []string, resolvedDir string) string {
+	return reconstructInvocationHint(rawArgs, nil, resolvedDir, 1)
+}
+
+// reconstructInvocationHint rebuilds a suggested wrk command from raw CLI args,
+// replacing the first positional (skipPositional=0) or --dep value (skipPositional=1).
+func reconstructInvocationHint(rawArgs, positionals []string, resolvedDir string, replaceMode int) string {
+	var parts []string
+	parts = append(parts, "wrk")
+	if replaceMode == 0 {
+		parts = append(parts, resolvedDir)
+	}
+
+	pos := 0
+	skipValue := false
+	for _, arg := range rawArgs {
+		if skipValue {
+			if replaceMode == 1 {
+				parts = append(parts, resolvedDir)
+			} else {
+				parts = append(parts, quoteHintArg(arg))
+			}
+			skipValue = false
+			continue
+		}
+		if replaceMode == 0 && pos < len(positionals) && arg == positionals[pos] {
+			pos++
+			continue
+		}
+		parts = append(parts, arg)
+		if arg == "--dep" {
+			skipValue = true
+		} else if _, ok := flagValueArgs[arg]; ok {
+			skipValue = true
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func quoteHintArg(arg string) string {
+	if strings.ContainsAny(arg, " \t") {
+		return "'" + strings.ReplaceAll(arg, "'", `'"'"'`) + "'"
+	}
+	return arg
+}
+
 // resolveSourceWorkDir resolves the effective workDir from an optional sourceDir
 // positional. When sourceDir is absent, returns the process cwd.
-func resolveSourceWorkDir(origWd, sourceDir string, allowBasenameFallback bool, wrkHome string) (string, error) {
+func resolveSourceWorkDir(origWd, sourceDir string, allowBasenameFallback bool, wrkHome string, hint *DirHintOptions) (string, error) {
 	if sourceDir == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -81,7 +177,7 @@ func resolveSourceWorkDir(origWd, sourceDir string, allowBasenameFallback bool, 
 	}
 
 	_ = origWd // resolveDirArg already resolves relative paths against process cwd.
-	return resolveDirArg(sourceDir, allowBasenameFallback, wrkHome)
+	return resolveDirArg(sourceDir, allowBasenameFallback, wrkHome, hint)
 }
 
 func resolveBasenameFromProjects(wrkHome, basename string) (string, error) {

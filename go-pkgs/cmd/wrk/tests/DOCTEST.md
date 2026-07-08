@@ -64,7 +64,7 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
 - **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`, `where`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
-- **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup.
+- **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd as a **directory** (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Cwd file collision** (new): when `filepath.Join(cwd, <dir>)` exists and is a **regular file** (not a directory), do not proceed to git-repo resolution; instead load `projects.json` and emit guided stderr. **1** registered match → multi-line stderr: `wrk: <abs-cwd-file> exists and is a file`, `wrk: "<basename>" matches registered project(s):`, one indented project path, `wrk: use \`wrk <concrete-saved-path> <reconstructed-args>\` instead` (hint preserves user flags/args such as `-t`, `--status`, `--dep`, spawn target). **2+** matches → same shape listing all project paths (lex order) and hint `wrk: use \`wrk <full-path> <reconstructed-args>\` instead` (literal `<full-path>` placeholder). **0** matches → single line `wrk: <abs-cwd-file> exists and is a file` only (no registry block, no hint). Exit non-zero; stdout empty; no worktree created. Directory blocking behavior is unchanged. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup. `--where` unchanged (no cwd stat).
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
 - **Request.BasenameEnv** — basename-fallback tests: extra env var appended when running wrk (e.g. `WRK_BASENAME_CONFIRM=1`).
 - **Request.SelectedSavedRepo** — basename-fallback tty-select: absolute path of the saved project chosen via stdin index.
@@ -391,7 +391,14 @@ wrk tests
         ├── single-match/
         │   └── create/           # one match → worktree from saved path
         ├── cwd-exists/
-        │   └── no-fallback/      # ./basename in cwd (non-git) → no lookup
+        │   └── no-fallback/      # ./basename dir in cwd (non-git) → no lookup
+        ├── cwd-file-exists/      # ./basename file in cwd → guided error (not git-repo failure)
+        │   ├── single-match/
+        │   │   └── guided-error/ # file + 1 saved project → concrete-path hint
+        │   ├── ambiguous/
+        │   │   └── guided-error/ # file + 2 saved projects → <full-path> hint
+        │   └── no-match/
+        │       └── short-error/  # file + 0 saved projects → single-line error
         ├── no-match/
         │   └── error/            # zero matches → does not exist
         ├── path-with-separator/
@@ -621,6 +628,9 @@ wrk tests
 | 111 | projects/basename-fallback/ambiguous/tty-select | Two saved projects same basename; TTY + stdin selects one |
 | 112 | projects/basename-fallback/ambiguous/non-tty | Two saved projects same basename; non-TTY → error listing candidates |
 | 113 | projects/basename-fallback/other-mode/no-fallback | `wrk myrepo --list` with saved project → no fallback, `does not exist` |
+| 113a | projects/basename-fallback/cwd-file-exists/single-match/guided-error | File `./myrepo` in cwd + one saved project → guided stderr with concrete path + `-t` hint |
+| 113b | projects/basename-fallback/cwd-file-exists/ambiguous/guided-error | File `./spl` in cwd + two saved `spl` projects → guided stderr + `<full-path> --status` hint |
+| 113c | projects/basename-fallback/cwd-file-exists/no-match/short-error | File `./foo` in cwd, no saved project → single-line `exists and is a file` only |
 | 114 | dep/basename-fallback/single-match/basic | Saved dep; consumer requires module; `wrk --dep mydep` → external wt from saved path |
 | 115 | dep/basename-fallback/cwd-exists/no-fallback | `./mydep` in consumer cwd (non-git); saved dep exists → local path, `not a git repository` |
 | 116 | dep/basename-fallback/path-with-separator/no-fallback | `wrk --dep sub/mydep` missing → no fallback, `does not exist` |
@@ -775,6 +785,13 @@ doctest vet ./tests/projects/basename-fallback
 doctest test ./tests/projects/basename-fallback
 doctest test ./tests/projects/basename-fallback/single-match/create
 doctest test ./tests/projects/basename-fallback/ambiguous/tty-select
+
+# Run cwd-file-exists guided-error leaves (expect RED until file-collision hint is implemented)
+doctest vet ./tests/projects/basename-fallback/cwd-file-exists
+doctest test ./tests/projects/basename-fallback/cwd-file-exists
+doctest test ./tests/projects/basename-fallback/cwd-file-exists/single-match/guided-error
+doctest test ./tests/projects/basename-fallback/cwd-file-exists/ambiguous/guided-error
+doctest test ./tests/projects/basename-fallback/cwd-file-exists/no-match/short-error
 
 # Run --where leaves (expect RED until runWhere is implemented)
 doctest vet ./tests/where
