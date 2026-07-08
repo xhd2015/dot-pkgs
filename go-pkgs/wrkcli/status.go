@@ -79,7 +79,7 @@ func runStatus(workDir string, colorEnabled bool, fetchEnabled bool) error {
 		if blocksPrinted > 0 {
 			fmt.Println()
 		}
-		if err := printStatusBlock(checkoutRoot, repo.Path, scanColorEnabled, showRemote, effectiveFetch, statusBlockPrintOpts{}); err != nil {
+		if err := printStatusBlock(checkoutRoot, repo.Path, colorEnabled, scanColorEnabled, showRemote, effectiveFetch, statusBlockPrintOpts{}); err != nil {
 			return err
 		}
 		blocksPrinted++
@@ -130,7 +130,7 @@ func runStatusLinkedInTreeCwd(cwd, mainRepo string, colorEnabled bool) error {
 			fmt.Println()
 		}
 		blocksPrinted++
-		return printStatusBlock(mainRepo, repoPath, colorEnabled, false, false, opts)
+		return printStatusBlock(mainRepo, repoPath, colorEnabled, colorEnabled, false, false, opts)
 	}
 
 	showMasterFalse := false
@@ -195,12 +195,12 @@ func printAppendedLinkedBlock(mainRepo, repoPath string, colorEnabled bool) {
 
 	meta := checkout.Enrich(context.Background(), repoPath, wrkCheckoutOpts)
 	if meta.Error != "" {
-		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+		printBrokenStatusBlock(dirLine, brokenStatusMessage(meta, repoPath), colorEnabled)
 		return
 	}
 	masterBrief, _, err := masterBriefForRepo(repoPath, meta.Branch, colorEnabled)
 	if err != nil {
-		printAppendedBrokenBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+		printBrokenStatusBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
 		return
 	}
 
@@ -211,7 +211,7 @@ func printAppendedLinkedBlock(mainRepo, repoPath string, colorEnabled bool) {
 	fmt.Printf("Master:       %s\n", masterBrief)
 }
 
-func printAppendedBrokenBlock(dirLine, msg string, colorEnabled bool) {
+func printBrokenStatusBlock(dirLine, msg string, colorEnabled bool) {
 	statusVal := "error: " + msg
 	if colorEnabled {
 		statusVal = colorize(statusVal, ansiRed)
@@ -220,7 +220,14 @@ func printAppendedBrokenBlock(dirLine, msg string, colorEnabled bool) {
 	fmt.Printf("Status:       %s\n", statusVal)
 }
 
-func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool, fetchEnabled bool, opts statusBlockPrintOpts) error {
+func brokenStatusMessage(meta checkout.Meta, repoPath string) string {
+	if meta.Error != "" {
+		return meta.Error
+	}
+	return gitCombinedOutputError(repoPath, "status", "--porcelain")
+}
+
+func printStatusBlock(root, repoPath string, colorEnabled, scanColorEnabled bool, showRemote bool, fetchEnabled bool, opts statusBlockPrintOpts) error {
 	rel := opts.forceRel
 	if rel == "" {
 		var err error
@@ -235,7 +242,8 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool,
 
 	meta := checkout.Enrich(context.Background(), repoPath, wrkCheckoutOpts)
 	if meta.Error != "" {
-		return fmt.Errorf("%s", meta.Error)
+		printBrokenStatusBlock(filepath.ToSlash(rel), brokenStatusMessage(meta, repoPath), colorEnabled)
+		return nil
 	}
 
 	hasMaster := worktree.IsLinked(repoPath)
@@ -245,9 +253,10 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool,
 	var masterBrief string
 	if hasMaster {
 		var err error
-		masterBrief, _, err = masterBriefForRepo(repoPath, meta.Branch, colorEnabled)
+		masterBrief, _, err = masterBriefForRepo(repoPath, meta.Branch, scanColorEnabled)
 		if err != nil {
-			return err
+			printBrokenStatusBlock(filepath.ToSlash(rel), gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
+			return nil
 		}
 	}
 
@@ -255,12 +264,12 @@ func printStatusBlock(root, repoPath string, colorEnabled bool, showRemote bool,
 	fmt.Printf("Branch:       %s\n", meta.Branch)
 	fmt.Printf("Commit:       %s  %s\n", meta.CommitSHA, meta.CommitMsg)
 
-	statusLine := formatStatusText(meta.Status, colorEnabled, true)
+	statusLine := formatStatusText(meta.Status, scanColorEnabled, true)
 	fmt.Printf("Status:       %s\n", statusLine)
 	if hasMaster {
 		fmt.Printf("Master:       %s\n", masterBrief)
 	} else if showRemote && rel == "." {
-		remoteLine, err := formatStatusRemoteLine(repoPath, meta.Branch, colorEnabled, fetchEnabled, meta.Status == "clean")
+		remoteLine, err := formatStatusRemoteLine(repoPath, meta.Branch, scanColorEnabled, fetchEnabled, meta.Status == "clean")
 		if err != nil {
 			return err
 		}
