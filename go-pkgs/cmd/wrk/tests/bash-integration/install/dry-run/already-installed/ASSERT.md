@@ -1,8 +1,8 @@
 ## Expected
 
 - Exit code 0.
-- Stdout reports already installed with script and both profile marker states.
-- Pre-seeded bash.sh and profile content unchanged.
+- Stdout reports `is up to date` with script and both profile marker states (current embedded script + markers).
+- Pre-installed bash.sh and profile content unchanged by dry-run.
 
 ## Side Effects
 
@@ -16,52 +16,49 @@
 
 ```go
 import (
-	"os"
-	"strings"
-	"testing"
+"fmt"
+"os"
+"strings"
+"testing"
 
-	"github.com/xhd2015/doctest/assert"
+"github.com/xhd2015/doctest/assert"
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
-	if err != nil {
-		t.Fatalf("Run error: %v", err)
-	}
-	if resp.ExitCode != 0 {
-		t.Fatalf("expected exit 0, got %d; stderr=%s", resp.ExitCode, resp.Stderr)
-	}
+if err != nil {
+t.Fatalf("Run error: %v", err)
+}
+if resp.ExitCode != 0 {
+t.Fatalf("expected exit 0, got %d; stderr=%s", resp.ExitCode, resp.Stderr)
+}
 
-	assert.Output(t, resp.Stdout, `---
+assert.Output(t, resp.Stdout, fmt.Sprintf(`---
 version: 2
-__SCRIPT__: type=string, example=/tmp/.wrk/integration/bash.sh, bash.sh path
-__BASH_PROFILE__: type=string, example=/tmp/home/.bash_profile, bash_profile path
-__BASHRC__: type=string, example=/tmp/home/.bashrc, bashrc path
 ---
-wrk bash integration: already installed
-script: __SCRIPT__ (exists)
-bash_profile: __BASH_PROFILE__ (marker present)
-bashrc: __BASHRC__ (marker present)
-no changes needed
+bash integration: is up to date
+script: %s (is up to date)
+bash_profile: %s (marker is up to date)
+bashrc: %s (marker is up to date)
 
-`)
+`, resp.BashShPath, resp.BashProfilePath, resp.BashRCPath))
 
-	if resp.BashProfileMarkerCount != 1 {
-		t.Fatalf("dry-run must not change .bash_profile marker count; got %d:\n%s",
-			resp.BashProfileMarkerCount, resp.BashProfileContent)
-	}
-	if resp.BashRCMarkerCount != 1 {
-		t.Fatalf("dry-run must not change .bashrc marker count; got %d:\n%s",
-			resp.BashRCMarkerCount, resp.BashRCContent)
-	}
-	if !strings.Contains(resp.BashProfileContent, "export EDITOR=vim") {
-		t.Fatalf("dry-run must preserve unrelated .bash_profile content:\n%s", resp.BashProfileContent)
-	}
-	if !strings.Contains(resp.BashShContent, "pre-seeded wrk bash integration") {
-		t.Fatalf("dry-run must not overwrite bash.sh:\n%s", resp.BashShContent)
-	}
-	if _, statErr := os.Stat(resp.BashShPath); statErr != nil {
-		t.Fatalf("bash.sh must still exist: %v", statErr)
-	}
-	assertNoEventsJSONL(t, resp)
+if resp.BashProfileMarkerCount != 1 {
+t.Fatalf("dry-run must not change .bash_profile marker count; got %d:\n%s",
+resp.BashProfileMarkerCount, resp.BashProfileContent)
+}
+if resp.BashRCMarkerCount != 1 {
+t.Fatalf("dry-run must not change .bashrc marker count; got %d:\n%s",
+resp.BashRCMarkerCount, resp.BashRCContent)
+}
+if !strings.Contains(resp.BashProfileContent, "export EDITOR=vim") {
+t.Fatalf("dry-run must preserve unrelated .bash_profile content:\n%s", resp.BashProfileContent)
+}
+if !strings.Contains(resp.BashShContent, "complete -F _wrk wrk") {
+t.Fatalf("bash.sh must still register complete after dry-run:\n%s", resp.BashShContent)
+}
+if _, statErr := os.Stat(resp.BashShPath); statErr != nil {
+t.Fatalf("bash.sh must still exist: %v", statErr)
+}
+assertNoEventsJSONL(t, resp)
 }
 ```

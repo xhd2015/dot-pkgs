@@ -107,6 +107,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var taskDesc string
 	var setTaskDesc string
 	var wherePath string
+	var noCd bool
 	// Detect if --task / --set-task were explicitly passed (even with empty value).
 	taskFlagSet := hasArg(args, "--task") || hasArg(args, "-t")
 	setTaskFlagSet := hasArg(args, "--set-task")
@@ -127,6 +128,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--confirm-from-stdin", &confirmFromStdin).
 		Bool("-y,--yes", &assumeYes).
 		Bool("--no-in-module-replace", &noInModuleReplace).
+		Bool("--no-cd", &noCd).
 		Bool("--all-deps", &allDeps).
 		Bool("--dry-run", &dryRun).
 		String("--dep", &depPath).
@@ -219,7 +221,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
-		return runSetTask(workDir, setTaskDesc, assumeYes)
+		return runSetTask(workDir, setTaskDesc, assumeYes, noCd)
 	}
 
 	if taskFlagSet && strings.TrimSpace(taskDesc) == "" {
@@ -311,12 +313,12 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runList(workDir)
 	}
 	if done {
-		return runDone(workDir, confirmFromStdin, assumeYes, noInModuleReplace)
+		return runDone(workDir, confirmFromStdin, assumeYes, noInModuleReplace, noCd)
 	}
 	if mergeBack {
 		return runMergeBack(workDir, confirmFromStdin, assumeYes)
 	}
-	return runCreate(workDir, origWd, spawnTarget, taskDesc)
+	return runCreate(workDir, origWd, spawnTarget, taskDesc, noCd)
 }
 
 // usage returns the wrk help text printed by lessflags when -h/--help is given.
@@ -357,6 +359,7 @@ Flags:
   --task <desc>                   append task slug to worktree/branch names
   --set-task <desc>               rename worktree/branch to match new task
   -y, --yes                       auto-confirm Y/n prompts (own worktree; cascade on TTY only)
+  --no-cd                         do not write shell follow-up cd lines (for bash auto-cd wrapper)
   --help, -h                      show this help and exit
 
 Skill commands:
@@ -517,7 +520,11 @@ func runList(workDir string) error {
 	return nil
 }
 
-func runDone(workDir string, confirmFromStdin, assumeYes, noInModuleReplace bool) error {
+func runDone(workDir string, confirmFromStdin, assumeYes, noInModuleReplace, noCd bool) error {
+	// Shell process cwd (inherited from interactive shell), not merely workDir.
+	// Used after remove to decide whether auto-cd is needed.
+	shellCwd, _ := os.Getwd()
+
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -570,6 +577,13 @@ func runDone(workDir string, confirmFromStdin, assumeYes, noInModuleReplace bool
 		return err
 	}
 	fmt.Println(result.Message)
+	// After successful remove: write follow-up cd only if shell cwd is gone
+	// (user was inside the removed worktree). Surviving sibling/main stays put.
+	if result.Action != "aborted" && result.Action != "dry-run" {
+		if err := writeFollowupCDIfCwdMissing(noCd, shellCwd, result.TargetPath); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1278,7 +1292,7 @@ func externalCandidateBlocked(mainRepo, wtPath, branch string) bool {
 	return branchExists(mainRepo, branch)
 }
 
-func runCreate(workDir string, origWd string, targetDir string, taskDesc string) error {
+func runCreate(workDir string, origWd string, targetDir string, taskDesc string, noCd bool) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -1323,7 +1337,7 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string)
 	}
 
 	if targetDir != "" {
-		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug)
+		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug, noCd)
 	}
 
 	wrkHome, err := resolveWrkHome()
@@ -1351,7 +1365,7 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string)
 			return fmt.Errorf("resolve worktree path: %w", err)
 		}
 		fmt.Println(absPath)
-		return nil
+		return writeFollowupCD(noCd, absPath)
 	}
 	return fmt.Errorf("could not find available worktree name after 99 attempts")
 }
@@ -1359,7 +1373,7 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string)
 // runCreateTargetDir handles wrk <dir> <target-dir>. A relative <target-dir> is
 // resolved against origWd (the process/shell cwd), NOT the repo dir that Run
 // chdir'd into.
-func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string) error {
+func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string, noCd bool) error {
 	// Resolve <target-dir> against the shell cwd (origWd), not the repo dir.
 	absTarget := targetDir
 	if !filepath.IsAbs(absTarget) {
@@ -1388,7 +1402,7 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 				return fmt.Errorf("resolve worktree path: %w", err)
 			}
 			fmt.Println(absPath)
-			return nil
+			return writeFollowupCD(noCd, absPath)
 		}
 		return fmt.Errorf("could not find available worktree name after 99 attempts")
 	}
@@ -1410,9 +1424,9 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 	// ref already exists, reuse it via the branchPreExists checkout path.
 	wtPath := absTarget
 	branch := branchBase + "-" + date
-		if slug != "" {
-			branch = branch + "-" + slug
-		}
+	if slug != "" {
+		branch = branch + "-" + slug
+	}
 	if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
 		return err
 	}
@@ -1421,7 +1435,7 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		return fmt.Errorf("resolve worktree path: %w", err)
 	}
 	fmt.Println(absPath)
-	return nil
+	return writeFollowupCD(noCd, absPath)
 }
 
 func resolveWrkHome() (string, error) {
@@ -1587,7 +1601,7 @@ func parseBranchNaming(branch string) (branchBase, date, slug string, suffix int
 // runSetTask renames a linked worktree via git worktree move to include a new
 // task slug in the directory and branch names. Requires TTY confirmation (or
 // WRK_SET_TASK_CONFIRM=1 env var) before executing the move.
-func runSetTask(workDir string, taskDesc string, assumeYes bool) error {
+func runSetTask(workDir string, taskDesc string, assumeYes, noCd bool) error {
 	if strings.TrimSpace(taskDesc) == "" {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
@@ -1595,6 +1609,10 @@ func runSetTask(workDir string, taskDesc string, assumeYes bool) error {
 	if newSlug == "" {
 		return fmt.Errorf("wrk: task description %q produces an empty slug", taskDesc)
 	}
+
+	// Shell process cwd (inherited from interactive shell), not merely workDir.
+	// Used after move to decide whether auto-cd is needed.
+	shellCwd, _ := os.Getwd()
 
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
@@ -1764,5 +1782,7 @@ func runSetTask(workDir string, taskDesc string, assumeYes bool) error {
 	}
 
 	fmt.Println(newPath)
-	return nil
+	// Write follow-up cd only if shell cwd is gone (user was inside the moved
+	// worktree). Surviving sibling/main stays put.
+	return writeFollowupCDIfCwdMissing(noCd, shellCwd, newPath)
 }

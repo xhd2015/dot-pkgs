@@ -17,17 +17,73 @@ const (
 )
 
 const bashIntegrationScript = `#!/usr/bin/env bash
-# wrk bash tab completion (installed at ${WRK_HOME:-$HOME/.wrk}/integration/bash.sh)
+# wrk bash tab completion + auto-cd wrapper (installed at ${WRK_HOME:-$HOME/.wrk}/integration/bash.sh)
 
 _wrk() {
   local candidates
-  candidates=$(wrk --bash-integration --complete -- "${COMP_WORDS[@]}" "$COMP_CWORD")
+  candidates=$(command wrk --bash-integration --complete -- "${COMP_WORDS[@]}" "$COMP_CWORD")
   COMPREPLY=()
   if [[ -n "$candidates" ]]; then
     while IFS= read -r line; do
       [[ -n "$line" ]] && COMPREPLY+=("$line")
     done <<< "$candidates"
   fi
+}
+
+# wrk() wrapper: when auto-cd is enabled, set WRK_FOLLOWUP_FILE so the binary
+# can append "cd /abs" lines; print each to stderr and builtin-cd after exit.
+wrk() {
+  local _wrk_skip_followup=0
+  local _wrk_arg
+  if [[ "${WRK_AUTO_CD:-}" == "0" ]]; then
+    _wrk_skip_followup=1
+  else
+    for _wrk_arg in "$@"; do
+      if [[ "$_wrk_arg" == "--no-cd" ]]; then
+        _wrk_skip_followup=1
+        break
+      fi
+    done
+  fi
+
+  if [[ "$_wrk_skip_followup" -eq 1 ]]; then
+    command wrk "$@"
+    return $?
+  fi
+
+  local _wrk_followup
+  _wrk_followup="$(mktemp "${TMPDIR:-/tmp}/wrk-followup.XXXXXX")" || return 1
+  export WRK_FOLLOWUP_FILE="$_wrk_followup"
+  command wrk "$@"
+  local _wrk_status=$?
+  unset WRK_FOLLOWUP_FILE
+
+  local _wrk_line _wrk_path _wrk_cd_failed=0
+  if [[ -f "$_wrk_followup" ]]; then
+    while IFS= read -r _wrk_line || [[ -n "$_wrk_line" ]]; do
+      [[ -z "$_wrk_line" ]] && continue
+      # Whitelist: only "cd" + a single absolute path (never eval).
+      case "$_wrk_line" in
+        cd\ /*)
+          _wrk_path="${_wrk_line#cd }"
+          # Reject paths with spaces / extra fields.
+          if [[ "$_wrk_path" == *" "* || "$_wrk_path" != /* ]]; then
+            continue
+          fi
+          printf '%s\n' "cd $_wrk_path" >&2
+          if ! builtin cd "$_wrk_path"; then
+            _wrk_cd_failed=1
+            break
+          fi
+          ;;
+      esac
+    done < "$_wrk_followup"
+  fi
+  rm -f "$_wrk_followup"
+  if [[ "$_wrk_cd_failed" -ne 0 ]]; then
+    return 1
+  fi
+  return "$_wrk_status"
 }
 
 complete -F _wrk wrk
@@ -61,6 +117,7 @@ var wrkCompletionFlags = []string{
 	"-y", "--yes",
 	"--confirm-from-stdin",
 	"--no-in-module-replace",
+	"--no-cd",
 	"--bash-integration",
 	"--install",
 	"--uninstall",
@@ -254,41 +311,12 @@ func fullyUninstalled(home string) bool {
 }
 
 func installBashIntegrationDryRun() error {
-	_, wrkHome, scriptPath, bashProfilePath, bashrcPath, err := bashIntegrationPaths()
+	_, _, scriptPath, bashProfilePath, bashrcPath, err := bashIntegrationPaths()
 	if err != nil {
 		return err
 	}
-	home, _ := os.UserHomeDir()
-
-	if fullyInstalled(home) {
-		fmt.Println("wrk bash integration: already installed")
-		if scriptPresent(scriptPath) {
-			fmt.Printf("script: %s (exists)\n", scriptPath)
-		} else {
-			fmt.Printf("script: %s (absent)\n", scriptPath)
-		}
-		if markerPresent(bashProfilePath) {
-			fmt.Printf("bash_profile: %s (marker present)\n", bashProfilePath)
-		} else {
-			fmt.Printf("bash_profile: %s (marker absent)\n", bashProfilePath)
-		}
-		if markerPresent(bashrcPath) {
-			fmt.Printf("bashrc: %s (marker present)\n", bashrcPath)
-		} else {
-			fmt.Printf("bashrc: %s (marker absent)\n", bashrcPath)
-		}
-		fmt.Println("no changes needed")
-		fmt.Println()
-		return nil
-	}
-
-	fmt.Println("dry-run: would write integration/bash.sh")
-	fmt.Println("dry-run: would append marker block to ~/.bash_profile")
-	fmt.Println("dry-run: would append marker block to ~/.bashrc")
-	fmt.Println()
-	fmt.Print(wrkMarkerBlock)
-	fmt.Println()
-	_ = wrkHome
+	scriptStatus, profileStatus, rcStatus, summary := computeInstallStatuses(scriptPath, bashProfilePath, bashrcPath, true)
+	printInstallReport(summary, scriptPath, scriptStatus, bashProfilePath, profileStatus, bashrcPath, rcStatus)
 	return nil
 }
 
@@ -362,35 +390,113 @@ func statusBashIntegration() (exitCode int) {
 }
 
 func installBashIntegration() error {
-	_, wrkHome, scriptPath, _, _, err := bashIntegrationPaths()
+	_, _, scriptPath, bashProfilePath, bashrcPath, err := bashIntegrationPaths()
 	if err != nil {
 		return err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
+
+	// Compute statuses from pre-write filesystem state.
+	scriptStatus, profileStatus, rcStatus, summary := computeInstallStatuses(scriptPath, bashProfilePath, bashrcPath, false)
 
 	integrationDir := filepath.Dir(scriptPath)
 	if err := os.MkdirAll(integrationDir, 0o755); err != nil {
 		return err
 	}
-	if !scriptPresent(scriptPath) {
-		if err := os.WriteFile(scriptPath, []byte(bashIntegrationScript), 0o644); err != nil {
+	// Ensure bash.sh matches the current embedded script so upgrades pick up
+	// the wrk() auto-cd wrapper (rewrite when missing or content differs).
+	want := []byte(bashIntegrationScript)
+	existing, readErr := os.ReadFile(scriptPath)
+	if readErr != nil || string(existing) != string(want) {
+		if err := os.WriteFile(scriptPath, want, 0o644); err != nil {
 			return err
 		}
 	}
 
-	for _, profilePath := range []string{
-		filepath.Join(home, ".bash_profile"),
-		filepath.Join(home, ".bashrc"),
-	} {
+	for _, profilePath := range []string{bashProfilePath, bashrcPath} {
 		if err := appendMarkerToProfile(profilePath); err != nil {
 			return err
 		}
 	}
-	_ = wrkHome
+
+	printInstallReport(summary, scriptPath, scriptStatus, bashProfilePath, profileStatus, bashrcPath, rcStatus)
 	return nil
+}
+
+// computeInstallStatuses inspects script and profile markers and returns
+// per-component statuses plus summary. dryRun selects would-* vocabulary.
+func computeInstallStatuses(scriptPath, bashProfilePath, bashrcPath string, dryRun bool) (scriptStatus, profileStatus, rcStatus, summary string) {
+	existing, readErr := os.ReadFile(scriptPath)
+	scriptMissing := readErr != nil
+	scriptDiffers := !scriptMissing && string(existing) != bashIntegrationScript
+
+	profileHas := markerPresent(bashProfilePath)
+	rcHas := markerPresent(bashrcPath)
+
+	if dryRun {
+		switch {
+		case scriptMissing:
+			scriptStatus = "would install"
+		case scriptDiffers:
+			scriptStatus = "would update"
+		default:
+			scriptStatus = "is up to date"
+		}
+		if profileHas {
+			profileStatus = "is up to date"
+		} else {
+			profileStatus = "would install"
+		}
+		if rcHas {
+			rcStatus = "is up to date"
+		} else {
+			rcStatus = "would install"
+		}
+		switch {
+		case scriptMissing:
+			summary = "would install"
+		case scriptDiffers || !profileHas || !rcHas:
+			summary = "would update"
+		default:
+			summary = "is up to date"
+		}
+		return scriptStatus, profileStatus, rcStatus, summary
+	}
+
+	switch {
+	case scriptMissing:
+		scriptStatus = "installed"
+	case scriptDiffers:
+		scriptStatus = "updated"
+	default:
+		scriptStatus = "is up to date"
+	}
+	if profileHas {
+		profileStatus = "is up to date"
+	} else {
+		profileStatus = "installed"
+	}
+	if rcHas {
+		rcStatus = "is up to date"
+	} else {
+		rcStatus = "installed"
+	}
+	switch {
+	case scriptMissing:
+		summary = "installed"
+	case scriptDiffers || !profileHas || !rcHas:
+		summary = "updated"
+	default:
+		summary = "is up to date"
+	}
+	return scriptStatus, profileStatus, rcStatus, summary
+}
+
+func printInstallReport(summary, scriptPath, scriptStatus, bashProfilePath, profileStatus, bashrcPath, rcStatus string) {
+	fmt.Printf("bash integration: %s\n", summary)
+	fmt.Printf("script: %s (%s)\n", scriptPath, scriptStatus)
+	fmt.Printf("bash_profile: %s (marker %s)\n", bashProfilePath, profileStatus)
+	fmt.Printf("bashrc: %s (marker %s)\n", bashrcPath, rcStatus)
+	fmt.Println()
 }
 
 func appendMarkerToProfile(profilePath string) error {
