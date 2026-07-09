@@ -14,6 +14,7 @@ description: >-
 
 - Exit code 0.
 - Stdout is the YAML frontmatter block with `---` delimiters; no body lines.
+- Stdout ends with trailing `\n`.
 - Stderr is empty.
 
 ## Exit Code

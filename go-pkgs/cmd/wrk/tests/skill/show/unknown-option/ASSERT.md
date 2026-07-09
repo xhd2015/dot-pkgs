@@ -6,7 +6,7 @@
 
 ## Errors
 
-- Unknown flag on `wrk skill show`.
+- Unknown flag on `wrk skill --show`.
 
 ## Exit Code
 

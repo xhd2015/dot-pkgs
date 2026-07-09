@@ -96,24 +96,19 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var colorFlag bool
 	var fetchFlag bool
 	var verbose bool
-	var addPath string
-	var removePath string
+	var addPath *string
+	var removePath *string
 	var confirmFromStdin bool
 	var assumeYes bool
 	var noInModuleReplace bool
 	var depPath string
 	var allDeps bool
 	var dryRun bool
-	var taskDesc string
-	var setTaskDesc string
-	var wherePath string
+	var taskDesc *string
+	var setTaskDesc *string
+	var wherePath *string
 	var noCd bool
-	// Detect if --task / --set-task were explicitly passed (even with empty value).
-	taskFlagSet := hasArg(args, "--task") || hasArg(args, "-t")
-	setTaskFlagSet := hasArg(args, "--set-task")
-	addFlagSet := hasArg(args, "--add")
-	removeFlagSet := hasArg(args, "--rm")
-	whereFlagSet := hasArg(args, "--where")
+	// *string targets: nil = flag absent; non-nil empty = present but empty.
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("--merge-back", &mergeBack).
 		Bool("-l,--list", &list).
@@ -135,7 +130,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		String("-t,--task", &taskDesc).
 		String("--set-task", &setTaskDesc).
 		String("--where", &wherePath).
-		Help("-h, --help", usage()).
+		Help("-h,--help", usage()).
 		HelpNoExit().
 		Parse(args)
 	if err != nil {
@@ -146,6 +141,12 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		}
 		return err
 	}
+
+	taskFlagSet := taskDesc != nil
+	setTaskFlagSet := setTaskDesc != nil
+	addFlagSet := addPath != nil
+	removeFlagSet := removePath != nil
+	whereFlagSet := wherePath != nil
 
 	ctx.command = resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, done, list, status, repos, mergeBack, depPath, allDeps)
 	ctx.eventArgs = extractEventArgs(args, remaining)
@@ -202,18 +203,18 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return err
 	}
 
-	if addFlagSet && strings.TrimSpace(addPath) == "" {
+	if addFlagSet && strings.TrimSpace(*addPath) == "" {
 		return fmt.Errorf("wrk: --add requires a path argument")
 	}
-	if removeFlagSet && strings.TrimSpace(removePath) == "" {
+	if removeFlagSet && strings.TrimSpace(*removePath) == "" {
 		return fmt.Errorf("wrk: --rm requires a path argument")
 	}
-	if whereFlagSet && strings.TrimSpace(wherePath) == "" {
+	if whereFlagSet && strings.TrimSpace(*wherePath) == "" {
 		return fmt.Errorf("wrk: --where requires a path argument")
 	}
 
 	// --set-task is mutually exclusive with all other modes.
-	if setTaskFlagSet && strings.TrimSpace(setTaskDesc) == "" {
+	if setTaskFlagSet && strings.TrimSpace(*setTaskDesc) == "" {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --set-task is mutually exclusive with all other modes.
@@ -221,10 +222,10 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
-		return runSetTask(workDir, setTaskDesc, assumeYes, noCd)
+		return runSetTask(workDir, *setTaskDesc, assumeYes, noCd)
 	}
 
-	if taskFlagSet && strings.TrimSpace(taskDesc) == "" {
+	if taskFlagSet && strings.TrimSpace(*taskDesc) == "" {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --task is only valid with create mode.
@@ -288,13 +289,13 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runProjects(wrkHome, colorEnabled, fetchFlag)
 	}
 	if addFlagSet {
-		return runAdd(wrkHome, addPath)
+		return runAdd(wrkHome, *addPath)
 	}
 	if removeFlagSet {
-		return runRemove(wrkHome, removePath)
+		return runRemove(wrkHome, *removePath)
 	}
 	if whereFlagSet {
-		return runWhere(wrkHome, wherePath)
+		return runWhere(wrkHome, *wherePath)
 	}
 	if repos {
 		return runRepos(workDir)
@@ -318,7 +319,11 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	if mergeBack {
 		return runMergeBack(workDir, confirmFromStdin, assumeYes)
 	}
-	return runCreate(workDir, origWd, spawnTarget, taskDesc, noCd)
+	task := ""
+	if taskDesc != nil {
+		task = *taskDesc
+	}
+	return runCreate(workDir, origWd, spawnTarget, task, noCd)
 }
 
 // usage returns the wrk help text printed by lessflags when -h/--help is given.
@@ -363,9 +368,9 @@ Flags:
   --help, -h                      show this help and exit
 
 Skill commands:
-  wrk skill list                  list available skills (wrk)
-  wrk skill show [--header]       print wrk SKILL.md (full or YAML header only)
-  wrk skill install [flags]       install wrk SKILL.md to agent directories
+  wrk skill --list|-l             list available skills (wrk)
+  wrk skill --show [--header]     print wrk SKILL.md (full or YAML header only)
+  wrk skill --install [flags]     install wrk SKILL.md to agent directories
 
 Environment:
   WRK_HOME        worktree storage root (default: ~/.wrk)

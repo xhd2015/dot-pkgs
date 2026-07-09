@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
+
+	xgocmd "github.com/xhd2015/xgo/support/cmd"
 )
 
 func Run(ctx context.Context, dir string, args ...string) (string, error) {
@@ -20,28 +22,37 @@ func Run(ctx context.Context, dir string, args ...string) (string, error) {
 }
 
 func RunOptional(ctx context.Context, dir string, args ...string) (string, bool, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-	output, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(output))
+	// Combined stdout+stderr capture preserves prior CombinedOutput error shapes.
+	var buf bytes.Buffer
+	err := xgocmd.Dir(dir).
+		Env([]string{"GIT_OPTIONAL_LOCKS=0"}).
+		Stdout(&buf).
+		Stderr(&buf).
+		Run("git", args...)
+	// Note: context is currently unused by xgo/support/cmd; callers still pass it
+	// for API compatibility. Cancellation would require os/exec.CommandContext.
+	_ = ctx
+	text := strings.TrimSpace(buf.String())
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 && text == "" {
 			return "", false, nil
 		}
-		return "", false, normalizeError(dir, args, err, output)
+		return "", false, normalizeError(dir, args, err, buf.Bytes())
 	}
 	return text, true, nil
 }
 
 func RunCombined(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-	output, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(output))
+	var buf bytes.Buffer
+	err := xgocmd.Dir(dir).
+		Env([]string{"GIT_OPTIONAL_LOCKS=0"}).
+		Stdout(&buf).
+		Stderr(&buf).
+		Run("git", args...)
+	_ = ctx
+	text := strings.TrimSpace(buf.String())
 	if err != nil {
-		return "", normalizeError(dir, args, err, output)
+		return "", normalizeError(dir, args, err, buf.Bytes())
 	}
 	return text, nil
 }

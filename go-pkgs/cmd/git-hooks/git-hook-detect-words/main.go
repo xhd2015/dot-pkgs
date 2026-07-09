@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
+	lessflags "github.com/xhd2015/less-flags"
 )
 
 const help = `
@@ -22,7 +23,7 @@ Detect forbidden keywords in staged added or updated lines.
 Options:
   --origin-domain DOMAIN           only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN   skip when remote origin host matches DOMAIN
-  -h, --help                       show help message
+  -h,--help                        show help message
 `
 
 const (
@@ -60,12 +61,11 @@ func run(args []string) error {
 }
 
 func runWithOutput(args []string, out io.Writer) error {
-	cfg, err := parseArgs(args)
+	cfg, err := parseArgs(args, out)
 	if err != nil {
 		return err
 	}
 	if cfg.showHelp {
-		fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
 		return nil
 	}
 	if len(cfg.keywords) == 0 {
@@ -98,27 +98,35 @@ func runWithOutput(args []string, out io.Writer) error {
 	return nil
 }
 
-func parseArgs(args []string) (config, error) {
+func parseArgs(args []string, out io.Writer) (config, error) {
 	var cfg config
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if matched, next, err := githook.ParseDomainFlag(args, i, &cfg.domainFilter); matched {
-			if err != nil {
-				return cfg, err
-			}
-			i = next
-			continue
-		}
-		switch {
-		case arg == "-h" || arg == "--help":
+	var originDomain *string
+	var excludeOriginDomain *string
+
+	remaining, err := lessflags.
+		String("--origin-domain", &originDomain).
+		String("--exclude-origin-domain", &excludeOriginDomain).
+		HelpFunc("-h,--help", func() {
+			fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
+		}).
+		HelpNoExit().
+		Parse(args)
+	if err != nil {
+		if errors.Is(err, lessflags.ErrHelp) {
 			cfg.showHelp = true
 			return cfg, nil
-		case strings.HasPrefix(arg, "-"):
-			return cfg, fmt.Errorf("unknown flag: %s", arg)
-		default:
-			cfg.keywords = append(cfg.keywords, arg)
 		}
+		return cfg, mapUnknownFlagErr(err)
 	}
+
+	if originDomain != nil {
+		cfg.domainFilter.OriginDomain = *originDomain
+	}
+	if excludeOriginDomain != nil {
+		cfg.domainFilter.ExcludeOriginDomain = *excludeOriginDomain
+	}
+	cfg.keywords = remaining
+
 	if err := cfg.domainFilter.Normalize(); err != nil {
 		return cfg, err
 	}
@@ -128,6 +136,14 @@ func parseArgs(args []string) (config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func mapUnknownFlagErr(err error) error {
+	const prefix = "unrecognized flag: "
+	if msg := err.Error(); strings.HasPrefix(msg, prefix) {
+		return fmt.Errorf("unknown flag: %s", strings.TrimPrefix(msg, prefix))
+	}
+	return err
 }
 
 func keywordRegexp(keywords []string) (*regexp.Regexp, error) {

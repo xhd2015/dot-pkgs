@@ -1,11 +1,14 @@
 package wrkcli
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	xgocmd "github.com/xhd2015/xgo/support/cmd"
 )
 
 var invocationVerbose bool
@@ -51,11 +54,16 @@ func isMajorGitCommand(args []string) bool {
 	return false
 }
 
+// gitCommand returns *exec.Cmd for callers that need custom Stdout/Stderr
+// streaming or .Run() control (e.g. runGitWorktreeAdd). Prefer gitRun /
+// gitCombinedOutputHelpers that use xgo/support/cmd for non-interactive capture.
+// os/exec is kept here intentionally for that streaming control surface.
 func gitCommand(args ...string) *exec.Cmd {
 	logGitCommand(args)
 	return exec.Command("git", args...)
 }
 
+// gitCommandDir builds a git command with Dir set. See gitCommand for os/exec rationale.
 func gitCommandDir(repoPath string, args ...string) *exec.Cmd {
 	fullArgs := append([]string{"-C", repoPath}, args...)
 	logGitCommand(fullArgs)
@@ -64,6 +72,7 @@ func gitCommandDir(repoPath string, args ...string) *exec.Cmd {
 	return cmd
 }
 
+// gitCommandWithEnv builds a git command with extra env. See gitCommand for os/exec rationale.
 func gitCommandWithEnv(repoPath string, extraEnv []string, args ...string) *exec.Cmd {
 	fullArgs := append([]string{"-C", repoPath}, args...)
 	logGitCommand(fullArgs)
@@ -72,10 +81,39 @@ func gitCommandWithEnv(repoPath string, extraEnv []string, args ...string) *exec
 	return cmd
 }
 
+// gitRunDir runs git in repoPath via xgo/support/cmd (non-interactive).
+func gitRunDir(repoPath string, args ...string) error {
+	fullArgs := append([]string{"-C", repoPath}, args...)
+	logGitCommand(fullArgs)
+	return xgocmd.Dir(repoPath).Run("git", args...)
+}
+
+// gitOutputDir captures git stdout via xgo/support/cmd (non-interactive).
+func gitOutputDir(repoPath string, args ...string) (string, error) {
+	fullArgs := append([]string{"-C", repoPath}, args...)
+	logGitCommand(fullArgs)
+	return xgocmd.Dir(repoPath).Output("git", args...)
+}
+
+// gitCombinedRunDir runs git capturing combined stdout+stderr (error messages).
+func gitCombinedRunDir(repoPath string, extraEnv []string, args ...string) ([]byte, error) {
+	fullArgs := append([]string{"-C", repoPath}, args...)
+	logGitCommand(fullArgs)
+	var buf bytes.Buffer
+	builder := xgocmd.Dir(repoPath).Stdout(&buf).Stderr(&buf)
+	if len(extraEnv) > 0 {
+		builder = builder.Env(extraEnv)
+	}
+	err := builder.Run("git", args...)
+	return buf.Bytes(), err
+}
+
 // runGitWorktreeAdd runs git worktree add. When verbose, streams stdout+stderr to
 // os.Stderr so git's own progress lines appear alongside the pre-command log.
+// Streaming requires *exec.Cmd; non-verbose path uses CombinedOutput on the cmd.
 func runGitWorktreeAdd(cmd *exec.Cmd) error {
 	if invocationVerbose {
+		// Interactive/streaming: keep os/exec Stdout/Stderr wiring.
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {

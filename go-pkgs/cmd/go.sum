@@ -37,8 +37,8 @@ github.com/xhd2015/lls v0.0.9/go.mod h1:+apFkQgvVXgO4S8/+ljANKZZzM3LDk78nPTgAYTP
 github.com/xhd2015/skills v0.0.16 h1:o1jpY2eOahSqE0RrMfPIq7a+DXzOWFL/L9QlkXW9gZ4=
 github.com/xhd2015/skills v0.0.16/go.mod h1:sQO/anTeiydpHF7yRvVbqbdbgmg+QyxpaiaVWnkOPdc=
 github.com/xhd2015/xgo v1.0.40/go.mod h1:LJxlcYSaXo/9YpsnB3yHh9NHe7BRettYCytaNGWY2BE=
-github.com/xhd2015/xgo v1.1.10 h1:3pFpn7Vy6hARAzI5oY2pD/kLx3aemTbV4kzCZj2vITg=
-github.com/xhd2015/xgo v1.1.10/go.mod h1:LJxlcYSaXo/9YpsnB3yHh9NHe7BRettYCytaNGWY2BE=
+github.com/xhd2015/xgo v1.2.0 h1:DT5mAx73ANIUFDx3Lz+QcKrCVoLV0B7HxCvchGMxJq0=
+github.com/xhd2015/xgo v1.2.0/go.mod h1:LJxlcYSaXo/9YpsnB3yHh9NHe7BRettYCytaNGWY2BE=
 github.com/yuin/goldmark v1.4.1/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 golang.design/x/clipboard v0.8.0 h1:6VEcH28wwcSgKc+vnxHHDWiRjrakTQIAJnPUrt3aOgg=

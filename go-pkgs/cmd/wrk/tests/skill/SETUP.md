@@ -1,18 +1,22 @@
 # Scenario
 
-**Feature**: wrk skill list|show|install for the wrk skill
+**Feature**: wrk skill --list|--show|--install for the single embedded wrk skill
 
 ```
 # early dispatch — no git checkout required
-wrk skill <subcommand> -> embedded SKILL.md (go:embed)
+wrk skill <flags> -> embedded SKILL.md (go:embed)
 
-# subcommands (no skill name argument)
-wrk skill list -> stdout wrk\n
-wrk skill show [--header] -> embedded SKILL.md or YAML header only
-wrk skill install [--cursor --dry-run] -> install.HandleInstall
+# flag actions (no skill name argument; Shape 1)
+wrk skill --list | -l -> stdout wrk\n
+wrk skill --show [--header] -> embedded SKILL.md or YAML header only
+wrk skill --install [--cursor --dry-run] -> install.HandleInstall
 
-# mutual exclusion
+# help / empty
+wrk skill | --help | -h -> skill-level usage (exit 0)
+
+# mutual exclusion + breaking change
 wrk skill ... + other mode flag -> non-zero exit
+wrk skill list|show|install (subcommand) -> non-zero exit
 ```
 
 ## Preconditions
@@ -28,7 +32,8 @@ wrk skill ... + other mode flag -> non-zero exit
 ## Steps
 
 1. Root `Setup` creates isolated `{WorkRoot}` and `{WorkRoot}/.wrk`.
-2. Descendants set `req.RepoDir` plus `req.Args` for the skill subcommand.
+2. Descendants set `req.RepoDir` plus `req.Args` for skill flag args after
+   the leading `skill` token.
 
 ## Context
 
@@ -37,6 +42,7 @@ wrk skill ... + other mode flag -> non-zero exit
 - Only `WRK_HOME` is passed via `skillWrkEnv`; no `WRK_SKILLS_ROOT`.
 - Stdout assertions use `assert.Output` v2 full-match templates where output is
   bounded; `show/basic` uses substring checks for embedded content.
+- User-facing help and list/show stdout must end with trailing `\n`.
 
 ```go
 import (
@@ -183,6 +189,31 @@ func assertEmbeddedSkillStdout(t *testing.T, stdout string) {
 	if !strings.HasPrefix(stdout, "---\n") {
 		t.Fatalf("stdout should start with YAML frontmatter, got:\n%s", stdout)
 	}
+	if !strings.HasSuffix(stdout, "\n") {
+		t.Fatalf("stdout should end with trailing newline, got:\n%q", stdout)
+	}
+}
+
+func assertSkillUsageStdout(t *testing.T, stdout, stderr string, exitCode int) {
+	t.Helper()
+	if exitCode != 0 {
+		t.Fatalf("expected exit 0 for skill help, got %d stderr=%q stdout=%q", exitCode, stderr, stdout)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("stderr should be empty for skill help, got %q", stderr)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		t.Fatal("expected non-empty skill usage on stdout")
+	}
+	if !strings.HasSuffix(stdout, "\n") {
+		t.Fatalf("skill usage stdout must end with trailing newline, got %q", stdout)
+	}
+	lower := strings.ToLower(stdout)
+	for _, want := range []string{"--list", "--show", "--install"} {
+		if !strings.Contains(lower, want) {
+			t.Fatalf("skill usage missing %q:\n%s", want, stdout)
+		}
+	}
 }
 
 func v2StdoutTemplate(body string) string {
@@ -239,6 +270,7 @@ func installDryRunCursorStdoutV2(t *testing.T, workRoot string) string {
 func ensureSkillHelpersUsed() {
 	_ = skillHeaderStdoutV2
 	_ = assertEmbeddedSkillStdout
+	_ = assertSkillUsageStdout
 	_ = installDryRunCursorStdoutV2
 	_ = cursorSkillInstallDir
 }

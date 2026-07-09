@@ -94,7 +94,7 @@ var confirmFromStdin bool
 func run(args []string) error {
 	var add, remove, rebase, list, which, back, clear, print, vscode, cd, force, worktree, pickerList bool
 	var addAlias string
-	var grep string
+	var grepPtr *string
 	args, err := lessflags.Bool("--add", &add).
 		String("--add-alias", &addAlias).
 		Bool("--rm,--remove", &remove).
@@ -109,7 +109,7 @@ func run(args []string) error {
 		Bool("-w,--worktree", &worktree).
 		Bool("-f,--force", &force).
 		Bool("--picker-list", &pickerList).
-		String("--grep", &grep).
+		String("--grep", &grepPtr).
 		Bool("--dry-run", &dryRun).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
 		Help("-h,--help", help).
@@ -118,19 +118,16 @@ func run(args []string) error {
 		return err
 	}
 
-	grepProvided := false
-	for _, a := range os.Args[1:] {
-		if a == "--grep" {
-			grepProvided = true
-			break
+	var grep string
+	if grepPtr != nil {
+		if *grepPtr == "" {
+			return fmt.Errorf("--grep requires a non-empty filter pattern")
 		}
-	}
-	if grepProvided && grep == "" {
-		return fmt.Errorf("--grep requires a non-empty filter pattern")
+		grep = *grepPtr
 	}
 
 	modeCount := 0
-	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd, worktree, pickerList, grep != ""} {
+	for _, enabled := range []bool{remove, add, addAlias != "", rebase, list, which, back, clear, print, vscode, cd, worktree, pickerList, grepPtr != nil} {
 		if enabled {
 			modeCount++
 		}

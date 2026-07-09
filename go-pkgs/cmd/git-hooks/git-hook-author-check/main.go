@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
+	lessflags "github.com/xhd2015/less-flags"
 )
 
 const help = `
@@ -22,7 +23,7 @@ Options:
   --not-email CONDITION             require author email not to match CONDITION
   --origin-domain DOMAIN            only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
-  -h, --help                        show help message
+  -h,--help                         show help message
 
 Conditions:
   value                             exact full match, case-insensitive
@@ -77,12 +78,11 @@ func run(args []string) error {
 }
 
 func runWithOutput(args []string, out io.Writer) error {
-	cfg, err := parseArgs(args)
+	cfg, err := parseArgs(args, out)
 	if err != nil {
 		return err
 	}
 	if cfg.showHelp {
-		fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
 		return nil
 	}
 	if len(cfg.checks) == 0 {
@@ -123,95 +123,88 @@ func runWithOutput(args []string, out io.Writer) error {
 	return errAuthorCheckFailed
 }
 
-func parseArgs(args []string) (config, error) {
+func parseArgs(args []string, out io.Writer) (config, error) {
 	var cfg config
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if matched, next, err := githook.ParseDomainFlag(args, i, &cfg.domainFilter); matched {
-			if err != nil {
-				return cfg, err
-			}
-			i = next
-			continue
-		}
-		switch {
-		case arg == "-h" || arg == "--help":
+	var originDomain *string
+	var excludeOriginDomain *string
+	var names []string
+	var emails []string
+	var notNames []string
+	var notEmails []string
+
+	remaining, err := lessflags.
+		String("--origin-domain", &originDomain).
+		String("--exclude-origin-domain", &excludeOriginDomain).
+		StringSlice("--name", &names).
+		StringSlice("--email", &emails).
+		StringSlice("--not-name", &notNames).
+		StringSlice("--not-email", &notEmails).
+		HelpFunc("-h,--help", func() {
+			fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
+		}).
+		HelpNoExit().
+		Parse(args)
+	if err != nil {
+		if errors.Is(err, lessflags.ErrHelp) {
 			cfg.showHelp = true
 			return cfg, nil
-		case arg == "--name":
-			i++
-			if i >= len(args) {
-				return cfg, fmt.Errorf("--name requires a value")
-			}
-			check, err := parseFieldCheck("name", args[i], false)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case strings.HasPrefix(arg, "--name="):
-			check, err := parseFieldCheck("name", strings.TrimPrefix(arg, "--name="), false)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case arg == "--email":
-			i++
-			if i >= len(args) {
-				return cfg, fmt.Errorf("--email requires a value")
-			}
-			check, err := parseFieldCheck("email", args[i], false)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case strings.HasPrefix(arg, "--email="):
-			check, err := parseFieldCheck("email", strings.TrimPrefix(arg, "--email="), false)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case arg == "--not-name":
-			i++
-			if i >= len(args) {
-				return cfg, fmt.Errorf("--not-name requires a value")
-			}
-			check, err := parseFieldCheck("name", args[i], true)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case strings.HasPrefix(arg, "--not-name="):
-			check, err := parseFieldCheck("name", strings.TrimPrefix(arg, "--not-name="), true)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case arg == "--not-email":
-			i++
-			if i >= len(args) {
-				return cfg, fmt.Errorf("--not-email requires a value")
-			}
-			check, err := parseFieldCheck("email", args[i], true)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case strings.HasPrefix(arg, "--not-email="):
-			check, err := parseFieldCheck("email", strings.TrimPrefix(arg, "--not-email="), true)
-			if err != nil {
-				return cfg, err
-			}
-			cfg.checks = append(cfg.checks, check)
-		case strings.HasPrefix(arg, "-"):
-			return cfg, fmt.Errorf("unknown flag: %s", arg)
-		default:
-			return cfg, fmt.Errorf("unexpected arg: %s", arg)
 		}
+		return cfg, mapUnknownFlagErr(err)
 	}
+	if len(remaining) > 0 {
+		return cfg, fmt.Errorf("unexpected arg: %s", remaining[0])
+	}
+
+	if originDomain != nil {
+		cfg.domainFilter.OriginDomain = *originDomain
+	}
+	if excludeOriginDomain != nil {
+		cfg.domainFilter.ExcludeOriginDomain = *excludeOriginDomain
+	}
+
+	// Preserve relative order within each flag family; process families in
+	// declaration order matching common CLI usage.
+	for _, raw := range names {
+		check, err := parseFieldCheck("name", raw, false)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.checks = append(cfg.checks, check)
+	}
+	for _, raw := range emails {
+		check, err := parseFieldCheck("email", raw, false)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.checks = append(cfg.checks, check)
+	}
+	for _, raw := range notNames {
+		check, err := parseFieldCheck("name", raw, true)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.checks = append(cfg.checks, check)
+	}
+	for _, raw := range notEmails {
+		check, err := parseFieldCheck("email", raw, true)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.checks = append(cfg.checks, check)
+	}
+
 	if err := cfg.domainFilter.Normalize(); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+func mapUnknownFlagErr(err error) error {
+	const prefix = "unrecognized flag: "
+	if msg := err.Error(); strings.HasPrefix(msg, prefix) {
+		return fmt.Errorf("unknown flag: %s", strings.TrimPrefix(msg, prefix))
+	}
+	return err
 }
 
 func parseFieldCheck(field string, raw string, negate bool) (fieldCheck, error) {

@@ -11,6 +11,7 @@ import (
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
 	"github.com/xhd2015/gitops/git"
 	"github.com/xhd2015/gitops/gitwrite"
+	lessflags "github.com/xhd2015/less-flags"
 )
 
 const help = `
@@ -23,7 +24,7 @@ Options:
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
   --auto-unstage                    automatically unstage matched files instead of
                                     failing (use for hooks that run early)
-  -h, --help                        show help message
+  -h,--help                         show help message
 `
 
 var errPatternsMatched = errors.New("patterns matched")
@@ -50,12 +51,11 @@ func run(args []string) error {
 }
 
 func runWithOutput(args []string, out io.Writer) error {
-	cfg, err := parseArgs(args)
+	cfg, err := parseArgs(args, out)
 	if err != nil {
 		return err
 	}
 	if cfg.showHelp {
-		fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
 		return nil
 	}
 
@@ -95,29 +95,40 @@ func runWithOutput(args []string, out io.Writer) error {
 	return nil
 }
 
-func parseArgs(args []string) (config, error) {
+func parseArgs(args []string, out io.Writer) (config, error) {
 	var cfg config
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if matched, next, err := githook.ParseDomainFlag(args, i, &cfg.domainFilter); matched {
-			if err != nil {
-				return cfg, err
-			}
-			i = next
-			continue
-		}
-		switch {
-		case arg == "-h" || arg == "--help":
+	var originDomain *string
+	var excludeOriginDomain *string
+	var autoUnstage *bool
+
+	remaining, err := lessflags.
+		String("--origin-domain", &originDomain).
+		String("--exclude-origin-domain", &excludeOriginDomain).
+		Bool("--auto-unstage", &autoUnstage).
+		HelpFunc("-h,--help", func() {
+			fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
+		}).
+		HelpNoExit().
+		Parse(args)
+	if err != nil {
+		if errors.Is(err, lessflags.ErrHelp) {
 			cfg.showHelp = true
 			return cfg, nil
-		case arg == "--auto-unstage":
-			cfg.autoUnstage = true
-		case strings.HasPrefix(arg, "-"):
-			return cfg, fmt.Errorf("unknown flag: %s", arg)
-		default:
-			cfg.patterns = append(cfg.patterns, arg)
 		}
+		return cfg, mapUnknownFlagErr(err)
 	}
+
+	if originDomain != nil {
+		cfg.domainFilter.OriginDomain = *originDomain
+	}
+	if excludeOriginDomain != nil {
+		cfg.domainFilter.ExcludeOriginDomain = *excludeOriginDomain
+	}
+	if autoUnstage != nil {
+		cfg.autoUnstage = *autoUnstage
+	}
+	cfg.patterns = remaining
+
 	if err := cfg.domainFilter.Normalize(); err != nil {
 		return cfg, err
 	}
@@ -125,6 +136,14 @@ func parseArgs(args []string) (config, error) {
 		return cfg, fmt.Errorf("at least one pattern is required")
 	}
 	return cfg, nil
+}
+
+func mapUnknownFlagErr(err error) error {
+	const prefix = "unrecognized flag: "
+	if msg := err.Error(); strings.HasPrefix(msg, prefix) {
+		return fmt.Errorf("unknown flag: %s", strings.TrimPrefix(msg, prefix))
+	}
+	return err
 }
 
 func matchesAny(name string, patterns []string) (bool, error) {

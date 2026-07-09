@@ -24,6 +24,20 @@ Examples:
   kool github repo list --help     show list command help
 `
 
+const repoHelp = `
+kool github repo - repository commands
+
+Usage: kool github repo <cmd> [OPTIONS]
+
+Available commands:
+  list                             list repositories
+  help                             show help message
+
+Examples:
+  kool github repo list            list repositories
+  kool github repo list --help     show list command options
+`
+
 const listHelp = `
 kool github repo list - List GitHub repositories
 
@@ -54,7 +68,8 @@ func RunCLI(args []string) error {
 
 func runCLI(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("commands: repo, help")
+		fmt.Println(strings.TrimPrefix(cliHelp, "\n"))
+		return nil
 	}
 	switch args[0] {
 	case "-h", "--help", "help":
@@ -69,11 +84,12 @@ func runCLI(args []string) error {
 
 func runRepoCLI(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("commands: list, help")
+		fmt.Println(strings.TrimPrefix(repoHelp, "\n"))
+		return nil
 	}
 	switch args[0] {
 	case "-h", "--help", "help":
-		fmt.Println(strings.TrimPrefix(listHelp, "\n"))
+		fmt.Println(strings.TrimPrefix(repoHelp, "\n"))
 		return nil
 	case "list":
 		return runRepoList(args[1:])

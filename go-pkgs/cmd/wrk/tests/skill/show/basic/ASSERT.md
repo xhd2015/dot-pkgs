@@ -3,6 +3,7 @@
 - Exit code 0.
 - Stdout is the embedded `SKILL.md` from the wrk binary.
 - Stdout contains `WRK_SKILL_DOCTEST_MARKER` and YAML `name: wrk`.
+- Stdout ends with trailing `\n`.
 - Stderr is empty.
 
 ## Side Effects

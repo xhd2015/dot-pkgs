@@ -14,7 +14,8 @@ and auth error surfacing. Mock `gh` backs integration leaves.
 
 - **`RunCLI`** — parses `args` (tokens after `kool github`), routes subcommands,
   prints usage or formatted results, returns error on failure.
-- **`repo` subcommand** — dispatches `list` and help; errors on unknown verbs.
+- **`repo` subcommand** — dispatches `list` and dedicated repo-level help;
+  errors on unknown verbs.
 - **`repo list`** — parses less-flags (`--owner`, `--search-description`,
   `--search-code`, `--limit`, `--json`), calls `ListRepos`, formats output.
 - **`ListRepos`** — library entry used by `repo list`; auth gate and search
@@ -24,10 +25,14 @@ and auth error surfacing. Mock `gh` backs integration leaves.
 
 ### Behaviors
 
-- Empty or unknown top-level args → usage or unrecognized-command error on
-  stderr, non-zero exit.
-- `repo` with no subcommand or unknown subcommand → repo usage or error.
-- `repo list --help` → list usage on stdout, exit 0.
+- Empty top-level args → same top-level help as `--help`/`-h`/`help` on stdout,
+  exit 0 (trailing `\n`).
+- Unknown top-level command → unrecognized-command error on stderr, non-zero exit.
+- `repo` alone or `repo --help`/`-h`/`help` → **repo-level** help (mentions
+  `list` and that `repo list --help` shows list options); not list leaf help;
+  exit 0.
+- Unknown `repo` subcommand → error.
+- `repo list --help` → list usage on stdout (flags: `--owner`, `--json`, …), exit 0.
 - Default output: one line per repo `{full_name}\t{matched_by}` (comma-joined).
 - `--json`: indented JSON array of `RepoResult` objects.
 - Errors from `ListRepos` → message on stderr, non-zero exit.
@@ -39,6 +44,9 @@ and auth error surfacing. Mock `gh` backs integration leaves.
 cli/
 ├── help
 │   ├── top-level                 RunCLI(["--help"])
+│   ├── empty-args                RunCLI([])
+│   ├── repo                      RunCLI(["repo"])
+│   ├── repo-help                 RunCLI(["repo","--help"])
 │   └── repo-list                 RunCLI(["repo","list","--help"])
 ├── errors
 │   ├── unknown-command           RunCLI(["nope"])
@@ -61,6 +69,9 @@ cli/
 | Leaf | Description |
 |------|-------------|
 | `help/top-level` | Top-level `--help` prints usage, exit 0 |
+| `help/empty-args` | Empty args print top-level usage, exit 0 |
+| `help/repo` | Bare `repo` prints repo-level help, exit 0 |
+| `help/repo-help` | `repo --help` prints repo-level help, exit 0 |
 | `help/repo-list` | `repo list --help` prints list flags, exit 0 |
 | `errors/unknown-command` | Unrecognized top-level command |
 | `errors/unknown-repo-sub` | Unrecognized `repo` subcommand |

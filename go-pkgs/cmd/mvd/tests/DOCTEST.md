@@ -111,6 +111,7 @@ mvd tests
 | mode-clear | clear-by-basename | Clear by basename |
 | mode-error | non-existent-src | Error when SRC does not exist |
 | mode-error | move-non-existent-basename | Error when basename matches nothing |
+| mode-error | grep-empty | `--grep ''` → non-zero; requires non-empty pattern |
 | mode-dollar-expansion | add-with-dollar | --add with $X/myproject |
 | mode-dollar-expansion | back-with-dollar | --back with $X/myproject |
 | mode-dollar-expansion | clear-with-dollar | --clear with $X/myproject |
