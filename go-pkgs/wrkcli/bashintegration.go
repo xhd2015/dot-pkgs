@@ -110,6 +110,7 @@ var wrkCompletionFlags = []string{
 	"--rm",
 	"--where",
 	"--cd",
+	"--main",
 	"--dep",
 	"--all-deps",
 	"--dry-run",
@@ -138,6 +139,7 @@ var bashIntegrationDisallowedFlags = []string{
 	"--done", "--merge-back", "-l", "--list", "--repos", "--projects",
 	"--fetch", "-v", "--verbose", "--color", "--add", "--rm", "--where",
 	"--cd",
+	"--main",
 	"--dep", "--all-deps", "-t", "--task", "--set-task", "-y", "--yes",
 	"--confirm-from-stdin", "--no-in-module-replace",
 }

@@ -51,6 +51,7 @@ var wrkModeFlags = map[string]struct{}{
 	"--where":                {},
 	"--cd":                   {},
 	"--no-interceptor":       {},
+	"--main":                 {},
 }
 
 func skillUsage() string {

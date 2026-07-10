@@ -118,6 +118,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var noCd bool
 	var cd bool
 	var noInterceptor bool
+	var mainFlag bool
 	// *string targets: nil = flag absent; non-nil empty = present but empty.
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("--merge-back", &mergeBack).
@@ -136,6 +137,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--no-cd", &noCd).
 		Bool("--cd", &cd).
 		Bool("--no-interceptor", &noInterceptor).
+		Bool("--main", &mainFlag).
 		Bool("--all-deps", &allDeps).
 		Bool("--dry-run", &dryRun).
 		String("--dep", &depPath).
@@ -160,7 +162,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	removeFlagSet := removePath != nil
 	whereFlagSet := wherePath != nil
 
-	ctx.command = resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, done, list, status, repos, mergeBack, depPath, allDeps, cd)
+	ctx.command = resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, done, list, status, repos, mergeBack, depPath, allDeps, cd, mainFlag)
 	ctx.eventArgs = extractEventArgs(args, remaining)
 
 	setInvocationVerbose(verbose)
@@ -214,14 +216,36 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		}
 	}
 
+	// --main takes no path positional. Mutual exclusion is checked later; if another
+	// mode flag is also set, prefer that error over unexpected arguments.
+	if mainFlag {
+		otherMode := done || list || status || repos || projects || addFlagSet || removeFlagSet ||
+			whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet ||
+			setTaskFlagSet || fetchFlag || noCd || cd || spawnTarget != ""
+		if otherMode {
+			ctx.workDir = origWd
+			if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
+				return err
+			}
+			return fmt.Errorf("wrk: --main is mutually exclusive with other modes")
+		}
+		if len(remaining) > 0 {
+			ctx.workDir = origWd
+			if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
+				return err
+			}
+			return fmt.Errorf("wrk: unexpected arguments")
+		}
+	}
+
 	// Resolve sourceDir to absolute; default to process cwd when absent.
 	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
-	createMode := isCreateMode(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, repos, status, depPath, allDeps, list, done, mergeBack, cd)
+	createMode := isCreateMode(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, repos, status, depPath, allDeps, list, done, mergeBack, cd, mainFlag)
 	dirHint := &DirHintOptions{
 		RawArgs:     args,
 		Positionals: remaining,
 	}
-	// Basename fallback: create/status/list/repos/--cd.
+	// Basename fallback: create/status/list/repos/--cd. --main uses cwd only.
 	workDir, err := resolveSourceWorkDir(origWd, sourceDir, createMode || status || list || repos || cd, wrkHome, dirHint)
 	if err != nil {
 		return err
@@ -249,7 +273,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --set-task is mutually exclusive with all other modes.
-	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd) {
+	if setTaskFlagSet && (taskFlagSet || done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd || mainFlag) {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
@@ -260,7 +284,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
 	// --task is only valid with create mode.
-	if taskFlagSet && (done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || mergeBack || cd) {
+	if taskFlagSet && (done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || mergeBack || cd || mainFlag) {
 		return fmt.Errorf("wrk: --task is mutually exclusive with --done, --merge-back, --list, --status, --repos, --projects, --add, --rm, --where, --dep and --all-deps")
 	}
 
@@ -273,25 +297,28 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	if done && mergeBack {
 		return fmt.Errorf("wrk: --done and --merge-back are mutually exclusive")
 	}
-	if repos && (done || list || status || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd) {
+	if repos && (done || list || status || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd || mainFlag) {
 		return fmt.Errorf("wrk: --repos is mutually exclusive with other modes")
 	}
-	if projects && (done || list || status || repos || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || cd) {
+	if projects && (done || list || status || repos || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || cd || mainFlag) {
 		return fmt.Errorf("wrk: --projects is mutually exclusive with other modes")
 	}
-	if addFlagSet && (done || list || status || repos || projects || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || cd) {
+	if addFlagSet && (done || list || status || repos || projects || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || cd || mainFlag) {
 		return fmt.Errorf("wrk: --add is mutually exclusive with other modes")
 	}
-	if removeFlagSet && (done || list || status || repos || projects || addFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || cd) {
+	if removeFlagSet && (done || list || status || repos || projects || addFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || cd || mainFlag) {
 		return fmt.Errorf("wrk: --rm is mutually exclusive with other modes")
 	}
-	if whereFlagSet && (done || list || status || repos || projects || addFlagSet || removeFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || fetchFlag || cd) {
+	if whereFlagSet && (done || list || status || repos || projects || addFlagSet || removeFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || fetchFlag || cd || mainFlag) {
 		return fmt.Errorf("wrk: --where is mutually exclusive with other modes")
 	}
-	if cd && (done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || fetchFlag || noCd) {
+	if cd && (done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || fetchFlag || noCd || mainFlag) {
 		return fmt.Errorf("wrk: --cd is mutually exclusive with other modes")
 	}
-	if status && (done || list || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd) {
+	if mainFlag && (done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || fetchFlag || noCd || cd) {
+		return fmt.Errorf("wrk: --main is mutually exclusive with other modes")
+	}
+	if status && (done || list || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd || mainFlag) {
 		return fmt.Errorf("wrk: --status is mutually exclusive with other modes")
 	}
 	if confirmFromStdin && !done && !mergeBack {
@@ -300,10 +327,10 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	if noInModuleReplace && !done {
 		return fmt.Errorf("wrk: --no-in-module-replace is only valid with --done")
 	}
-	if depPath != "" && (done || list || mergeBack || cd) {
+	if depPath != "" && (done || list || mergeBack || cd || mainFlag) {
 		return fmt.Errorf("wrk: --dep is mutually exclusive with --done, --merge-back and --list")
 	}
-	if allDeps && (depPath != "" || done || list || mergeBack || cd) {
+	if allDeps && (depPath != "" || done || list || mergeBack || cd || mainFlag) {
 		return fmt.Errorf("wrk: --all-deps is mutually exclusive with --dep, --done, --merge-back and --list")
 	}
 	if dryRun && !allDeps {
@@ -311,7 +338,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	}
 
 	// spawnTarget only applies to the create path. Reject for any other mode.
-	if spawnTarget != "" && (depPath != "" || allDeps || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || done || mergeBack || cd) {
+	if spawnTarget != "" && (depPath != "" || allDeps || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || done || mergeBack || cd || mainFlag) {
 		return fmt.Errorf("wrk: unexpected arguments")
 	}
 	if whereFlagSet && len(remaining) > 0 {
@@ -330,6 +357,9 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	}
 	if whereFlagSet {
 		return runWhere(wrkHome, *wherePath)
+	}
+	if mainFlag {
+		return runMain(workDir)
 	}
 	if cd {
 		return runCd(workDir)
@@ -416,6 +446,7 @@ Flags:
   --rm <dir>                      remove a recorded main repository path
   --where <basename>              look up saved project path(s) by basename
   --cd <path|basename>            jump into directory (in-place follow-up or interactive shell)
+  --main                          open nested shell at main repository root for this checkout
   --dep <path>                    spawn a dependency worktree under ./external
   --all-deps                      link every required dep from registered projects
   --dry-run                       with --all-deps: plan only, no writes
