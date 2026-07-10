@@ -221,7 +221,9 @@ func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
 		return
 	}
 
-	if attachMode == "screen" {
+	// screen = interactive/writer path; snapshot = read-only one-shot (does not claim writer).
+	// Both prefer a rendered screen frame when available so SnapshotText stays faithful.
+	if attachMode == "screen" || attachMode == "snapshot" {
 		if snapshot, ok := renderScreenSnapshot(scrollbackCopy, cols, rows); ok {
 			conn.WriteMessage(websocket.BinaryMessage, snapshot)
 			return
