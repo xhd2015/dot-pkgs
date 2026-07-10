@@ -56,7 +56,7 @@ func (ctx *invocationContext) autoRecord() error {
 	return nil
 }
 
-func resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, done, list, status, repos, mergeBack bool, depPath string, allDeps bool) string {
+func resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, done, list, status, repos, mergeBack bool, depPath string, allDeps, cd bool) string {
 	switch {
 	case setTaskFlagSet:
 		return "set-task"
@@ -68,6 +68,8 @@ func resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFl
 		return "rm"
 	case whereFlagSet:
 		return "where"
+	case cd:
+		return "cd"
 	case repos:
 		return "repos"
 	case status:

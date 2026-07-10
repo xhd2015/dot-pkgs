@@ -49,6 +49,7 @@ var wrkModeFlags = map[string]struct{}{
 	"--task":                 {},
 	"--set-task":             {},
 	"--where":                {},
+	"--cd":                   {},
 }
 
 func skillUsage() string {

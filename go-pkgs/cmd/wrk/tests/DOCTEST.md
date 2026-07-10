@@ -6,8 +6,9 @@
 Decision tree covering the `wrk` CLI: no-args worktree creation, optional `wrk <dir>`
 first positional, `wrk <dir> <target-dir>` second positional spawn-location override,
 `wrk --dep` external dependency worktrees, `wrk --done` merge-back
-(including external cascade), `wrk --list`, `wrk --status`, and project persistence
-(`wrk --projects`, `wrk --add`, `wrk --rm`, auto-record, events.jsonl).
+(including external cascade), `wrk --list`, `wrk --status`, project persistence
+(`wrk --projects`, `wrk --add`, `wrk --rm`, auto-record, events.jsonl), and
+`wrk --cd` directory jump (in-place follow-up or fallback interactive shell).
 
 # DSN (Domain Specific Notion)
 
@@ -62,7 +63,10 @@ first positional, `wrk <dir> <target-dir>` second positional spawn-location over
 - **wrk --rm `<dir>`** — standalone mode; `--rm <dir>` (no `--remove` alias); `--rm` consumes the next argument as `<dir>`; mutually exclusive with all other modes; requires non-empty path (`wrk: --rm requires a path argument`). Help text: `--rm <dir>  remove a recorded main repository path`. Resolves target: `filepath.Abs` + `storage.NormalizePath`; if path exists and is inside a git work tree → resolve to main repo via `worktree.ShowToplevel` + `worktree.ResolveMainRepo` (same as `--add`); if path does not exist → use normalized absolute path as-is (stale/moved entries). **Success (entry removed)**: exit 0; stdout = removed main-repo absolute path (single line, trimmed). **Idempotent (not in projects.json)**: exit 0; empty stdout; no error. Does not delete worktrees, git repos, or events.jsonl history. Appends event `command: "rm"`, `args: ["--rm", "<path-arg>"]`, `exit_code: 0`. Auto-record still runs before remove.
 - **wrk --where `<basename>`** — standalone read-only lookup mode; `--where` consumes the next argument as a **basename only** (no path separators, not absolute); loads `{WRK_HOME}/projects.json` via `storage.FindProjectsByBasename(wrkHome, basename)` matching `filepath.Base(NormalizePath(p.Path)) == basename`; **does not** stat cwd, `filepath.Abs(name)`, or resolve paths on disk (unlike create-mode basename fallback). **0 matches** → non-zero exit, stderr no-match message, empty stdout. **1 match** → exit 0, stdout = one full absolute path + trailing `\n`. **2+ matches** → exit 0, stdout = all matching full paths sorted lexicographically, one per line, trailing `\n` after last line (no TTY prompt). **Empty/missing arg** (`wrk --where`) → non-zero exit, stderr `wrk: --where requires a path argument`. **Non-basename input** (contains `/` or `\`, or absolute path) → non-zero exit, basename-only rejection. **Mutually exclusive** with all other modes (`--status`, `--list`, `--projects`, create, etc.). **Extra positionals** → non-zero exit, `wrk: unexpected arguments`. No writes (no git ops, no worktree creation, no `projects.json` mutation). Appends event `command: "where"`, `args: ["--where", "<basename>"]`. Auto-record still runs on invocation.
 - **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
-- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`, `where`), `work_dir` (resolved effective cwd), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
+- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`, `where`, `cd`), `work_dir` (resolved effective cwd; for `--cd` the resolved absolute target path), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
+- **wrk --cd** — standalone mode: `Bool("--cd")` plus **exactly one** path positional. Forms: `wrk --cd <path|basename>` and `wrk <path|basename> --cd`. Resolves path via `resolveDirArg(..., allowBasenameFallback=true, ...)` (local dir under cwd wins; else `projects.json` basename lookup; ambiguous non-TTY lists candidates). **Git not required** for the target. **Branch A (in-place)**: when `WRK_FOLLOWUP_FILE` is non-empty, write `cd /absolute/path\n` via `writeFollowupCD(false, abs)` unconditionally (no create home-gate / done cwd-gate), **empty stdout**, exit 0, do **not** launch a shell. **Branch B (fallback)**: channel unset/empty → stderr warning containing `wrk --bash-integration --install`, stdout = absolute path + trailing `\n`, then `shell/interactive.LoginInteractive(abs, filepath.Base(abs), optional extraEnv...)` and propagate shell exit code. Mutually exclusive with create / `--done` / `--merge-back` / `--list` / `--status` / `--repos` / `--projects` / `--add` / `--rm` / `--where` / `--dep` / `--all-deps` / `--task` / `--set-task` / spawn target / **`--no-cd`**. Missing path → `wrk: --cd requires a path argument`. Extra positionals → `wrk: unexpected arguments`. Event `command: "cd"`. Doctest harness: `Request.UseFollowupEnv` + `FollowupFile` for Branch A; `installFakeBash` (`FakeShellDir` / `FakeShellLog` / `SHELL`) so Branch B never hangs CI.
+- **Request.FollowupFile / UseFollowupEnv** — when `UseFollowupEnv` is true, root `Run` truncates `FollowupFile` and exports `WRK_FOLLOWUP_FILE` (in-place channel for `--cd` and related tests).
+- **Request.FakeShellDir / FakeShellLog / FakeShellExit / ShellEnv** — fallback `--cd` harness: prepend fake `bash` on PATH, set `SHELL`, `WRK_FAKE_SHELL_LOG`, and optional non-zero `WRK_FAKE_SHELL_EXIT` so `LoginInteractive` cannot hang.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
 - **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd as a **directory** (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Cwd file collision** (new): when `filepath.Join(cwd, <dir>)` exists and is a **regular file** (not a directory), do not proceed to git-repo resolution; instead load `projects.json` and emit guided stderr. **1** registered match → multi-line stderr: `wrk: <abs-cwd-file> exists and is a file`, `wrk: "<basename>" matches registered project(s):`, one indented project path, `wrk: use \`wrk <concrete-saved-path> <reconstructed-args>\` instead` (hint preserves user flags/args such as `-t`, `--status`, `--dep`, spawn target). **2+** matches → same shape listing all project paths (lex order) and hint `wrk: use \`wrk <full-path> <reconstructed-args>\` instead` (literal `<full-path>` placeholder). **0** matches → single line `wrk: <abs-cwd-file> exists and is a file` only (no registry block, no hint). Exit non-zero; stdout empty; no worktree created. Directory blocking behavior is unchanged. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup. `--where` unchanged (no cwd stat).
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
@@ -429,6 +433,32 @@ wrk tests
     │   └── with-status/          # --where spl --status → mutually exclusive
     └── cwd-exists/
         └── no-local-fallback/    # ./spl in cwd (non-git) + saved spl → saved path only
+└── cd/                           # wrk --cd jump (in-place follow-up | fallback shell)
+    ├── in-place/                 # WRK_FOLLOWUP_FILE set → empty stdout + cd follow-up
+    │   ├── abs-path/             # wrk --cd /abs
+    │   ├── relative-path/        # wrk rel/target --cd
+    │   └── basename-expanded/    # wrk --cd myrepo → follow-up uses expanded abs
+    ├── fallback/                 # channel closed → stdout abs + install hint + shell
+    │   ├── abs-path/             # fake bash; cwd = target
+    │   ├── relative-path/
+    │   ├── basename-single/      # one projects match
+    │   └── shell-exit-nonzero/   # fake bash exit 42 → wrk 42
+    ├── syntax-forms/             # flag-then-path vs path-then-flag (in-place)
+    │   ├── flag-then-path/       # wrk --cd PATH
+    │   └── path-then-flag/       # wrk PATH --cd
+    ├── resolution/               # arg/path errors + local basename wins
+    │   ├── missing-arg/          # wrk --cd → requires path
+    │   ├── no-match/             # basename 0 matches
+    │   ├── missing-path/         # abs missing
+    │   ├── not-a-directory/      # path is a file
+    │   ├── ambiguous-non-tty/    # two saved basenames
+    │   └── local-basename/       # ./myrepo wins over projects
+    ├── mutual-exclusion/
+    │   ├── with-list/
+    │   ├── with-no-cd/
+    │   └── with-where/
+    └── events/
+        └── command-cd/           # events.jsonl command "cd"
 ```
 
 ## Test Case Index
@@ -660,6 +690,25 @@ wrk tests
 | 131 | where/empty-arg/error | `wrk --where` (no value) → requires argument |
 | 132 | where/mutual-exclusion/with-status | Saved `spl`; `wrk --where spl --status` → mutually exclusive |
 | 133 | where/cwd-exists/no-local-fallback | `./spl` in cwd (non-git) + saved `spl` → stdout saved path only |
+| 134 | cd/in-place/abs-path | `WRK_FOLLOWUP_FILE` + `wrk --cd /abs` → empty stdout; follow-up `cd /abs` |
+| 135 | cd/in-place/relative-path | in-place `wrk rel/target --cd` → follow-up expanded abs |
+| 136 | cd/in-place/basename-expanded | in-place `wrk --cd myrepo` → follow-up uses saved abs not basename |
+| 137 | cd/fallback/abs-path | channel closed; stdout abs; install hint; fake shell cwd=abs |
+| 138 | cd/fallback/relative-path | channel closed; relative path resolves under cwd |
+| 139 | cd/fallback/basename-single | one projects match → stdout saved abs + shell |
+| 140 | cd/fallback/shell-exit-nonzero | fake shell exit 42 → wrk exit 42 |
+| 141 | cd/syntax-forms/flag-then-path | `wrk --cd PATH` in-place success |
+| 142 | cd/syntax-forms/path-then-flag | `wrk PATH --cd` in-place success (equivalent) |
+| 143 | cd/resolution/missing-arg | `wrk --cd` → requires path argument |
+| 144 | cd/resolution/no-match | basename 0 matches → does not exist |
+| 145 | cd/resolution/missing-path | missing abs → does not exist |
+| 146 | cd/resolution/not-a-directory | file path → not a directory |
+| 147 | cd/resolution/ambiguous-non-tty | two saved basenames → error listing candidates |
+| 148 | cd/resolution/local-basename | local `./myrepo` wins over projects entry |
+| 149 | cd/mutual-exclusion/with-list | `--cd` + `--list` → mutually exclusive |
+| 150 | cd/mutual-exclusion/with-no-cd | `--cd` + `--no-cd` → error |
+| 151 | cd/mutual-exclusion/with-where | `--cd` + `--where` → mutually exclusive |
+| 152 | cd/events/command-cd | success → `events.jsonl` `command: "cd"`, args include `--cd` |
 
 ## How to Run
 
@@ -815,10 +864,25 @@ doctest vet ./tests/where
 doctest test ./tests/where
 doctest test ./tests/where/single-match/basic
 doctest test ./tests/where/ambiguous/two-matches
+
+# Run --cd leaves (expect RED until runCd + shell/interactive wired)
+doctest vet ./tests/cd
+doctest test ./tests/cd
+doctest test ./tests/cd/in-place
+doctest test ./tests/cd/fallback
+doctest test ./tests/cd/in-place/abs-path
+doctest test ./tests/cd/fallback/abs-path
+doctest test ./tests/cd/fallback/shell-exit-nonzero
+doctest test ./tests/cd/resolution/missing-arg
+doctest test ./tests/cd/events/command-cd
 ```
+
 
 ```go
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -855,6 +919,14 @@ type Request struct {
 	FakeHome           string // git-lfs-hook tests: temp home with .local/bin/git-lfs
 	UseMinimalPath     bool   // git-lfs-hook tests: run wrk with PATH=/usr/bin:/bin
 	UseScriptTTY       bool   // yes-flag tests: run wrk under `script` fake TTY (darwin/linux)
+
+	// --cd / follow-up channel / fake interactive shell (cd/ leaves)
+	FollowupFile   string // path for WRK_FOLLOWUP_FILE content checks
+	UseFollowupEnv bool   // export WRK_FOLLOWUP_FILE to wrk (in-place channel open)
+	FakeShellDir   string // bin dir prepended to PATH containing fake "bash"
+	FakeShellLog   string // path where fake bash records cwd/args
+	FakeShellExit  int    // exit code of fake bash (default 0; set via env for non-zero)
+	ShellEnv       string // when set, export SHELL=<value> (detect.Shell basename)
 }
 
 type Response struct {
@@ -867,6 +939,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	bin := getWrkBin(t)
 	args := buildWrkCLIArgs(req)
 
+	if err := prepareFollowupFile(req); err != nil {
+		return nil, err
+	}
+
 	if req.UseScriptTTY {
 		return execScriptTTYWrk(t, req, bin, args)
 	}
@@ -875,5 +951,16 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 	cmd.Dir = req.RepoDir
 	cmd.Env = wrkEnv(req)
 	return captureCommandOutput(cmd, req.StdinInput)
+}
+
+// prepareFollowupFile truncates FollowupFile so in-place --cd leaves can detect writes.
+func prepareFollowupFile(req *Request) error {
+	if req.FollowupFile == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(req.FollowupFile), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(req.FollowupFile, nil, 0o644)
 }
 ```

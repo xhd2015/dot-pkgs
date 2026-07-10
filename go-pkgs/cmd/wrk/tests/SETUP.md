@@ -671,6 +671,7 @@ func wrkEnv(req *Request) []string {
 		if req.ProjectsPerfLog != "" {
 			env = append(env, "WRK_PROJECTS_PERF_LOG="+req.ProjectsPerfLog)
 		}
+		env = appendCDEnv(env, req)
 		return env
 	}
 	env := append(os.Environ(), "WRK_HOME="+req.WrkHome, "WRK_DATE="+wrkDate)
@@ -685,6 +686,40 @@ func wrkEnv(req *Request) []string {
 	}
 	if req.ProjectsPerfLog != "" {
 		env = append(env, "WRK_PROJECTS_PERF_LOG="+req.ProjectsPerfLog)
+	}
+	env = appendCDEnv(env, req)
+	return env
+}
+
+// appendCDEnv adds --cd test harness env: WRK_FOLLOWUP_FILE, fake-shell PATH/SHELL,
+// and WRK_FAKE_SHELL_* for the shim that LoginInteractive must resolve without hanging.
+func appendCDEnv(env []string, req *Request) []string {
+	if req.UseFollowupEnv && req.FollowupFile != "" {
+		env = append(env, "WRK_FOLLOWUP_FILE="+req.FollowupFile)
+	}
+	if req.FakeShellDir != "" {
+		// Prepend fake shell bin so exec.Command("bash", ...) / PATH lookups hit the shim.
+		pathPrefix := req.FakeShellDir
+		found := false
+		for i, e := range env {
+			if strings.HasPrefix(e, "PATH=") {
+				env[i] = "PATH=" + pathPrefix + string(os.PathListSeparator) + strings.TrimPrefix(e, "PATH=")
+				found = true
+				break
+			}
+		}
+		if !found {
+			env = append(env, "PATH="+pathPrefix+string(os.PathListSeparator)+os.Getenv("PATH"))
+		}
+	}
+	if req.ShellEnv != "" {
+		env = append(env, "SHELL="+req.ShellEnv)
+	}
+	if req.FakeShellLog != "" {
+		env = append(env, "WRK_FAKE_SHELL_LOG="+req.FakeShellLog)
+	}
+	if req.FakeShellExit != 0 {
+		env = append(env, fmt.Sprintf("WRK_FAKE_SHELL_EXIT=%d", req.FakeShellExit))
 	}
 	return env
 }
@@ -744,5 +779,7 @@ func ensureHelpersUsed() {
 	_ = branchNameWithTask
 	_ = createWorktreeWithTask
 	_ = wrkEnv
+	_ = appendCDEnv
+	_ = prepareFollowupFile
 }
 ```
