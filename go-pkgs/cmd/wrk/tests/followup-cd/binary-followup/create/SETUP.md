@@ -10,10 +10,15 @@ wrk <mainRepo> -> follow-up: cd <new-worktree>
 wrk -> worktree created; follow-up empty
 
 # explicit second positional <target-dir> (missing or existing parent)
-# even from FakeHome with WRK_FOLLOWUP_FILE set → follow-up always empty
+# even from FakeHome with WRK_FOLLOWUP_FILE set → follow-up empty (no auto-cd)
+# unless --force-cd is also set
 wrk <mainRepo> <target> -> worktree at/under target; follow-up empty
 
-# --no-cd or unset env always suppress write
+# --force-cd bypasses home gate (channel open or interactive fallback)
+cwd=main; wrk --force-cd + WRK_FOLLOWUP_FILE -> cd <worktree>
+cwd=main; wrk --force-cd (no channel) -> install hint + shell @ worktree
+
+# --no-cd or unset env always suppress write (without --force-cd)
 ```
 
 ## Steps

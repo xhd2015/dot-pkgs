@@ -49,3 +49,26 @@ func runCd(absDir string, execArgs []string) error {
 	}
 	return runExecInDir(absDir, execArgs)
 }
+
+// forceLandInDir lands the user in dest after successful create/--done/--set-task
+// with --force-cd. Gates are already bypassed by the caller. Dual path like runCd:
+// follow-up file when WRK_FOLLOWUP_FILE is set; otherwise install-hint + interactive
+// shell. Does not re-print dest on stdout (mode already printed path/message).
+func forceLandInDir(dest string) error {
+	// Branch A — bash integration channel open: in-place follow-up only.
+	if strings.TrimSpace(os.Getenv("WRK_FOLLOWUP_FILE")) != "" {
+		return writeFollowupCD(false, dest)
+	}
+
+	// Branch B — fallback: warn and launch interactive shell (no stdout path).
+	fmt.Fprintf(os.Stderr, "warning: bash integration not active; install with: wrk --bash-integration --install\n")
+	err := interactive.LoginInteractive(dest, filepath.Base(dest), "WRK_SHELL=1")
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return ExitCodeError{Code: exitErr.ExitCode()}
+		}
+		return err
+	}
+	return nil
+}

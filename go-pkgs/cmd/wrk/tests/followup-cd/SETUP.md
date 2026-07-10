@@ -11,6 +11,11 @@ WRK_FOLLOWUP_FILE=tmp; cwd=home; wrk <repo> <target> -> file empty (never)
 # done/set-task: existence-gated write when channel open
 WRK_FOLLOWUP_FILE=tmp wrk [--done|--set-task] -> file: cd /abs (iff shell cwd gone)
 
+# --force-cd: bypass gates; dual path land
+WRK_FOLLOWUP_FILE=tmp; cwd=main; wrk --force-cd -> file: cd /abs-worktree
+WRK_FOLLOWUP_FILE unset; fake bash; wrk --force-cd -> install hint; shell @ dest
+wrk --force-cd --no-cd -> hard error
+
 # wrapper sources bash.sh, runs binary, executes whitelisted cd
 source bash.sh; wrk ... -> stderr "cd /abs"; builtin cd; pwd changes
 ```
@@ -39,6 +44,8 @@ source bash.sh; wrk ... -> stderr "cd /abs"; builtin cd; pwd changes
   binary create/done/set-task still append events (not asserted here unless needed).
 - Create home gate uses shell process cwd (`RepoDir` binary / `StartDir` wrapper),
   not the source repo path; home success leaves pass main repo as a positional arg.
+- Branch B `--force-cd` leaves **must** call `installFakeBash` so
+  `LoginInteractive` cannot hang in CI.
 
 ```go
 import (
@@ -408,6 +415,7 @@ func assertFollowupCD(t *testing.T, resp *Response, wantAbs string) {
 	if !resp.FollowupExists {
 		t.Fatalf("expected follow-up file at %s to exist", resp.FollowupPath)
 	}
+	wantAbs = resolvePath(t, wantAbs)
 	wantLine := "cd " + wantAbs
 	got := strings.TrimSpace(resp.FollowupContent)
 	if got != wantLine {
@@ -417,6 +425,86 @@ func assertFollowupCD(t *testing.T, resp *Response, wantAbs string) {
 	if resp.FollowupContent != "" && !strings.HasSuffix(resp.FollowupContent, "\n") {
 		t.Fatalf("follow-up file should end with newline; got %q", resp.FollowupContent)
 	}
+}
+
+// installFakeBash places a non-interactive bash shim first on PATH so
+// LoginInteractive (Branch B --force-cd) cannot hang. Call from every
+// successful Branch B leaf (and failure leaves that must prove no shell).
+func installFakeBash(t *testing.T, req *Request, exitCode int) {
+	t.Helper()
+	binDir := filepath.Join(req.WorkRoot, "fake-shell-bin")
+	mkdirAll(t, binDir)
+	logPath := filepath.Join(req.WorkRoot, "fake-shell-log.txt")
+	writeFile(t, logPath, "")
+	fake := filepath.Join(binDir, "bash")
+	body := `#!/bin/sh
+log="${WRK_FAKE_SHELL_LOG:-}"
+if [ -n "$log" ]; then
+  printf 'cwd=%s\n' "$(pwd)" >> "$log"
+  printf 'args=%s\n' "$*" >> "$log"
+fi
+code="${WRK_FAKE_SHELL_EXIT:-0}"
+exit "$code"
+`
+	if err := os.WriteFile(fake, []byte(body), 0o755); err != nil {
+		t.Fatalf("write fake bash: %v", err)
+	}
+	req.FakeShellDir = binDir
+	req.FakeShellLog = logPath
+	req.FakeShellExit = exitCode
+	req.ShellEnv = fake
+}
+
+func assertFakeShellCwd(t *testing.T, req *Request, wantAbs string) {
+	t.Helper()
+	if req.FakeShellLog == "" {
+		t.Fatal("FakeShellLog not set")
+	}
+	data, err := os.ReadFile(req.FakeShellLog)
+	if err != nil {
+		t.Fatalf("read fake shell log: %v", err)
+	}
+	wantAbs = resolvePath(t, wantAbs)
+	wantLine := "cwd=" + wantAbs
+	if !strings.Contains(string(data), wantLine) {
+		t.Fatalf("fake shell log missing %q; full log:\n%s", wantLine, data)
+	}
+}
+
+func assertFakeShellLaunched(t *testing.T, req *Request) {
+	t.Helper()
+	if req.FakeShellLog == "" {
+		t.Fatal("FakeShellLog not set")
+	}
+	data, err := os.ReadFile(req.FakeShellLog)
+	if err != nil {
+		t.Fatalf("read fake shell log: %v", err)
+	}
+	if !strings.Contains(string(data), "cwd=") {
+		t.Fatalf("fake shell was not launched; log=%q", data)
+	}
+}
+
+func assertFakeShellNotLaunched(t *testing.T, req *Request) {
+	t.Helper()
+	if req.FakeShellLog == "" {
+		t.Fatal("FakeShellLog not set (installFakeBash required to detect accidental launch)")
+	}
+	data, err := os.ReadFile(req.FakeShellLog)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		t.Fatalf("read fake shell log: %v", err)
+	}
+	if strings.Contains(string(data), "cwd=") {
+		t.Fatalf("fake shell should not have launched; log=%q", data)
+	}
+}
+
+func assertInstallHint(t *testing.T, stderr string) {
+	t.Helper()
+	assertContains(t, stderr, "wrk --bash-integration --install")
 }
 
 func assertFileExists(t *testing.T, path string) {
@@ -492,6 +580,11 @@ func ensureFollowupHelpersUsed() {
 	_ = assertStdoutEndsWithNewline
 	_ = assertFollowupEmpty
 	_ = assertFollowupCD
+	_ = installFakeBash
+	_ = assertFakeShellCwd
+	_ = assertFakeShellLaunched
+	_ = assertFakeShellNotLaunched
+	_ = assertInstallHint
 	_ = assertFileExists
 	_ = assertFileNotExists
 	_ = assertPathsEqual

@@ -7,9 +7,15 @@ Decision tree covering bash follow-up auto-`cd`: the binary writes
 `cd /abs` lines to `WRK_FOLLOWUP_FILE` after successful default-location
 create / `--done` / `--set-task` move (with a **home gate** for default
 create and a **shell-cwd existence gate** for done/set-task); create with
-an explicit second positional `<target-dir>` **never** writes follow-up;
-the installed `wrk()` bash wrapper executes whitelisted follow-ups;
-`--no-cd` and `WRK_AUTO_CD=0` suppress the protocol.
+an explicit second positional `<target-dir>` **never** auto-writes follow-up
+(unless **`--force-cd`**); the installed `wrk()` bash wrapper executes
+whitelisted follow-ups; `--no-cd` and `WRK_AUTO_CD=0` suppress the protocol.
+**`--force-cd`** is a modifier on create / `--done` / `--set-task` (path
+move): it **bypasses** those gates (and the target-dir no-auto-cd rule) and
+always lands the user in the destination — Branch A (channel open → write
+`cd /abs`, no shell) or Branch B (channel closed → install-hint stderr +
+interactive shell at dest, like `wrk --cd` fallback). Mutually exclusive
+with `--no-cd`.
 
 # DSN (Domain Specific Notion)
 
@@ -36,14 +42,16 @@ the installed `wrk()` bash wrapper executes whitelisted follow-ups;
   the worktree path on stdout; the follow-up file stays empty so the shell
   is not yanked. Tests set `HOME=FakeHome` so `os.UserHomeDir()` resolves
   to FakeHome — FakeHome is the correct “user home” in leaves.
-- **Create with `<target-dir>` (no follow-up)** — when create is invoked with
-  an explicit second positional `<target-dir>`, the binary **never** writes
-  a follow-up `cd` to `WRK_FOLLOWUP_FILE`, even when shell cwd is exactly
-  user home and the follow-up channel is open. Applies to both success
-  spawn shapes: target missing with parent present (worktree exactly at
-  `<target-dir>`) and target existing as a directory (default-named sub-dir
-  under it). Stdout still prints the worktree path; `--exec` still runs in
-  the new dir. Wrapper e2e: shell stays at StartDir (no stderr `cd` line).
+- **Create with `<target-dir>` (no auto follow-up)** — when create is invoked
+  with an explicit second positional `<target-dir>` and **without**
+  `--force-cd`, the binary **never** writes a follow-up `cd` to
+  `WRK_FOLLOWUP_FILE`, even when shell cwd is exactly user home and the
+  follow-up channel is open. Applies to both success spawn shapes: target
+  missing with parent present (worktree exactly at `<target-dir>`) and target
+  existing as a directory (default-named sub-dir under it). Stdout still
+  prints the worktree path; `--exec` still runs in the new dir. Wrapper e2e:
+  shell stays at StartDir (no stderr `cd` line). With `--force-cd`, land
+  still runs (Branch A/B) at the new worktree.
 - **Shell-cwd gate (done / set-task move)** — after a successful `--done`
   remove or path-changing `--set-task` move, write the follow-up **only if
   the captured shell cwd no longer exists** (e.g. `os.Stat` not-exist). If
@@ -55,10 +63,30 @@ the installed `wrk()` bash wrapper executes whitelisted follow-ups;
 - **`--no-cd`** — real binary flag (listed in help and `--complete` flags);
   when set, never write follow-ups even if `WRK_FOLLOWUP_FILE` is set.
   Harmless no-op for follow-ups on other modes. Independent of the home gate.
+  **Mutually exclusive** with `--force-cd` (hard error; no follow-up, no shell).
+- **`--force-cd`** — long-only Bool modifier (listed in help and `--complete`);
+  applies to successful create, `--done` (remove), and `--set-task` when the
+  path actually moves. **Bypasses** create home-gate and done/set-task
+  cwd-missing gate so land always runs. Destinations: create → new worktree;
+  `--done` → main `TargetPath`; `--set-task` move → `newPath`. **Branch A**
+  (`WRK_FOLLOWUP_FILE` set): write one `cd /absolute/dest\n` (ungated); no
+  nested shell. **Branch B** (channel unset/empty): stderr warning mentioning
+  `wrk --bash-integration --install`; mode stdout contracts unchanged (create
+  path / done message / set-task path still as today); launch interactive
+  shell at dest via `shell/interactive.LoginInteractive` (tests install a
+  fake `bash` on PATH). Without `--force-cd`, gates and no-shell behavior are
+  unchanged. Failures, abort, dry-run, task-unchanged, `--merge-back`, inspect
+  modes, and create-interceptor **outer** path still do not land (interceptor
+  owns UX; `--force-cd` does not force outer write/shell on intercept).
+  Wrapper does not special-case `--force-cd` (binary-side only).
 - **`WRK_FOLLOWUP_FILE`** — ephemeral path set only by the bash `wrk()`
   wrapper when auto-cd is enabled. Binary may write `cd /abs` lines there.
 - **`WRK_AUTO_CD`** — user env; `0` makes the wrapper skip temp file creation,
   skip exporting `WRK_FOLLOWUP_FILE`, and skip executing follow-ups.
+- **Fake interactive shell** — Branch B harness: `installFakeBash` places a
+  non-interactive `bash` shim first on PATH, sets `SHELL`, `WRK_FAKE_SHELL_LOG`,
+  and optional `WRK_FAKE_SHELL_EXIT` so `LoginInteractive` records cwd and
+  cannot hang.
 - **`wrk()` bash wrapper** — defined in `$WRK_HOME/integration/bash.sh`
   (alongside `complete -F _wrk wrk`). Creates temp follow-up file when
   auto-cd on and `--no-cd` not in args; runs `command wrk "$@"`; prints each
@@ -86,8 +114,9 @@ followup-cd/
 │   │   ├── writes-wrapper/         # fresh install writes bash.sh wrapper
 │   │   └── upgrades-old-script/    # overwrite pre-seeded completion-only script
 │   └── complete/
-│       └── no-cd-flag/             # --complete lists --no-cd
-├── binary-followup/                # WRK_FOLLOWUP_FILE protocol (no shell cd)
+│       ├── no-cd-flag/             # --complete lists --no-cd
+│       └── force-cd-flag/          # --complete lists --force-cd
+├── binary-followup/                # WRK_FOLLOWUP_FILE protocol (+ force Branch B shell)
 │   ├── create/
 │   │   ├── success-env-set/        # shell cwd=FakeHome + env → cd <worktree>
 │   │   ├── success-cwd-not-home/   # shell cwd=main repo + env → empty
@@ -95,24 +124,34 @@ followup-cd/
 │   │   ├── success-with-target-dir-exists/   # home + env + target exists → empty
 │   │   ├── success-env-unset/      # no side effects without env
 │   │   ├── no-cd-flag/             # --no-cd suppresses write (from home)
-│   │   └── failure/                # non-git create fails; file empty
+│   │   ├── failure/                # non-git create fails; file empty
+│   │   ├── force-cd-from-repo/     # --force-cd + channel + non-home → cd <wt>
+│   │   ├── force-cd-no-channel/    # --force-cd, no channel → fake shell @ wt
+│   │   └── force-cd-failure/       # failed create + --force-cd → no land
 │   ├── done/
 │   │   ├── remove-success/         # cwd inside operated wt → cd <main>
 │   │   ├── sibling-cwd-empty/      # cwd = sibling A; --done B → empty
-│   │   └── main-cwd-empty/         # cwd = main; --done B → empty
+│   │   ├── main-cwd-empty/         # cwd = main; --done B → empty
+│   │   ├── force-cd-sibling/       # --force-cd from sibling + channel → cd main
+│   │   └── force-cd-no-channel/    # --force-cd sibling, no channel → shell @ main
 │   ├── merge-back/
 │   │   └── no-followup/            # success but no cd line
-│   └── set-task/
-│       ├── move-success/           # cwd inside renamed wt → cd <newPath>
-│       ├── task-unchanged/         # slug same → empty file
-│       └── sibling-cwd-empty/      # cwd = sibling A; rename B → empty
+│   ├── set-task/
+│   │   ├── move-success/           # cwd inside renamed wt → cd <newPath>
+│   │   ├── task-unchanged/         # slug same → empty file
+│   │   ├── sibling-cwd-empty/      # cwd = sibling A; rename B → empty
+│   │   ├── force-cd-sibling/       # --force-cd from sibling + channel → cd newPath
+│   │   └── force-cd-no-channel/    # --force-cd sibling, no channel → shell @ newPath
+│   └── mutual-exclusion/
+│       └── force-cd-and-no-cd/     # --force-cd + --no-cd → hard error
 └── wrapper/                        # source bash.sh; end-to-end auto-cd
     ├── create/
     │   ├── auto-cd/                # StartDir=FakeHome → worktree; stderr cd
     │   ├── auto-cd-from-repo-stays/# StartDir=main repo → stay; no stderr cd
     │   ├── no-auto-cd-with-target-dir/ # StartDir=FakeHome + <target> → stay
     │   ├── auto-cd-off/            # WRK_AUTO_CD=0; cwd unchanged
-    │   └── no-cd-flag/             # wrk --no-cd; cwd unchanged
+    │   ├── no-cd-flag/             # wrk --no-cd; cwd unchanged
+    │   └── force-cd-from-repo/     # StartDir=main + --force-cd → FinalPWD=wt
     ├── done/
     │   ├── auto-cd/                # cwd inside operated wt → main
     │   └── sibling-cwd-stays/      # cwd sibling; --done other → stay
@@ -131,30 +170,45 @@ followup-cd/
 | 2 | script-surface/install/writes-wrapper | `--install` writes `bash.sh` with wrapper + follow-up logic |
 | 3 | script-surface/install/upgrades-old-script | install overwrites completion-only pre-seed with wrapper script |
 | 4 | script-surface/complete/no-cd-flag | `--complete` flag candidates include `--no-cd` |
-| 5 | binary-followup/create/success-env-set | shell cwd=FakeHome + `wrk <mainRepo>` + env → follow-up `cd <abs-worktree>` |
-| 6 | binary-followup/create/success-cwd-not-home | shell cwd=main repo + env → worktree created; follow-up empty |
-| 7 | binary-followup/create/success-with-target-dir | home + env + `wrk <repo> <target>` (missing) → exact target; follow-up empty |
-| 8 | binary-followup/create/success-with-target-dir-exists | home + env + existing target dir → default-named under it; follow-up empty |
-| 9 | binary-followup/create/success-env-unset | create without env → follow-up path untouched |
-| 10 | binary-followup/create/no-cd-flag | create from home + `--no-cd` + env → empty follow-up |
-| 11 | binary-followup/create/failure | non-git create + env → non-zero, empty follow-up |
-| 12 | binary-followup/done/remove-success | `--done` from inside operated wt → `cd <main-repo-abs>` |
-| 13 | binary-followup/done/sibling-cwd-empty | shell cwd = sibling A; `--done <B>` → empty follow-up |
-| 14 | binary-followup/done/main-cwd-empty | shell cwd = main; `--done <B>` → empty follow-up |
-| 15 | binary-followup/merge-back/no-followup | `--merge-back` success + env → empty follow-up |
-| 16 | binary-followup/set-task/move-success | `--set-task` move from inside wt → `cd <newPath-abs>` |
-| 17 | binary-followup/set-task/task-unchanged | same slug + env → empty follow-up |
-| 18 | binary-followup/set-task/sibling-cwd-empty | shell cwd = sibling A; rename B → empty follow-up |
-| 19 | wrapper/create/auto-cd | StartDir=FakeHome + `wrk <mainRepo>` → stderr `cd`, `pwd` = worktree |
-| 20 | wrapper/create/auto-cd-from-repo-stays | StartDir=main repo → no stderr `cd`; FinalPWD stays main |
-| 21 | wrapper/create/no-auto-cd-with-target-dir | StartDir=FakeHome + `wrk <repo> <target>` → no stderr `cd`; stay home |
-| 22 | wrapper/create/auto-cd-off | `WRK_AUTO_CD=0` from home → no stderr `cd`, cwd stays home |
-| 23 | wrapper/create/no-cd-flag | `wrk --no-cd` from home → no stderr `cd`, cwd stays home |
-| 24 | wrapper/done/auto-cd | wrapper `--done` from linked wt → cwd = main repo |
-| 25 | wrapper/done/sibling-cwd-stays | wrapper `--done <other>` from sibling → pwd stays; no stderr `cd` |
-| 26 | wrapper/set-task/auto-cd | wrapper `--set-task` from inside wt → cwd = new path |
-| 27 | wrapper/set-task/sibling-cwd-stays | wrapper rename other from sibling → pwd stays; no stderr `cd` |
-| 28 | wrapper/bad-path/cd-fails | follow-up `cd` to missing path → wrapper non-zero, binary 0 |
+| 5 | script-surface/complete/force-cd-flag | `--complete` flag candidates include `--force-cd` |
+| 6 | binary-followup/create/success-env-set | shell cwd=FakeHome + `wrk <mainRepo>` + env → follow-up `cd <abs-worktree>` |
+| 7 | binary-followup/create/success-cwd-not-home | shell cwd=main repo + env → worktree created; follow-up empty |
+| 8 | binary-followup/create/success-with-target-dir | home + env + `wrk <repo> <target>` (missing) → exact target; follow-up empty |
+| 9 | binary-followup/create/success-with-target-dir-exists | home + env + existing target dir → default-named under it; follow-up empty |
+| 10 | binary-followup/create/success-env-unset | create without env → follow-up path untouched |
+| 11 | binary-followup/create/no-cd-flag | create from home + `--no-cd` + env → empty follow-up |
+| 12 | binary-followup/create/failure | non-git create + env → non-zero, empty follow-up |
+| 13 | binary-followup/create/force-cd-from-repo | shell cwd=main + `--force-cd` + env → follow-up `cd <worktree>` (home gate bypass) |
+| 14 | binary-followup/create/force-cd-no-channel | shell cwd=main + `--force-cd`, no channel → install hint + fake shell @ worktree |
+| 15 | binary-followup/create/force-cd-failure | non-git create + `--force-cd` + env → non-zero; no follow-up; no shell |
+| 16 | binary-followup/done/remove-success | `--done` from inside operated wt → `cd <main-repo-abs>` |
+| 17 | binary-followup/done/sibling-cwd-empty | shell cwd = sibling A; `--done <B>` → empty follow-up |
+| 18 | binary-followup/done/main-cwd-empty | shell cwd = main; `--done <B>` → empty follow-up |
+| 19 | binary-followup/done/force-cd-sibling | sibling A cwd; `--done <B> --force-cd` + env → `cd <main>` (cwd gate bypass) |
+| 20 | binary-followup/done/force-cd-no-channel | sibling + `--force-cd`, no channel → install hint + fake shell @ main |
+| 21 | binary-followup/merge-back/no-followup | `--merge-back` success + env → empty follow-up |
+| 22 | binary-followup/set-task/move-success | `--set-task` move from inside wt → `cd <newPath-abs>` |
+| 23 | binary-followup/set-task/task-unchanged | same slug + env → empty follow-up |
+| 24 | binary-followup/set-task/sibling-cwd-empty | shell cwd = sibling A; rename B → empty follow-up |
+| 25 | binary-followup/set-task/force-cd-sibling | sibling A; rename B + `--force-cd` + env → `cd <newPath>` |
+| 26 | binary-followup/set-task/force-cd-no-channel | sibling + `--force-cd`, no channel → fake shell @ newPath |
+| 27 | binary-followup/mutual-exclusion/force-cd-and-no-cd | `--force-cd` + `--no-cd` → non-zero; empty follow-up; mutual-exclusion error |
+| 28 | wrapper/create/auto-cd | StartDir=FakeHome + `wrk <mainRepo>` → stderr `cd`, `pwd` = worktree |
+| 29 | wrapper/create/auto-cd-from-repo-stays | StartDir=main repo → no stderr `cd`; FinalPWD stays main |
+| 30 | wrapper/create/no-auto-cd-with-target-dir | StartDir=FakeHome + `wrk <repo> <target>` → no stderr `cd`; stay home |
+| 31 | wrapper/create/auto-cd-off | `WRK_AUTO_CD=0` from home → no stderr `cd`, cwd stays home |
+| 32 | wrapper/create/no-cd-flag | `wrk --no-cd` from home → no stderr `cd`, cwd stays home |
+| 33 | wrapper/create/force-cd-from-repo | StartDir=main + `--force-cd` → stderr `cd`, FinalPWD = worktree |
+| 34 | wrapper/done/auto-cd | wrapper `--done` from linked wt → cwd = main repo |
+| 35 | wrapper/done/sibling-cwd-stays | wrapper `--done <other>` from sibling → pwd stays; no stderr `cd` |
+| 36 | wrapper/set-task/auto-cd | wrapper `--set-task` from inside wt → cwd = new path |
+| 37 | wrapper/set-task/sibling-cwd-stays | wrapper rename other from sibling → pwd stays; no stderr `cd` |
+| 38 | wrapper/bad-path/cd-fails | follow-up `cd` to missing path → wrapper non-zero, binary 0 |
+
+**Out-of-band / not in this tree:** create-interceptor outer path + `--force-cd`
+still must not write outer follow-up or launch outer shell (interceptor owns
+UX). Covered by existing `create-interceptor/.../followup/no-outer-cd` as the
+no-force baseline; force-on-intercept is implementer regression, not a new leaf.
 
 ## How to Run
 
@@ -187,6 +241,15 @@ doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/done/main-cwd-e
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/set-task/sibling-cwd-empty
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/wrapper/done/sibling-cwd-stays
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/wrapper/set-task/sibling-cwd-stays
+
+# --force-cd surfaces (RED until implementer lands flag + dual-path land)
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create/force-cd-from-repo
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create/force-cd-no-channel
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/done/force-cd-sibling
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/set-task/force-cd-sibling
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/mutual-exclusion
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/wrapper/create/force-cd-from-repo
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/script-surface/complete/force-cd-flag
 
 # Single leaf
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create/success-env-set
@@ -235,6 +298,12 @@ type Request struct {
 	UseFakeWrk     bool   // put a stub wrk on PATH ahead of real binary
 	FakeFollowupCD string // absolute path the stub writes as cd target
 	PreExistingBashSh string
+
+	// Fake interactive shell (Branch B --force-cd / LoginInteractive harness)
+	FakeShellDir  string // bin dir prepended to PATH containing fake "bash"
+	FakeShellLog  string // path where fake bash records cwd/args
+	FakeShellExit int    // exit code of fake bash (default 0)
+	ShellEnv      string // when set, export SHELL=<value> for detect.Shell
 }
 
 type Response struct {
@@ -527,11 +596,15 @@ func runWrkOnce(t *testing.T, req *Request, bin string, args []string, followupF
 	if cmd.Dir == "" {
 		cmd.Dir = req.WorkRoot
 	}
+	pathEnv := os.Getenv("PATH")
+	if req.FakeShellDir != "" {
+		pathEnv = req.FakeShellDir + string(os.PathListSeparator) + pathEnv
+	}
 	env := []string{
 		"HOME=" + req.FakeHome,
 		"WRK_HOME=" + req.WrkHome,
 		"WRK_DATE=" + wrkDate,
-		"PATH=" + os.Getenv("PATH"),
+		"PATH=" + pathEnv,
 	}
 	if followupFile != "" {
 		env = append(env, "WRK_FOLLOWUP_FILE="+followupFile)
@@ -541,6 +614,15 @@ func runWrkOnce(t *testing.T, req *Request, bin string, args []string, followupF
 	}
 	if req.AutoCD != "" {
 		env = append(env, "WRK_AUTO_CD="+req.AutoCD)
+	}
+	if req.ShellEnv != "" {
+		env = append(env, "SHELL="+req.ShellEnv)
+	}
+	if req.FakeShellLog != "" {
+		env = append(env, "WRK_FAKE_SHELL_LOG="+req.FakeShellLog)
+	}
+	if req.FakeShellExit != 0 {
+		env = append(env, fmt.Sprintf("WRK_FAKE_SHELL_EXIT=%d", req.FakeShellExit))
 	}
 	cmd.Env = env
 	var outBuf, errBuf bytes.Buffer

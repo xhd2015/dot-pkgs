@@ -120,6 +120,7 @@ var wrkCompletionFlags = []string{
 	"--confirm-from-stdin",
 	"--no-in-module-replace",
 	"--no-cd",
+	"--force-cd",
 	"--no-interceptor",
 	"--interceptor",
 	"--show",

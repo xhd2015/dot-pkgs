@@ -116,6 +116,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var setTaskDesc *string
 	var wherePath *string
 	var noCd bool
+	var forceCd bool
 	var cd bool
 	var noInterceptor bool
 	var mainFlag bool
@@ -137,6 +138,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("-y,--yes", &assumeYes).
 		Bool("--no-in-module-replace", &noInModuleReplace).
 		Bool("--no-cd", &noCd).
+		Bool("--force-cd", &forceCd).
 		Bool("--cd", &cd).
 		Bool("--no-interceptor", &noInterceptor).
 		Bool("--main", &mainFlag).
@@ -157,6 +159,11 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 			return nil
 		}
 		return err
+	}
+
+	// --force-cd and --no-cd are mutually exclusive (hard error before any work).
+	if forceCd && noCd {
+		return fmt.Errorf("wrk: --force-cd and --no-cd are mutually exclusive")
 	}
 
 	taskFlagSet := taskDesc != nil
@@ -314,7 +321,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return fmt.Errorf("wrk: --set-task is mutually exclusive with other flags")
 	}
 	if setTaskFlagSet {
-		return runSetTask(workDir, *setTaskDesc, assumeYes, noCd, execArgs)
+		return runSetTask(workDir, *setTaskDesc, assumeYes, noCd, forceCd, execArgs)
 	}
 
 	if taskFlagSet && strings.TrimSpace(*taskDesc) == "" {
@@ -418,7 +425,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runList(workDir)
 	}
 	if done {
-		return runDone(workDir, confirmFromStdin, assumeYes, noInModuleReplace, noCd, execArgs)
+		return runDone(workDir, confirmFromStdin, assumeYes, noInModuleReplace, noCd, forceCd, execArgs)
 	}
 	if mergeBack {
 		return runMergeBack(workDir, confirmFromStdin, assumeYes)
@@ -431,6 +438,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	// exec instead of native worktree create. Escape: --no-interceptor /
 	// WRK_NO_INTERCEPTOR=1. No-op on non-create modes (flag already parsed).
 	// --exec is incompatible with an enabled interceptor unless escaped.
+	// Outer path still does not land/follow-up when interceptor runs (force-cd
+	// does not force outer write/shell on intercept path).
 	if !noInterceptor && os.Getenv("WRK_NO_INTERCEPTOR") != "1" {
 		ic, err := loadCreateInterceptor(wrkHome)
 		if err != nil {
@@ -451,7 +460,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 			})
 		}
 	}
-	return runCreate(workDir, origWd, spawnTarget, task, noCd, execArgs)
+	return runCreate(workDir, origWd, spawnTarget, task, noCd, forceCd, execArgs)
 }
 
 // usage returns the wrk help text printed by lessflags when -h/--help is given.
@@ -495,6 +504,7 @@ Flags:
   --set-task <desc>               rename worktree/branch to match new task
   -y, --yes                       auto-confirm Y/n prompts (own worktree; cascade on TTY only)
   --no-cd                         do not write shell follow-up cd lines (for bash auto-cd wrapper)
+  --force-cd                      always land in dest after create/--done/--set-task (bypass gates)
   --no-interceptor                skip create.interceptor and use native create (no-op on non-create)
   --exec <cmd> [args...]          after success, run command in the mode target directory
   --help, -h                      show this help and exit
@@ -668,7 +678,7 @@ func runList(workDir string) error {
 	return nil
 }
 
-func runDone(workDir string, confirmFromStdin, assumeYes, noInModuleReplace, noCd bool, execArgs []string) error {
+func runDone(workDir string, confirmFromStdin, assumeYes, noInModuleReplace, noCd, forceCd bool, execArgs []string) error {
 	// Shell process cwd (inherited from interactive shell), not merely workDir.
 	// Used after remove to decide whether auto-cd is needed.
 	shellCwd, _ := os.Getwd()
@@ -725,13 +735,17 @@ func runDone(workDir string, confirmFromStdin, assumeYes, noInModuleReplace, noC
 		return err
 	}
 	fmt.Println(result.Message)
-	// After successful remove: optional --exec in main repo, then follow-up cd
-	// only if shell cwd is gone (user was inside the removed worktree).
+	// After successful remove: optional --exec in main repo, then land/follow-up.
+	// --force-cd bypasses cwd-missing gate; otherwise write only if shell cwd gone.
 	if result.Action != "aborted" && result.Action != "dry-run" {
 		if err := runExecInDir(result.TargetPath, execArgs); err != nil {
 			return err
 		}
-		if err := writeFollowupCDIfCwdMissing(noCd, shellCwd, result.TargetPath); err != nil {
+		if forceCd {
+			if err := forceLandInDir(result.TargetPath); err != nil {
+				return err
+			}
+		} else if err := writeFollowupCDIfCwdMissing(noCd, shellCwd, result.TargetPath); err != nil {
 			return err
 		}
 	}
@@ -1443,7 +1457,7 @@ func externalCandidateBlocked(mainRepo, wtPath, branch string) bool {
 	return branchExists(mainRepo, branch)
 }
 
-func runCreate(workDir string, origWd string, targetDir string, taskDesc string, noCd bool, execArgs []string) error {
+func runCreate(workDir string, origWd string, targetDir string, taskDesc string, noCd, forceCd bool, execArgs []string) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -1489,7 +1503,7 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 	}
 
 	if targetDir != "" {
-		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug, noCd, execArgs)
+		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug, noCd, forceCd, execArgs)
 	}
 
 	wrkHome, err := resolveWrkHome()
@@ -1505,14 +1519,17 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 	if err := runExecInDir(result.Path, execArgs); err != nil {
 		return err
 	}
-	// Home-gate on shell process cwd (origWd), not source workDir.
+	// --force-cd bypasses home gate; otherwise home-gate on shell cwd (origWd).
+	if forceCd {
+		return forceLandInDir(result.Path)
+	}
 	return writeFollowupCDIfCwdIsHome(noCd, origWd, result.Path)
 }
 
 // runCreateTargetDir handles wrk <dir> <target-dir>. A relative <target-dir> is
 // resolved against origWd (the process/shell cwd), NOT the repo dir that Run
 // chdir'd into.
-func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string, noCd bool, execArgs []string) error {
+func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string, noCd, forceCd bool, execArgs []string) error {
 	// Resolve <target-dir> against the shell cwd (origWd), not the repo dir.
 	absTarget := targetDir
 	if !filepath.IsAbs(absTarget) {
@@ -1541,9 +1558,14 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 				return fmt.Errorf("resolve worktree path: %w", err)
 			}
 			fmt.Println(absPath)
-			// Target-dir create intentionally skips auto-cd follow-up;
-			// home gate applies only to default spawn.
-			return runExecInDir(absPath, execArgs)
+			// Target-dir create skips home-gated auto-cd; --force-cd still lands.
+			if err := runExecInDir(absPath, execArgs); err != nil {
+				return err
+			}
+			if forceCd {
+				return forceLandInDir(absPath)
+			}
+			return nil
 		}
 		return fmt.Errorf("could not find available worktree name after 99 attempts")
 	}
@@ -1576,9 +1598,14 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		return fmt.Errorf("resolve worktree path: %w", err)
 	}
 	fmt.Println(absPath)
-	// Target-dir create intentionally skips auto-cd follow-up;
-	// home gate applies only to default spawn.
-	return runExecInDir(absPath, execArgs)
+	// Target-dir create skips home-gated auto-cd; --force-cd still lands.
+	if err := runExecInDir(absPath, execArgs); err != nil {
+		return err
+	}
+	if forceCd {
+		return forceLandInDir(absPath)
+	}
+	return nil
 }
 
 func resolveWrkHome() (string, error) {
@@ -1744,7 +1771,7 @@ func parseBranchNaming(branch string) (branchBase, date, slug string, suffix int
 // runSetTask renames a linked worktree via git worktree move to include a new
 // task slug in the directory and branch names. Requires TTY confirmation (or
 // WRK_SET_TASK_CONFIRM=1 env var) before executing the move.
-func runSetTask(workDir string, taskDesc string, assumeYes, noCd bool, execArgs []string) error {
+func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, execArgs []string) error {
 	if strings.TrimSpace(taskDesc) == "" {
 		return fmt.Errorf("wrk: task description must not be empty")
 	}
@@ -1928,7 +1955,11 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd bool, execArgs 
 	if err := runExecInDir(newPath, execArgs); err != nil {
 		return err
 	}
-	// Write follow-up cd only if shell cwd is gone (user was inside the moved
-	// worktree). Surviving sibling/main stays put.
+	// --force-cd bypasses cwd-missing gate; otherwise write follow-up cd only if
+	// shell cwd is gone (user was inside the moved worktree). Surviving
+	// sibling/main stays put without --force-cd.
+	if forceCd {
+		return forceLandInDir(newPath)
+	}
 	return writeFollowupCDIfCwdMissing(noCd, shellCwd, newPath)
 }

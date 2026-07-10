@@ -13,6 +13,9 @@ source bash.sh; wrk -> no stderr cd; FinalPWD stays main
 source bash.sh; wrk <mainRepo> <target>
   -> stdout path; no stderr cd; FinalPWD stays FakeHome
 
+# StartDir = main + --force-cd: binary writes follow-up despite non-home
+source bash.sh; wrk --force-cd -> stderr "cd <wt>"; FinalPWD = worktree
+
 # WRK_AUTO_CD=0 / --no-cd suppress regardless of home
 ```
 

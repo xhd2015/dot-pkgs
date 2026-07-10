@@ -28,7 +28,7 @@ var interceptorDisallowedFlags = []string{
 	"--done", "--merge-back", "-l", "--list", "--repos", "--projects",
 	"--fetch", "-v", "--verbose", "--color", "--add", "--rm", "--where",
 	"--cd", "--dep", "--all-deps", "--set-task", "-y", "--yes",
-	"--confirm-from-stdin", "--no-in-module-replace", "--no-cd",
+	"--confirm-from-stdin", "--no-in-module-replace", "--no-cd", "--force-cd",
 	"--no-interceptor", "--bash-integration", "--install", "--uninstall",
 	"--complete",
 }
