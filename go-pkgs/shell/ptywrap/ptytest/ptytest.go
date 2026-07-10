@@ -2,17 +2,17 @@ package ptytest
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +38,13 @@ type Request struct {
 
 	RenameTo string
 
+	// WSCloseCode is the WebSocket close code used by lifecycle leak phases
+	// (e.g. 1000 normal close, 4000 delete-on-close).
+	WSCloseCode int
+
+	// RepeatCount is used by multi-create leak phases (default 5).
+	RepeatCount int
+
 	ServerBase string
 }
 
@@ -52,6 +59,15 @@ type Response struct {
 	PTYRows         int
 	HTTPStatus      int
 	CreateBody      map[string]interface{}
+
+	// ProcessAlive is true if the session child PID still exists after the phase.
+	ProcessAlive bool
+	// SessionListed is true if SessionID is still present in GET /sessions.
+	SessionListed bool
+	// RunningProcessCount is how many tracked child PIDs are still alive.
+	RunningProcessCount int
+	// SessionCount is Total (or len) from GET /sessions after the phase.
+	SessionCount int
 }
 
 // Run executes a ptywrap server doctest phase.
@@ -78,6 +94,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runRESTRename(t, req)
 	case "lifecycle-exited":
 		return runExitedStaysListed(t, req)
+	case "lifecycle-writer-close":
+		return runWriterCloseLifecycle(t, req)
+	case "lifecycle-multi-create-orphan":
+		return runMultiCreateOnConnectOrphan(t, req)
 	default:
 		return nil, fmt.Errorf("unknown phase %q", req.Phase)
 	}
@@ -159,7 +179,9 @@ func runWSInputRoundTrip(t *testing.T, req *Request) (*Response, error) {
 
 func runWSResize(t *testing.T, req *Request) (*Response, error) {
 	resp := &Response{}
-	id, err := createSessionREST(t, req.ServerBase, []string{"sh", "-c", "sleep 30"}, "", "")
+	// Interactive default shell so `stty size` is executed (a bare `sleep`
+	// ignores keystrokes on the PTY slave).
+	id, err := createSessionREST(t, req.ServerBase, nil, "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -284,6 +306,236 @@ func runExitedStaysListed(t *testing.T, req *Request) (*Response, error) {
 	resp.SessionID = id
 	resp.Sessions = sessions
 	return resp, nil
+}
+
+// runWriterCloseLifecycle creates a long-lived sleep PTY, attaches as writer,
+// closes the WS with req.WSCloseCode, then reports whether the child still runs
+// and whether the session remains listed.
+//
+// Close code 1000 (normal) currently detaches without killing the child — that
+// is the PTY leak path when clients churn terminals. Expected correct behavior
+// after fix: child is reaped (ProcessAlive=false) so the OS PTY is released.
+// Close code 4000 must remove the session and kill the child.
+func runWriterCloseLifecycle(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	code := req.WSCloseCode
+	if code == 0 {
+		code = 1000
+	}
+	marker := fmt.Sprintf("ptywrap-leak-%d-%d", os.Getpid(), time.Now().UnixNano())
+	// Unique sleep argv so we can resolve the child PID without /proc.
+	cmd := []string{"sleep", "3600"}
+	beforeSleep := snapshotSleep3600PIDs()
+	id, err := createSessionREST(t, req.ServerBase, cmd, "", marker)
+	if err != nil {
+		return nil, err
+	}
+	pid, err := findNewSleepPID(t, beforeSleep)
+	if err != nil {
+		return nil, fmt.Errorf("session %s: %w", id, err)
+	}
+	if err := wsCloseWriter(t, req.ServerBase, id, code); err != nil {
+		return nil, err
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	sessions, err := listSessions(t, req.ServerBase)
+	if err != nil {
+		return nil, err
+	}
+	resp.SessionID = id
+	resp.Sessions = sessions
+	resp.ProcessAlive = processAlive(pid)
+	resp.SessionListed = sessionInList(sessions, id)
+	resp.SessionCount = len(sessions)
+	if resp.ProcessAlive {
+		resp.RunningProcessCount = 1
+	}
+	// Best-effort cleanup so parallel doctests do not accumulate sleeps if the
+	// assertion fails early.
+	t.Cleanup(func() {
+		if processAlive(pid) {
+			_ = exec.Command("kill", "-9", strconv.Itoa(pid)).Run()
+		}
+		_ = deleteSessionREST(req.ServerBase, id)
+	})
+	return resp, nil
+}
+
+// runMultiCreateOnConnectOrphan models LocalTerminal / StrictMode churn:
+// N times WS connect without session_id (creates a shell), then normal close
+// (code 1000). Expected correct behavior: no orphan shell processes remain
+// (RunningProcessCount == 0). Buggy behavior leaves one live bash per connect.
+func runMultiCreateOnConnectOrphan(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	n := req.RepeatCount
+	if n <= 0 {
+		n = 5
+	}
+	var pids []int
+	var ids []string
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("orphan-%d-%d", os.Getpid(), i)
+		before := snapshotPtywrapBashPIDs()
+		id, err := wsCreateOnConnectClose(t, req.ServerBase, name, 1000)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+		time.Sleep(150 * time.Millisecond)
+		after := snapshotPtywrapBashPIDs()
+		pid := newestPIDNotIn(after, before)
+		if pid > 0 {
+			pids = append(pids, pid)
+		}
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	alive := 0
+	for _, pid := range pids {
+		if processAlive(pid) {
+			alive++
+		}
+	}
+	sessions, err := listSessions(t, req.ServerBase)
+	if err != nil {
+		return nil, err
+	}
+	resp.Sessions = sessions
+	resp.SessionCount = len(sessions)
+	resp.RunningProcessCount = alive
+	resp.ProcessAlive = alive > 0
+	if len(ids) > 0 {
+		resp.SessionID = ids[len(ids)-1]
+		resp.SessionListed = sessionInList(sessions, resp.SessionID)
+	}
+	t.Cleanup(func() {
+		for _, pid := range pids {
+			if processAlive(pid) {
+				_ = exec.Command("kill", "-9", strconv.Itoa(pid)).Run()
+			}
+		}
+		for _, id := range ids {
+			_ = deleteSessionREST(req.ServerBase, id)
+		}
+	})
+	return resp, nil
+}
+
+func findNewSleepPID(t *testing.T, before map[int]struct{}) (int, error) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		after := snapshotSleep3600PIDs()
+		if pid := newestPIDNotIn(after, before); pid > 0 && processAlive(pid) {
+			return pid, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return 0, fmt.Errorf("could not resolve new sleep 3600 child")
+}
+
+func snapshotSleep3600PIDs() map[int]struct{} {
+	out, err := exec.Command("pgrep", "-f", "sleep 3600").Output()
+	m := make(map[int]struct{})
+	if err != nil {
+		return m
+	}
+	for _, f := range strings.Fields(string(out)) {
+		pid, err := strconv.Atoi(f)
+		if err == nil && pid > 0 {
+			m[pid] = struct{}{}
+		}
+	}
+	return m
+}
+
+func wsCloseWriter(t *testing.T, base, sessionID string, closeCode int) error {
+	t.Helper()
+	conn := dialWS(t, base, "session_id="+url.QueryEscape(sessionID))
+	recv := startWSReader(conn)
+	drainWSHandshake(recv, 500*time.Millisecond)
+	msg := websocket.FormatCloseMessage(closeCode, "")
+	_ = conn.WriteControl(websocket.CloseMessage, msg, time.Now().Add(time.Second))
+	_ = conn.Close()
+	return nil
+}
+
+func wsCreateOnConnectClose(t *testing.T, base, name string, closeCode int) (string, error) {
+	t.Helper()
+	q := url.Values{}
+	q.Set("name", name)
+	conn := dialWS(t, base, q.Encode())
+	id := readSessionIDMessage(t, conn)
+	msg := websocket.FormatCloseMessage(closeCode, "")
+	_ = conn.WriteControl(websocket.CloseMessage, msg, time.Now().Add(time.Second))
+	_ = conn.Close()
+	return id, nil
+}
+
+func deleteSessionREST(base, id string) error {
+	req, err := http.NewRequest(http.MethodDelete, base+"/api/terminal/sessions?id="+url.QueryEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	return exec.Command("kill", "-0", strconv.Itoa(pid)).Run() == nil
+}
+
+func sessionInList(sessions []ptywrap.SessionInfo, id string) bool {
+	for _, s := range sessions {
+		if s.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func snapshotPtywrapBashPIDs() map[int]struct{} {
+	out, err := exec.Command("ps", "-axo", "pid=,command=").Output()
+	if err != nil {
+		return map[int]struct{}{}
+	}
+	m := make(map[int]struct{})
+	for _, line := range strings.Split(string(out), "\n") {
+		// Default shell spawn uses --rcfile .../.ptywrap-bashrc
+		if !strings.Contains(line, "ptywrap-bashrc") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err == nil && pid > 0 {
+			m[pid] = struct{}{}
+		}
+	}
+	return m
+}
+
+func newestPIDNotIn(after, before map[int]struct{}) int {
+	newest := 0
+	for pid := range after {
+		if _, ok := before[pid]; ok {
+			continue
+		}
+		if pid > newest {
+			newest = pid
+		}
+	}
+	return newest
 }
 
 func createSessionREST(t *testing.T, base string, command []string, cwd, name string) (string, error) {
@@ -437,20 +689,33 @@ func wsAttachOnly(t *testing.T, base, sessionID, attachMode string, wait time.Du
 func wsRunCommand(t *testing.T, base, sessionID, input string) (string, error) {
 	conn := dialWS(t, base, "session_id="+url.QueryEscape(sessionID))
 	defer conn.Close()
-	drainWSHandshake(conn, 2*time.Second)
+	recv := startWSReader(conn)
+	drainWSHandshake(recv, 2*time.Second)
 	time.Sleep(300 * time.Millisecond)
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(input)); err != nil {
 		return "", err
 	}
-	return collectWSUntil(conn, 10*time.Second, func(s string) bool {
-		return strings.Contains(s, "tty=")
+	// Match actual TTY probe result (tty=0/1), not the echoed python source
+	// which also contains the substring "tty=". Otherwise fall back to the
+	// full input payload (cat echo round-trip).
+	want := strings.TrimSpace(input)
+	return collectWSUntil(recv, 10*time.Second, func(s string) bool {
+		if strings.Contains(s, "tty=0") || strings.Contains(s, "tty=1") {
+			return true
+		}
+		// Avoid matching the command echo for the python TTY probe.
+		if strings.Contains(want, "tty=") {
+			return false
+		}
+		return want != "" && strings.Contains(s, want)
 	})
 }
 
 func wsResizeAndCollect(t *testing.T, base, sessionID string, cols, rows int, wait time.Duration) (string, error) {
 	conn := dialWS(t, base, "session_id="+url.QueryEscape(sessionID))
 	defer conn.Close()
-	drainWSHandshake(conn, 2*time.Second)
+	recv := startWSReader(conn)
+	drainWSHandshake(recv, 2*time.Second)
 	resizeMsg := map[string]interface{}{"type": "resize", "cols": cols, "rows": rows}
 	msg, _ := json.Marshal(resizeMsg)
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
@@ -460,7 +725,7 @@ func wsResizeAndCollect(t *testing.T, base, sessionID string, cols, rows int, wa
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte("stty size\n")); err != nil {
 		return "", err
 	}
-	return collectWSUntil(conn, wait, func(s string) bool {
+	return collectWSUntil(recv, wait, func(s string) bool {
 		c, r := parseSttySize(s)
 		return c == cols && r == rows
 	})
@@ -469,83 +734,99 @@ func wsResizeAndCollect(t *testing.T, base, sessionID string, cols, rows int, wa
 func wsWaitDone(t *testing.T, base, sessionID string, timeout time.Duration) (string, error) {
 	conn := dialWS(t, base, "session_id="+url.QueryEscape(sessionID))
 	defer conn.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	var buf strings.Builder
-	for {
-		select {
-		case <-ctx.Done():
-			return buf.String(), ctx.Err()
-		default:
-		}
-		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				continue
-			}
-			return buf.String(), nil
-		}
-		buf.Write(msg)
-		if strings.Contains(buf.String(), "[Terminal exited]") {
-			return buf.String(), nil
-		}
-	}
+	recv := startWSReader(conn)
+	return collectWSUntil(recv, timeout, func(s string) bool {
+		return strings.Contains(s, "[Terminal exited]")
+	})
 }
 
-func drainWSHandshake(conn *websocket.Conn, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		mt, msg, err := conn.ReadMessage()
-		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+// wsFrame is one message from a single background ReadMessage loop.
+// gorilla/websocket forbids SetReadDeadline timeouts for polling: after a read
+// times out the connection is permanently unusable. Callers must use one
+// reader goroutine and select on wall-clock deadlines instead.
+type wsFrame struct {
+	mt  int
+	msg []byte
+	err error
+}
+
+func startWSReader(conn *websocket.Conn) <-chan wsFrame {
+	ch := make(chan wsFrame, 64)
+	go func() {
+		defer close(ch)
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				ch <- wsFrame{err: err}
 				return
 			}
-			return
+			// Copy payload; gorilla may reuse the buffer.
+			payload := append([]byte(nil), msg...)
+			ch <- wsFrame{mt: mt, msg: payload}
 		}
-		if mt == websocket.TextMessage && isControlJSON(msg) {
-			continue
-		}
-		if mt == websocket.BinaryMessage || mt == websocket.TextMessage {
+	}()
+	return ch
+}
+
+func drainWSHandshake(recv <-chan wsFrame, timeout time.Duration) {
+	deadline := time.After(timeout)
+	for {
+		select {
+		case <-deadline:
 			return
+		case f, ok := <-recv:
+			if !ok || f.err != nil {
+				return
+			}
+			if f.mt == websocket.TextMessage && isControlJSON(f.msg) {
+				continue
+			}
+			if f.mt == websocket.BinaryMessage || f.mt == websocket.TextMessage {
+				// First non-control payload (e.g. scrollback / prompt) ends drain.
+				return
+			}
 		}
 	}
 }
 
 func collectWSBinary(conn *websocket.Conn, wait time.Duration) (string, error) {
-	return collectWSUntil(conn, wait, nil)
+	return collectWSUntil(startWSReader(conn), wait, nil)
 }
 
-func collectWSUntil(conn *websocket.Conn, wait time.Duration, done func(string) bool) (string, error) {
-	deadline := time.Now().Add(wait)
+func collectWSUntil(recv <-chan wsFrame, wait time.Duration, done func(string) bool) (string, error) {
+	deadline := time.After(wait)
 	var buf strings.Builder
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		mt, msg, err := conn.ReadMessage()
-		if err != nil {
-			if buf.Len() > 0 && (done == nil || done(buf.String())) {
-				return buf.String(), nil
+	for {
+		if done != nil && done(buf.String()) {
+			return buf.String(), nil
+		}
+		select {
+		case <-deadline:
+			return buf.String(), nil
+		case f, ok := <-recv:
+			if !ok {
+				if buf.Len() > 0 {
+					return buf.String(), nil
+				}
+				return "", fmt.Errorf("websocket reader closed")
 			}
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			if f.err != nil {
+				if buf.Len() > 0 {
+					return buf.String(), nil
+				}
+				return "", f.err
+			}
+			if f.mt == websocket.TextMessage && isControlJSON(f.msg) {
+				continue
+			}
+			if f.mt == websocket.BinaryMessage || f.mt == websocket.TextMessage {
+				appendFilteredWS(&buf, f.msg)
 				if done != nil && done(buf.String()) {
 					return buf.String(), nil
 				}
-				continue
-			}
-			return buf.String(), nil
-		}
-		if mt == websocket.TextMessage && isControlJSON(msg) {
-			continue
-		}
-		if mt == websocket.BinaryMessage || mt == websocket.TextMessage {
-			appendFilteredWS(&buf, msg)
-			if done != nil && done(buf.String()) {
-				return buf.String(), nil
 			}
 		}
 	}
-	return buf.String(), nil
 }
 
 func appendFilteredWS(buf *strings.Builder, msg []byte) {

@@ -168,17 +168,44 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 		}
 	}()
 
+	// If the session already exited (e.g. re-attach after writer normal close
+	// reaped the child), keep the socket open until the client disconnects so
+	// scrollback already sent via sendInitialFrame can be read without a race
+	// against an immediate server-side close.
+	alreadyExited := false
+	select {
+	case <-s.done:
+		alreadyExited = true
+	default:
+	}
+
+	handleWriterClose := func(result wsCloseResult) {
+		shouldDelete := isWriter && (result.closeCode == 4000 || deleteOnClose)
+		if shouldDelete {
+			mgr.remove(s.id)
+			return
+		}
+		s.unregisterConn(conn)
+		// Writer normal close (1000) or other non-delete disconnect: free the
+		// OS PTY by reaping the child, but keep session metadata+scrollback
+		// listable as exited so reconnect-scrollback still works.
+		if isWriter && !alreadyExited {
+			s.stopChild()
+		}
+	}
+
+	if alreadyExited {
+		result := <-wsCloseCh
+		handleWriterClose(result)
+		return
+	}
+
 	select {
 	case <-s.done:
 		s.unregisterConn(conn)
 		conn.Close()
 	case result := <-wsCloseCh:
-		shouldDelete := isWriter && (result.closeCode == 4000 || deleteOnClose)
-		if shouldDelete {
-			mgr.remove(s.id)
-		} else {
-			s.unregisterConn(conn)
-		}
+		handleWriterClose(result)
 	}
 }
 

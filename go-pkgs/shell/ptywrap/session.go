@@ -340,6 +340,23 @@ func (s *session) wait() {
 	})
 }
 
+// stopChild frees the OS PTY by closing the master and killing the child
+// process, while leaving the session registered for metadata/scrollback.
+// The session status becomes "exited" once readLoop (or this method) marks it.
+// Safe to call more than once and concurrently with close().
+func (s *session) stopChild() {
+	if s.ptmx != nil {
+		_ = s.ptmx.Close()
+	}
+	if s.cmd != nil && s.cmd.Process != nil && s.cmd.ProcessState == nil {
+		_ = s.cmd.Process.Kill()
+	}
+	// Reap the process so it does not linger as a zombie; waitOnce coordinates
+	// with readLoop's wait() after EOF.
+	s.wait()
+	s.markExited()
+}
+
 func (s *session) close() {
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
@@ -357,13 +374,7 @@ func (s *session) close() {
 		s.attachers = nil
 		s.mu.Unlock()
 
-		if s.ptmx != nil {
-			s.ptmx.Close()
-		}
-		if s.cmd != nil && s.cmd.Process != nil && s.cmd.ProcessState == nil {
-			s.cmd.Process.Kill()
-		}
-		s.wait()
+		s.stopChild()
 	})
 }
 
