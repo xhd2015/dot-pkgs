@@ -68,6 +68,9 @@ type Response struct {
 	RunningProcessCount int
 	// SessionCount is Total (or len) from GET /sessions after the phase.
 	SessionCount int
+
+	// SnapshotCount is how many attach_mode=snapshot reads returned usable bytes.
+	SnapshotCount int
 }
 
 // Run executes a ptywrap server doctest phase.
@@ -98,6 +101,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runWriterCloseLifecycle(t, req)
 	case "lifecycle-multi-create-orphan":
 		return runMultiCreateOnConnectOrphan(t, req)
+	case "snapshot-multi-keeps-child":
+		return runSnapshotMultiKeepsChild(t, req)
 	default:
 		return nil, fmt.Errorf("unknown phase %q", req.Phase)
 	}
@@ -305,6 +310,95 @@ func runExitedStaysListed(t *testing.T, req *Request) (*Response, error) {
 	}
 	resp.SessionID = id
 	resp.Sessions = sessions
+	return resp, nil
+}
+
+// runSnapshotMultiKeepsChild starts a long-lived child, performs N short
+// attach_mode=snapshot reads (closing each socket), and reports whether the
+// child is still alive. Snapshot role must not claim writer / stopChild on
+// disconnect — writer attach_mode=screen would kill the child and break
+// multi-poll FetchStatus-style loops.
+func runSnapshotMultiKeepsChild(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	n := req.RepeatCount
+	if n <= 0 {
+		n = 3
+	}
+	attachMode := strings.TrimSpace(req.AttachMode)
+	if attachMode == "" {
+		attachMode = "snapshot"
+	}
+
+	marker := fmt.Sprintf("ptywrap-snap-%d-%d", os.Getpid(), time.Now().UnixNano())
+	// Print a marker then sleep so scrollback is non-empty for snapshot frames.
+	cmd := []string{"sh", "-c", "printf 'SNAP-MARKER\\n'; sleep 3600"}
+	beforeSleep := snapshotSleep3600PIDs()
+	id, err := createSessionREST(t, req.ServerBase, cmd, "", marker)
+	if err != nil {
+		return nil, err
+	}
+	pid, err := findNewSleepPID(t, beforeSleep)
+	if err != nil {
+		return nil, fmt.Errorf("session %s: %w", id, err)
+	}
+
+	// Wait briefly for the printf to land in scrollback before snapshotting.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		out, snapErr := wsAttachOnly(t, req.ServerBase, id, attachMode, 500*time.Millisecond)
+		if snapErr == nil && strings.Contains(out, "SNAP-MARKER") {
+			resp.WSOutput = out
+			resp.SnapshotCount = 1
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if resp.SnapshotCount == 0 {
+		// Still run the remaining attaches so ProcessAlive reflects full multi-snapshot stress.
+		out, snapErr := wsAttachOnly(t, req.ServerBase, id, attachMode, 1*time.Second)
+		if snapErr != nil {
+			return nil, snapErr
+		}
+		resp.WSOutput = out
+		if strings.TrimSpace(out) != "" {
+			resp.SnapshotCount = 1
+		}
+	}
+
+	for i := resp.SnapshotCount; i < n; i++ {
+		out, snapErr := wsAttachOnly(t, req.ServerBase, id, attachMode, 1*time.Second)
+		if snapErr != nil {
+			return nil, fmt.Errorf("snapshot %d/%d: %w", i+1, n, snapErr)
+		}
+		if strings.TrimSpace(out) != "" {
+			resp.SnapshotCount++
+			resp.WSOutput = out
+		}
+		// Close happens inside wsAttachOnly; brief pause between short-lived attaches.
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Allow any stopChild race to settle if attach mode incorrectly claimed writer.
+	time.Sleep(300 * time.Millisecond)
+
+	sessions, err := listSessions(t, req.ServerBase)
+	if err != nil {
+		return nil, err
+	}
+	resp.SessionID = id
+	resp.Sessions = sessions
+	resp.ProcessAlive = processAlive(pid)
+	resp.SessionListed = sessionInList(sessions, id)
+	resp.SessionCount = len(sessions)
+	if resp.ProcessAlive {
+		resp.RunningProcessCount = 1
+	}
+	t.Cleanup(func() {
+		if processAlive(pid) {
+			_ = exec.Command("kill", "-9", strconv.Itoa(pid)).Run()
+		}
+		_ = deleteSessionREST(req.ServerBase, id)
+	})
 	return resp, nil
 }
 
