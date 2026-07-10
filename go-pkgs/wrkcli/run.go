@@ -87,6 +87,9 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		ctx.skipEvent = true
 		return runBashIntegration(args)
 	}
+	if hasArg(args, "--interceptor") {
+		return runInterceptorMgmt(origWd, args, ctx)
+	}
 
 	if err := validateWhereFlagArg(args); err != nil {
 		return err
@@ -114,6 +117,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var wherePath *string
 	var noCd bool
 	var cd bool
+	var noInterceptor bool
 	// *string targets: nil = flag absent; non-nil empty = present but empty.
 	remaining, err := lessflags.Bool("--done", &done).
 		Bool("--merge-back", &mergeBack).
@@ -131,6 +135,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--no-in-module-replace", &noInModuleReplace).
 		Bool("--no-cd", &noCd).
 		Bool("--cd", &cd).
+		Bool("--no-interceptor", &noInterceptor).
 		Bool("--all-deps", &allDeps).
 		Bool("--dry-run", &dryRun).
 		String("--dep", &depPath).
@@ -355,6 +360,26 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	if taskDesc != nil {
 		task = *taskDesc
 	}
+	// Optional create-mode interceptor: expand argv/vars from config.json and
+	// exec instead of native worktree create. Escape: --no-interceptor /
+	// WRK_NO_INTERCEPTOR=1. No-op on non-create modes (flag already parsed).
+	if !noInterceptor && os.Getenv("WRK_NO_INTERCEPTOR") != "1" {
+		ic, err := loadCreateInterceptor(wrkHome)
+		if err != nil {
+			return err
+		}
+		if ic != nil && ic.Enabled {
+			return runCreateInterceptor(ic, createInterceptorInput{
+				wrkHome:     wrkHome,
+				workDir:     workDir,
+				origWd:      origWd,
+				source:      sourceDir,
+				spawnTarget: spawnTarget,
+				task:        task,
+				args:        args,
+			})
+		}
+	}
 	return runCreate(workDir, origWd, spawnTarget, task, noCd)
 }
 
@@ -398,7 +423,18 @@ Flags:
   --set-task <desc>               rename worktree/branch to match new task
   -y, --yes                       auto-confirm Y/n prompts (own worktree; cascade on TTY only)
   --no-cd                         do not write shell follow-up cd lines (for bash auto-cd wrapper)
+  --no-interceptor                skip create.interceptor and use native create (no-op on non-create)
   --help, -h                      show this help and exit
+
+Interceptor management:
+  wrk --interceptor --status      show absent|disabled|enabled, path, argv0
+  wrk --interceptor --show        pretty-print create.interceptor JSON
+  wrk --interceptor --path        print absolute path to $WRK_HOME/config.json
+  wrk --interceptor --enable      set enabled=true (requires existing block)
+  wrk --interceptor --disable     set enabled=false
+  wrk --interceptor --init [--force]  write disabled neutral stub
+  wrk --interceptor --check       validate interceptor when present
+  wrk --interceptor --dry-run [--] [create-args...]  expand argv without exec
 
 Skill commands:
   wrk skill --list|-l             list available skills (wrk)
@@ -406,8 +442,9 @@ Skill commands:
   wrk skill --install [flags]     install wrk SKILL.md to agent directories
 
 Environment:
-  WRK_HOME        worktree storage root (default: ~/.wrk)
-  WRK_DATE        override the run date (YYYY-MM-DD) used in worktree/branch names
+  WRK_HOME              worktree storage root (default: ~/.wrk)
+  WRK_DATE              override the run date (YYYY-MM-DD) used in worktree/branch names
+  WRK_NO_INTERCEPTOR    set to 1 to skip create.interceptor (same as --no-interceptor)
 `
 }
 

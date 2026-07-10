@@ -671,6 +671,7 @@ func wrkEnv(req *Request) []string {
 		if req.ProjectsPerfLog != "" {
 			env = append(env, "WRK_PROJECTS_PERF_LOG="+req.ProjectsPerfLog)
 		}
+		env = appendExtraEnv(env, req)
 		env = appendCDEnv(env, req)
 		return env
 	}
@@ -687,31 +688,43 @@ func wrkEnv(req *Request) []string {
 	if req.ProjectsPerfLog != "" {
 		env = append(env, "WRK_PROJECTS_PERF_LOG="+req.ProjectsPerfLog)
 	}
+	env = appendExtraEnv(env, req)
 	env = appendCDEnv(env, req)
 	return env
 }
 
+// appendExtraEnv adds create-interceptor ExtraEnv KEY=VAL entries.
+func appendExtraEnv(env []string, req *Request) []string {
+	if len(req.ExtraEnv) == 0 {
+		return env
+	}
+	return append(env, req.ExtraEnv...)
+}
+
+// prependPATH inserts dir at the front of PATH in env (or appends PATH=dir:…).
+func prependPATH(env []string, dir string) []string {
+	if dir == "" {
+		return env
+	}
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + dir + string(os.PathListSeparator) + strings.TrimPrefix(e, "PATH=")
+			return env
+		}
+	}
+	return append(env, "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // appendCDEnv adds --cd test harness env: WRK_FOLLOWUP_FILE, fake-shell PATH/SHELL,
-// and WRK_FAKE_SHELL_* for the shim that LoginInteractive must resolve without hanging.
+// PathPrepend (create-interceptor fake tools), and WRK_FAKE_SHELL_* for the shim
+// that LoginInteractive must resolve without hanging.
 func appendCDEnv(env []string, req *Request) []string {
 	if req.UseFollowupEnv && req.FollowupFile != "" {
 		env = append(env, "WRK_FOLLOWUP_FILE="+req.FollowupFile)
 	}
-	if req.FakeShellDir != "" {
-		// Prepend fake shell bin so exec.Command("bash", ...) / PATH lookups hit the shim.
-		pathPrefix := req.FakeShellDir
-		found := false
-		for i, e := range env {
-			if strings.HasPrefix(e, "PATH=") {
-				env[i] = "PATH=" + pathPrefix + string(os.PathListSeparator) + strings.TrimPrefix(e, "PATH=")
-				found = true
-				break
-			}
-		}
-		if !found {
-			env = append(env, "PATH="+pathPrefix+string(os.PathListSeparator)+os.Getenv("PATH"))
-		}
-	}
+	// PathPrepend first so interceptor fakes win over FakeShellDir when both set.
+	env = prependPATH(env, req.PathPrepend)
+	env = prependPATH(env, req.FakeShellDir)
 	if req.ShellEnv != "" {
 		env = append(env, "SHELL="+req.ShellEnv)
 	}
@@ -779,6 +792,8 @@ func ensureHelpersUsed() {
 	_ = branchNameWithTask
 	_ = createWorktreeWithTask
 	_ = wrkEnv
+	_ = appendExtraEnv
+	_ = prependPATH
 	_ = appendCDEnv
 	_ = prepareFollowupFile
 }
