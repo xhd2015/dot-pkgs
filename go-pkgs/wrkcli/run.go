@@ -1330,6 +1330,7 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 	basename := filepath.Base(mainRepo)
 
 	// Derive task slug if --task was set.
+	// CLI rejects empty/whitespace task text when the flag is present with empty value.
 	var slug string
 	if taskDesc != "" {
 		if strings.TrimSpace(taskDesc) == "" {
@@ -1350,30 +1351,13 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 		return err
 	}
 
-	worktreesDir := filepath.Join(wrkHome, "worktrees")
-	if err := os.MkdirAll(worktreesDir, 0o755); err != nil {
-		return fmt.Errorf("create worktrees dir: %w", err)
+	result, err := CreateDefaultWorktree(cwd, wrkHome, slug)
+	if err != nil {
+		return err
 	}
-
-	for suffix := 0; suffix < 100; suffix++ {
-		wtPath, branch := candidateNames(worktreesDir, basename, branchBase, pathToken, date, slug, suffix)
-		if candidateBlocked(mainRepo, wtPath, branch) {
-			continue
-		}
-
-		if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
-			return err
-		}
-
-		absPath, err := filepath.Abs(wtPath)
-		if err != nil {
-			return fmt.Errorf("resolve worktree path: %w", err)
-		}
-		fmt.Println(absPath)
-		// Home-gate on shell process cwd (origWd), not source workDir.
-		return writeFollowupCDIfCwdIsHome(noCd, origWd, absPath)
-	}
-	return fmt.Errorf("could not find available worktree name after 99 attempts")
+	fmt.Println(result.Path)
+	// Home-gate on shell process cwd (origWd), not source workDir.
+	return writeFollowupCDIfCwdIsHome(noCd, origWd, result.Path)
 }
 
 // runCreateTargetDir handles wrk <dir> <target-dir>. A relative <target-dir> is
