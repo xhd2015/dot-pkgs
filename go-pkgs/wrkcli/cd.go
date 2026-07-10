@@ -13,7 +13,9 @@ import (
 
 // runCd jumps into absDir: in-place follow-up when WRK_FOLLOWUP_FILE is set,
 // otherwise prints install hint + abs path and launches an interactive shell.
-func runCd(absDir string) error {
+// When execArgs is non-empty, runs the command in absDir after a successful jump
+// (follow-up is still written when the channel is open).
+func runCd(absDir string, execArgs []string) error {
 	info, err := os.Stat(absDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -27,7 +29,10 @@ func runCd(absDir string) error {
 
 	// Branch A — bash integration channel open: in-place follow-up only.
 	if strings.TrimSpace(os.Getenv("WRK_FOLLOWUP_FILE")) != "" {
-		return writeFollowupCD(false, absDir)
+		if err := writeFollowupCD(false, absDir); err != nil {
+			return err
+		}
+		return runExecInDir(absDir, execArgs)
 	}
 
 	// Branch B — fallback: warn, print abs path, launch interactive shell.
@@ -42,5 +47,5 @@ func runCd(absDir string) error {
 		}
 		return err
 	}
-	return nil
+	return runExecInDir(absDir, execArgs)
 }

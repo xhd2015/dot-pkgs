@@ -9,8 +9,9 @@ optional create interceptor (`$WRK_HOME/config.json` → `create.interceptor`) a
 management surface (`wrk --interceptor …`), `wrk --dep` external dependency worktrees,
 `wrk --done` merge-back (including external cascade), `wrk --list`, `wrk --status`,
 project persistence (`wrk --projects`, `wrk --add`, `wrk --rm`, auto-record,
-events.jsonl), and `wrk --cd` directory jump (in-place follow-up or fallback
-interactive shell).
+events.jsonl), `wrk --cd` directory jump (in-place follow-up or fallback
+interactive shell), and `wrk --exec` cut-flag (run a trailing command in the mode
+target directory after successful create / `--cd` / `--dep` / `--set-task` / `--done`).
 
 # DSN (Domain Specific Notion)
 
@@ -73,6 +74,8 @@ interactive shell).
 - **wrk --cd** — standalone mode: `Bool("--cd")` plus **exactly one** path positional. Forms: `wrk --cd <path|basename>` and `wrk <path|basename> --cd`. Resolves path via `resolveDirArg(..., allowBasenameFallback=true, ...)` (local dir under cwd wins; else `projects.json` basename lookup; ambiguous non-TTY lists candidates). **Git not required** for the target. **Branch A (in-place)**: when `WRK_FOLLOWUP_FILE` is non-empty, write `cd /absolute/path\n` via `writeFollowupCD(false, abs)` unconditionally (no create home-gate / done cwd-gate), **empty stdout**, exit 0, do **not** launch a shell. **Branch B (fallback)**: channel unset/empty → stderr warning containing `wrk --bash-integration --install`, stdout = absolute path + trailing `\n`, then `shell/interactive.LoginInteractive(abs, filepath.Base(abs), optional extraEnv...)` and propagate shell exit code. Mutually exclusive with create / `--done` / `--merge-back` / `--list` / `--status` / `--repos` / `--projects` / `--add` / `--rm` / `--where` / `--dep` / `--all-deps` / `--task` / `--set-task` / spawn target / **`--no-cd`**. Missing path → `wrk: --cd requires a path argument`. Extra positionals → `wrk: unexpected arguments`. Event `command: "cd"`. Doctest harness: `Request.UseFollowupEnv` + `FollowupFile` for Branch A; `installFakeBash` (`FakeShellDir` / `FakeShellLog` / `SHELL`) so Branch B never hangs CI.
 - **Request.FollowupFile / UseFollowupEnv** — when `UseFollowupEnv` is true, root `Run` truncates `FollowupFile` and exports `WRK_FOLLOWUP_FILE` (in-place channel for `--cd` and related tests).
 - **Request.FakeShellDir / FakeShellLog / FakeShellExit / ShellEnv** — fallback `--cd` harness: prepend fake `bash` on PATH, set `SHELL`, `WRK_FAKE_SHELL_LOG`, and optional non-zero `WRK_FAKE_SHELL_EXIT` so `LoginInteractive` cannot hang.
+- **wrk --exec** — long-only cut flag (no `-e`); less-flags `Cut("--exec", &execArgs)`. On seeing `--exec`: if no tokens after → **error** (requires a command); else copy all subsequent tokens into `execArgs` and **stop parsing** (tokens never treated as wrk flags — e.g. `wrk --no-interceptor --exec echo --task` runs `echo --task`). Reject equals form `--exec=value`. Absent `--exec` → no post-mode command. After a **successful** allowed mode, run `exec.Command(execArgs[0], execArgs[1:]...)` with `cmd.Dir` set to the mode target absolute directory; inherit stdin/stdout/stderr; non-zero child exit → `ExitCodeError` (same pattern as create interceptor / `--cd` shell). **Allowed modes & `cmd.Dir`**: **create** (native) → newly created worktree; **`--cd`** → resolved jump directory; **`--dep`** → external dep worktree; **`--set-task`** → renamed worktree (post-move); **`--done`** → main repo (`MergeBack` `TargetPath`, never the removed worktree). **`--done`**: exec only after successful done (not aborted / failed confirm). **Create interceptor + `--exec`**: error unless `--no-interceptor` / `WRK_NO_INTERCEPTOR=1` (message should mention interceptor escape). **Reject `--exec` with**: `--list`, `--status`, `--repos`, `--projects`, `--add`, `--rm`, `--where`, `--merge-back`, `--all-deps`, interceptor management, skill, bash-integration, and other non-allowed modes. Mode path/message lines still print **before** the child command's stdout (create/dep/set-task path; done `worktree removed:…`; in-place `--cd` keeps empty mode stdout so only child output appears). Follow-up shell cd rules unchanged (create home-gate; done/set-task cwd-missing); exec is a child process and does not replace follow-up writes.
+- **Request.Args with `--exec`** — leaves pass `--exec` and command tokens as trailing `req.Args` (or after `SetTaskDesc`/`TargetDir` assembly via `buildWrkCLIArgs`); no separate Request field for exec argv.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
 - **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd as a **directory** (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Cwd file collision** (new): when `filepath.Join(cwd, <dir>)` exists and is a **regular file** (not a directory), do not proceed to git-repo resolution; instead load `projects.json` and emit guided stderr. **1** registered match → multi-line stderr: `wrk: <abs-cwd-file> exists and is a file`, `wrk: "<basename>" matches registered project(s):`, one indented project path, `wrk: use \`wrk <concrete-saved-path> <reconstructed-args>\` instead` (hint preserves user flags/args such as `-t`, `--status`, `--dep`, spawn target). **2+** matches → same shape listing all project paths (lex order) and hint `wrk: use \`wrk <full-path> <reconstructed-args>\` instead` (literal `<full-path>` placeholder). **0** matches → single line `wrk: <abs-cwd-file> exists and is a file` only (no registry block, no hint). Exit non-zero; stdout empty; no worktree created. Directory blocking behavior is unchanged. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup. `--where` unchanged (no cwd stat).
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
@@ -386,6 +389,25 @@ wrk tests
 │   └── cascade/
 │       ├── non-tty-rejects/      # ahead external + wrk --done -y → error
 │       └── tty-auto-yes/         # TTY + -y auto-confirms cascade merge (label: tty)
+├── exec/                         # --exec cut-flag: run command in mode target dir
+│   ├── create/                   # native create + --exec
+│   │   ├── basic-pwd/            # --no-interceptor --exec pwd → path then pwd in wt
+│   │   ├── args-passthrough/     # --exec echo --task → --task not wrk flag
+│   │   └── interceptor-blocked/  # interceptor on + --exec without escape → error
+│   ├── cd/                       # --cd + --exec
+│   │   └── with-followup/        # follow-up written; stdout = pwd of jump dir
+│   ├── dep/                      # --dep + --exec
+│   │   └── basic-pwd/            # external path then pwd in external wt
+│   ├── set-task/                 # --set-task + --exec
+│   │   └── after-rename/         # pwd = new path after move
+│   ├── done/                     # --done + --exec
+│   │   └── exec-on-main/         # pwd = main repo (not removed wt)
+│   ├── reject/                   # --exec with non-allowed modes
+│   │   ├── with-list/            # --list --exec true → error
+│   │   └── with-status/          # --status --exec true → error
+│   └── empty-flag/               # parse errors for cut flag
+│       ├── bare-exec/            # --exec alone → requires command
+│       └── equals-form/          # --exec=pwd → reject equals form
 └── projects/                     # project persistence + event logging
     ├── auto-record/              # auto-record main repo on every invocation
     │   ├── no-dir/               # effective work dir = process cwd
@@ -806,6 +828,17 @@ wrk tests
 | 184 | interceptor-mgmt/dry-run/disabled-errors | Disabled interceptor → non-zero |
 | 185 | interceptor-mgmt/mutual-exclusion/with-list | `--interceptor --status --list` → mutually exclusive |
 | 186 | interceptor-mgmt/entry/requires-action | Bare `--interceptor` → non-zero |
+| 187 | exec/create/basic-pwd | create + `--no-interceptor --exec pwd` → path then pwd in new wt |
+| 188 | exec/create/args-passthrough | `--exec echo --task` → child sees `--task`; no task slug on path |
+| 189 | exec/create/interceptor-blocked | interceptor enabled + `--exec` without escape → non-zero |
+| 190 | exec/cd/with-followup | `--cd` + follow-up + `--exec pwd` → follow-up + stdout pwd |
+| 191 | exec/dep/basic-pwd | `--dep` + `--exec pwd` → external path then pwd there |
+| 192 | exec/set-task/after-rename | `--set-task` + `--exec pwd` → new path then pwd |
+| 193 | exec/done/exec-on-main | `--done -y --exec pwd` → last line = main repo path |
+| 194 | exec/reject/with-list | `--list --exec true` → non-zero |
+| 195 | exec/reject/with-status | `--status --exec true` → non-zero |
+| 196 | exec/empty-flag/bare-exec | bare `--exec` → requires command; no wt |
+| 197 | exec/empty-flag/equals-form | `--exec=pwd` → reject equals form |
 
 ## How to Run
 
@@ -881,6 +914,13 @@ doctest vet ./tests/yes-flag
 doctest test ./tests/yes-flag
 doctest test ./tests/done/cascade-force-removal
 doctest test ./tests/done/cascade-non-tty-rejects-with-confirm-from-stdin
+
+# Run --exec cut-flag leaves (expect RED until less-flags Cut + wrk --exec implemented)
+doctest vet ./tests/exec
+doctest test ./tests/exec
+doctest test ./tests/exec/create/basic-pwd
+doctest test ./tests/exec/done/exec-on-main
+doctest test ./tests/exec/empty-flag/bare-exec
 
 # Run a done cascade leaf
 doctest test ./tests/done/external-cascade
