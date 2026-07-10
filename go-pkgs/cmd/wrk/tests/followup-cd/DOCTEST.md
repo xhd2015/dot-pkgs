@@ -1,14 +1,15 @@
 # wrk bash-integration follow-up auto-cd
 
 ## Version
-0.0.4
+0.0.5
 
 Decision tree covering bash follow-up auto-`cd`: the binary writes
-`cd /abs` lines to `WRK_FOLLOWUP_FILE` after successful create / `--done` /
-`--set-task` move (with a **home gate** for create and a **shell-cwd
-existence gate** for done/set-task); the installed `wrk()` bash wrapper
-executes whitelisted follow-ups; `--no-cd` and `WRK_AUTO_CD=0` suppress
-the protocol.
+`cd /abs` lines to `WRK_FOLLOWUP_FILE` after successful default-location
+create / `--done` / `--set-task` move (with a **home gate** for default
+create and a **shell-cwd existence gate** for done/set-task); create with
+an explicit second positional `<target-dir>` **never** writes follow-up;
+the installed `wrk()` bash wrapper executes whitelisted follow-ups;
+`--no-cd` and `WRK_AUTO_CD=0` suppress the protocol.
 
 # DSN (Domain Specific Notion)
 
@@ -24,7 +25,8 @@ the protocol.
   merely the optional `<dir>` workDir / source path). Gates compare this
   captured path, so `cd ~ && wrk ~/code/myrepo` uses home as the gate input
   even though create resolves work from the repo path argument.
-- **Create follow-up (home gate)** — after successful create, write
+- **Create follow-up (home gate, default location only)** — after successful
+  **default-location** create (no second positional `<target-dir>`), write
   `cd <new-worktree>` **only if** shell process cwd equals the user home
   directory from `os.UserHomeDir()` (OS home API; not a direct
   `os.Getenv("HOME")` in our code). Exact home only — a subdirectory under
@@ -34,6 +36,14 @@ the protocol.
   the worktree path on stdout; the follow-up file stays empty so the shell
   is not yanked. Tests set `HOME=FakeHome` so `os.UserHomeDir()` resolves
   to FakeHome — FakeHome is the correct “user home” in leaves.
+- **Create with `<target-dir>` (no follow-up)** — when create is invoked with
+  an explicit second positional `<target-dir>`, the binary **never** writes
+  a follow-up `cd` to `WRK_FOLLOWUP_FILE`, even when shell cwd is exactly
+  user home and the follow-up channel is open. Applies to both success
+  spawn shapes: target missing with parent present (worktree exactly at
+  `<target-dir>`) and target existing as a directory (default-named sub-dir
+  under it). Stdout still prints the worktree path; `--exec` still runs in
+  the new dir. Wrapper e2e: shell stays at StartDir (no stderr `cd` line).
 - **Shell-cwd gate (done / set-task move)** — after a successful `--done`
   remove or path-changing `--set-task` move, write the follow-up **only if
   the captured shell cwd no longer exists** (e.g. `os.Stat` not-exist). If
@@ -81,6 +91,8 @@ followup-cd/
 │   ├── create/
 │   │   ├── success-env-set/        # shell cwd=FakeHome + env → cd <worktree>
 │   │   ├── success-cwd-not-home/   # shell cwd=main repo + env → empty
+│   │   ├── success-with-target-dir/          # home + env + target missing → empty
+│   │   ├── success-with-target-dir-exists/   # home + env + target exists → empty
 │   │   ├── success-env-unset/      # no side effects without env
 │   │   ├── no-cd-flag/             # --no-cd suppresses write (from home)
 │   │   └── failure/                # non-git create fails; file empty
@@ -98,6 +110,7 @@ followup-cd/
     ├── create/
     │   ├── auto-cd/                # StartDir=FakeHome → worktree; stderr cd
     │   ├── auto-cd-from-repo-stays/# StartDir=main repo → stay; no stderr cd
+    │   ├── no-auto-cd-with-target-dir/ # StartDir=FakeHome + <target> → stay
     │   ├── auto-cd-off/            # WRK_AUTO_CD=0; cwd unchanged
     │   └── no-cd-flag/             # wrk --no-cd; cwd unchanged
     ├── done/
@@ -120,25 +133,28 @@ followup-cd/
 | 4 | script-surface/complete/no-cd-flag | `--complete` flag candidates include `--no-cd` |
 | 5 | binary-followup/create/success-env-set | shell cwd=FakeHome + `wrk <mainRepo>` + env → follow-up `cd <abs-worktree>` |
 | 6 | binary-followup/create/success-cwd-not-home | shell cwd=main repo + env → worktree created; follow-up empty |
-| 7 | binary-followup/create/success-env-unset | create without env → follow-up path untouched |
-| 8 | binary-followup/create/no-cd-flag | create from home + `--no-cd` + env → empty follow-up |
-| 9 | binary-followup/create/failure | non-git create + env → non-zero, empty follow-up |
-| 10 | binary-followup/done/remove-success | `--done` from inside operated wt → `cd <main-repo-abs>` |
-| 11 | binary-followup/done/sibling-cwd-empty | shell cwd = sibling A; `--done <B>` → empty follow-up |
-| 12 | binary-followup/done/main-cwd-empty | shell cwd = main; `--done <B>` → empty follow-up |
-| 13 | binary-followup/merge-back/no-followup | `--merge-back` success + env → empty follow-up |
-| 14 | binary-followup/set-task/move-success | `--set-task` move from inside wt → `cd <newPath-abs>` |
-| 15 | binary-followup/set-task/task-unchanged | same slug + env → empty follow-up |
-| 16 | binary-followup/set-task/sibling-cwd-empty | shell cwd = sibling A; rename B → empty follow-up |
-| 17 | wrapper/create/auto-cd | StartDir=FakeHome + `wrk <mainRepo>` → stderr `cd`, `pwd` = worktree |
-| 18 | wrapper/create/auto-cd-from-repo-stays | StartDir=main repo → no stderr `cd`; FinalPWD stays main |
-| 19 | wrapper/create/auto-cd-off | `WRK_AUTO_CD=0` from home → no stderr `cd`, cwd stays home |
-| 20 | wrapper/create/no-cd-flag | `wrk --no-cd` from home → no stderr `cd`, cwd stays home |
-| 21 | wrapper/done/auto-cd | wrapper `--done` from linked wt → cwd = main repo |
-| 22 | wrapper/done/sibling-cwd-stays | wrapper `--done <other>` from sibling → pwd stays; no stderr `cd` |
-| 23 | wrapper/set-task/auto-cd | wrapper `--set-task` from inside wt → cwd = new path |
-| 24 | wrapper/set-task/sibling-cwd-stays | wrapper rename other from sibling → pwd stays; no stderr `cd` |
-| 25 | wrapper/bad-path/cd-fails | follow-up `cd` to missing path → wrapper non-zero, binary 0 |
+| 7 | binary-followup/create/success-with-target-dir | home + env + `wrk <repo> <target>` (missing) → exact target; follow-up empty |
+| 8 | binary-followup/create/success-with-target-dir-exists | home + env + existing target dir → default-named under it; follow-up empty |
+| 9 | binary-followup/create/success-env-unset | create without env → follow-up path untouched |
+| 10 | binary-followup/create/no-cd-flag | create from home + `--no-cd` + env → empty follow-up |
+| 11 | binary-followup/create/failure | non-git create + env → non-zero, empty follow-up |
+| 12 | binary-followup/done/remove-success | `--done` from inside operated wt → `cd <main-repo-abs>` |
+| 13 | binary-followup/done/sibling-cwd-empty | shell cwd = sibling A; `--done <B>` → empty follow-up |
+| 14 | binary-followup/done/main-cwd-empty | shell cwd = main; `--done <B>` → empty follow-up |
+| 15 | binary-followup/merge-back/no-followup | `--merge-back` success + env → empty follow-up |
+| 16 | binary-followup/set-task/move-success | `--set-task` move from inside wt → `cd <newPath-abs>` |
+| 17 | binary-followup/set-task/task-unchanged | same slug + env → empty follow-up |
+| 18 | binary-followup/set-task/sibling-cwd-empty | shell cwd = sibling A; rename B → empty follow-up |
+| 19 | wrapper/create/auto-cd | StartDir=FakeHome + `wrk <mainRepo>` → stderr `cd`, `pwd` = worktree |
+| 20 | wrapper/create/auto-cd-from-repo-stays | StartDir=main repo → no stderr `cd`; FinalPWD stays main |
+| 21 | wrapper/create/no-auto-cd-with-target-dir | StartDir=FakeHome + `wrk <repo> <target>` → no stderr `cd`; stay home |
+| 22 | wrapper/create/auto-cd-off | `WRK_AUTO_CD=0` from home → no stderr `cd`, cwd stays home |
+| 23 | wrapper/create/no-cd-flag | `wrk --no-cd` from home → no stderr `cd`, cwd stays home |
+| 24 | wrapper/done/auto-cd | wrapper `--done` from linked wt → cwd = main repo |
+| 25 | wrapper/done/sibling-cwd-stays | wrapper `--done <other>` from sibling → pwd stays; no stderr `cd` |
+| 26 | wrapper/set-task/auto-cd | wrapper `--set-task` from inside wt → cwd = new path |
+| 27 | wrapper/set-task/sibling-cwd-stays | wrapper rename other from sibling → pwd stays; no stderr `cd` |
+| 28 | wrapper/bad-path/cd-fails | follow-up `cd` to missing path → wrapper non-zero, binary 0 |
 
 ## How to Run
 
@@ -151,14 +167,21 @@ doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/script-surface
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/wrapper
 
-# Create home-gate surfaces (new non-home leaves RED until implementer lands gate;
-# home success leaves may be RED until create uses home-gated write)
+# Create surfaces (home gate + target-dir no-follow-up)
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/wrapper/create
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create/success-cwd-not-home
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/wrapper/create/auto-cd-from-repo-stays
 
-# Done/set-task existence-gate leaves (unchanged by create home gate)
+# Target-dir create never writes follow-up (RED until implementer drops writes)
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create/success-with-target-dir
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create/success-with-target-dir-exists
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/wrapper/create/no-auto-cd-with-target-dir
+
+# Regression: default create from home still writes follow-up
+doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/create/success-env-set
+
+# Done/set-task existence-gate leaves (unchanged by create target-dir policy)
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/done/sibling-cwd-empty
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/done/main-cwd-empty
 doctest test ./go-pkgs/cmd/wrk/tests/followup-cd/binary-followup/set-task/sibling-cwd-empty

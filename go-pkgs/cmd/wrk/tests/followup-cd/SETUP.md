@@ -3,9 +3,10 @@
 **Feature**: wrk bash follow-up auto-cd (script surface, binary protocol, wrapper)
 
 ```
-# create: home-gated write when channel open
+# create: home-gated write when channel open (default location only)
 WRK_FOLLOWUP_FILE=tmp; cwd=home; wrk <repo> -> file: cd /abs-worktree
 WRK_FOLLOWUP_FILE=tmp; cwd=main; wrk -> file empty
+WRK_FOLLOWUP_FILE=tmp; cwd=home; wrk <repo> <target> -> file empty (never)
 
 # done/set-task: existence-gated write when channel open
 WRK_FOLLOWUP_FILE=tmp wrk [--done|--set-task] -> file: cd /abs (iff shell cwd gone)

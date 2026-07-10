@@ -1541,10 +1541,9 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 				return fmt.Errorf("resolve worktree path: %w", err)
 			}
 			fmt.Println(absPath)
-			if err := runExecInDir(absPath, execArgs); err != nil {
-				return err
-			}
-			return writeFollowupCDIfCwdIsHome(noCd, origWd, absPath)
+			// Target-dir create intentionally skips auto-cd follow-up;
+			// home gate applies only to default spawn.
+			return runExecInDir(absPath, execArgs)
 		}
 		return fmt.Errorf("could not find available worktree name after 99 attempts")
 	}
@@ -1577,10 +1576,9 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		return fmt.Errorf("resolve worktree path: %w", err)
 	}
 	fmt.Println(absPath)
-	if err := runExecInDir(absPath, execArgs); err != nil {
-		return err
-	}
-	return writeFollowupCDIfCwdIsHome(noCd, origWd, absPath)
+	// Target-dir create intentionally skips auto-cd follow-up;
+	// home gate applies only to default spawn.
+	return runExecInDir(absPath, execArgs)
 }
 
 func resolveWrkHome() (string, error) {
