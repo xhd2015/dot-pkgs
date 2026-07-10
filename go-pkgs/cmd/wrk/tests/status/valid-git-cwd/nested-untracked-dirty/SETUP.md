@@ -1,10 +1,11 @@
 # Scenario
 
-**Feature**: wrk --status reports every git directory discovered under the checkout root
+**Bug**: wrk --status on a nested independent checkout with only untracked files reports dirty added, while a clean root stays clean
 
 ```
-# checkout root contains another independent git checkout
-myrepo + myrepo/tools/child -> wrk --status -> blocks for "." and "tools/child"
+# root clean; nested independent git tools/child has only ?? untracked
+myrepo (clean) + myrepo/tools/child + ?? new.txt -> wrk --status
+  -> Dir "." clean; Dir "tools/child" dirty (1 added, 0 changed, 0 renamed, 0 deleted)
 ```
 
 ## Steps
@@ -13,7 +14,8 @@ myrepo + myrepo/tools/child -> wrk --status -> blocks for "." and "tools/child"
 2. Commit a root `.gitignore` containing `tools/` so the nested independent checkout is not
    counted as untracked on the parent (parent porcelain stays clean when untracked is included).
 3. Initialize `{WorkRoot}/myrepo/tools/child` as an independent git repo on branch `main`.
-4. Run `wrk --status` from `{WorkRoot}/myrepo`.
+4. Create an untracked file `new.txt` under `tools/child` (do not stage or commit).
+5. Run `wrk --status` from `{WorkRoot}/myrepo`.
 
 ```go
 import "path/filepath"
@@ -31,6 +33,7 @@ func Setup(t *testing.T, req *Request) error {
 	runGitIsolated(t, repo, "commit", "-m", "ignore nested tools")
 
 	statusInitRepoWithSubject(t, child, "child status repo")
+	writeFile(t, filepath.Join(child, "new.txt"), "untracked\n")
 
 	req.RepoDir = repo
 	req.MainRepo = repo

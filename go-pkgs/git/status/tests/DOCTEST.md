@@ -30,8 +30,9 @@ applies the wrk four-bucket taxonomy (`??` → added, `M`/default → changed).
 - Backup: non-zero counts → only non-zero labels appear in `dirty (...)` suffix;
   order: modified, added, deleted, untracked, renamed, copied, unmerged.
 - Wrk: dirty output always lists added, changed, renamed, deleted (zeros included).
-- Wrk porcelain fetch uses `--untracked-files=no` at the git layer; parse tests supply
-  representative lines including `??` when exercising the added bucket.
+- Wrk status includes untracked files by default (`??` → added via `ParsePorcelainWrk`).
+  Callers may still pass `--untracked-files=no` via `checkout.Options.PorcelainUntracked: false`;
+  parse tests supply representative lines including `??` when exercising the added bucket.
 
 ## Decision Tree
 

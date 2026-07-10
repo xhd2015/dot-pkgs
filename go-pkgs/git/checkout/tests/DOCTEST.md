@@ -21,8 +21,10 @@ durable stepwise git enrichment (branch → sha → msg → status) and returns
 - **Unborn HEAD** — `git init` only → `Error: "no commits (HEAD unborn)"`.
 - **Clean repo** — after commit → `Branch`, 7-char `CommitSHA`, `CommitMsg`, `Status: "clean"`.
 - **Dirty repo** — modified file → `Status: "dirty (N modified)"` with other fields populated.
-- **Wrk style** — `StatusStyle: FormatWrk` with `PorcelainUntracked: false` uses
-  `ParsePorcelainWrk` + `FormatWrk` for `Meta.Status`.
+- **Wrk style** — `StatusStyle: FormatWrk` uses `ParsePorcelainWrk` + `FormatWrk`
+  for `Meta.Status`. Untracked files are included by default (`??` → added);
+  `PorcelainUntracked: false` is an optional opt-out that appends
+  `--untracked-files=no`.
 - Enrich always returns `Meta`; caller inspects `Error` field.
 
 ## Decision Tree

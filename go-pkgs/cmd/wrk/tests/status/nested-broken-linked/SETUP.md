@@ -19,6 +19,9 @@ scan-discovered repo (alive checkout, git fails) -> minimal relative Dir + Statu
 
 ## Steps
 
+- `setupNestedBrokenLinkedFixture` commits root `.gitignore` with `tools/` and `vendor/` after
+  root init so nested independent checkouts are not counted as untracked on the parent
+  (root porcelain stays clean when untracked is included).
 - Descendants call `setupNestedBrokenLinkedFixture` then run `wrk --status` from `{WorkRoot}/myrepo`.
 - Color leaf adds `--color` to force red `error: …` on the broken block value.
 
@@ -49,6 +52,12 @@ func setupNestedBrokenLinkedFixture(t *testing.T, req *Request) {
 	t.Helper()
 	mainRepo := filepath.Join(req.WorkRoot, "myrepo")
 	statusInitRepoWithSubject(t, mainRepo, "root repo")
+	// Nested independent git dirs (tools/, vendor/) appear as ?? on the parent when
+	// untracked files are included. Ignore them so the root block stays clean while
+	// children are still discovered by scan_repo and report their own status.
+	writeFile(t, filepath.Join(mainRepo, ".gitignore"), "tools/\nvendor/\n")
+	runGitIsolated(t, mainRepo, "add", ".gitignore")
+	runGitIsolated(t, mainRepo, "commit", "-m", "ignore nested tools and vendor")
 
 	goodChild := filepath.Join(mainRepo, "tools", "good")
 	statusInitRepoWithSubject(t, goodChild, "good child")

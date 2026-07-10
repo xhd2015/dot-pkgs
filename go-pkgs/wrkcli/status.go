@@ -19,7 +19,7 @@ import (
 
 var wrkCheckoutOpts = checkout.Options{
 	StatusStyle:        status.StyleWrk,
-	PorcelainUntracked: false,
+	PorcelainUntracked: true,
 }
 
 type statusBlockPrintOpts struct {
@@ -198,6 +198,7 @@ func printAppendedLinkedBlock(mainRepo, repoPath string, colorEnabled bool) {
 		printBrokenStatusBlock(dirLine, brokenStatusMessage(meta, repoPath), colorEnabled)
 		return
 	}
+	applyWrkStatusWithLinkedSkip(repoPath, &meta)
 	masterBrief, _, err := masterBriefForRepo(repoPath, meta.Branch, colorEnabled)
 	if err != nil {
 		printBrokenStatusBlock(dirLine, gitCombinedOutputError(repoPath, "status", "--porcelain"), colorEnabled)
@@ -245,6 +246,7 @@ func printStatusBlock(root, repoPath string, colorEnabled, scanColorEnabled bool
 		printBrokenStatusBlock(filepath.ToSlash(rel), brokenStatusMessage(meta, repoPath), colorEnabled)
 		return nil
 	}
+	applyWrkStatusWithLinkedSkip(repoPath, &meta)
 
 	hasMaster := worktree.IsLinked(repoPath)
 	if opts.showMaster != nil {
@@ -276,6 +278,31 @@ func printStatusBlock(root, repoPath string, colorEnabled, scanColorEnabled bool
 		fmt.Println(remoteLine)
 	}
 	return nil
+}
+
+// applyWrkStatusWithLinkedSkip recomputes Meta.Status including untracked files
+// but excluding in-tree linked worktree paths (same skip as wrk --projects).
+// Git reports those checkouts as ?? under the main tree; they must not mark
+// the parent dirty when they are reported as their own status blocks.
+func applyWrkStatusWithLinkedSkip(repoPath string, meta *checkout.Meta) {
+	if meta == nil || meta.Error != "" {
+		return
+	}
+	var skip map[string]struct{}
+	if worktree.IsMainRepo(repoPath) {
+		if linked, err := worktree.ListLinked(repoPath); err == nil && len(linked) > 0 {
+			skip = skipUntrackedRelPaths(repoPath, linked)
+		}
+	}
+	if len(skip) == 0 {
+		// No linked paths to exclude; Enrich status already includes untracked.
+		return
+	}
+	counts, err := gitProjectStatusCountsWithSkip(repoPath, skip)
+	if err != nil {
+		return
+	}
+	meta.Status = status.FormatWrk(counts)
 }
 
 func formatStatusRemoteLine(mainRepoPath, currentBranch string, colorEnabled bool, fetchEnabled bool, isClean bool) (string, error) {

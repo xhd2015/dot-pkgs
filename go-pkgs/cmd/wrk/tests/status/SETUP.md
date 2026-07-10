@@ -23,6 +23,7 @@ wrk --status + other mode -> error (mutually exclusive)
 ## Context
 
 - Successful status output is a sequence of blocks containing `Dir`, `Branch`, `Commit`, and `Status` lines.
+- `Status` is `clean` or `dirty (N added, N changed, N renamed, N deleted)`; porcelain `??` untracked counts as **added** (same wrk taxonomy as `--projects`).
 - The `Dir` line is relative to the current checkout toplevel; the checkout itself is `.`.
 - **Main repo checkout cwd only**: the root `Dir: .` block also includes `Remote:` (same brief labels as `--projects`; `(no upstream)` when no tracking remote). Linked worktree cwd and nested `RepoTypeMain` repos omit `Remote:`.
 - **Linked worktrees only** (`worktree.IsLinked`) also include one-line `Master:` — brief branch-relation label comparing the main repo's current branch vs the worktree's current branch (`git.CompareBranches`: `identical`, `needs merge back(+N commit(s))`, `needs fast forward(+N commit(s))`, `diverged(N commit(s))`); main checkout and nested independent `RepoTypeMain` repos omit this field.
