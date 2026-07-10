@@ -3,6 +3,10 @@ package space
 // AppleScripts for Mission Control. Verified on macOS 26.5.1 (arm64):
 // Dock > Mission Control > Spaces Bar.
 // Keep System Events terms inside tell blocks.
+//
+// Create notes: when at the macOS hard limit of 16 Desktops, Mission Control
+// omits the "add desktop" button from the AX tree entirely. scriptCreate
+// detects that and returns a clear FAIL instead of Invalid index (-1719).
 
 const scriptCreate = `
 try
@@ -14,7 +18,62 @@ try
 			set mc to first group whose name is "Mission Control"
 			set inner to group 1 of mc
 			set spacesBar to first group of inner whose name is "Spaces Bar"
-			set addBtn to first button of spacesBar whose (value of attribute "AXDescription" is "add desktop")
+			-- Prefer direct Spaces Bar button (macOS 26.x verified path).
+			set foundAdd to false
+			try
+				set addBtn to first button of spacesBar whose (value of attribute "AXDescription" is "add desktop")
+				set foundAdd to true
+			end try
+			-- Fallback: nested under Spaces Bar (layout variants).
+			if not foundAdd then
+				try
+					set entireBar to entire contents of spacesBar
+					repeat with el in entireBar
+						try
+							if (role of el as text) is "AXButton" then
+								set d to value of attribute "AXDescription" of el
+								if d is not missing value then
+									if (d as text) is "add desktop" then
+										set addBtn to el
+										set foundAdd to true
+										exit repeat
+									end if
+								end if
+							end if
+						end try
+					end repeat
+				end try
+			end if
+			if not foundAdd then
+				-- Count Desktops for a clear max-cap error (macOS hard limit is 16).
+				set deskCount to 0
+				try
+					set lst to first list of spacesBar
+					set deskCount to count of buttons of lst
+				end try
+				if deskCount is 0 then
+					try
+						set entireBar2 to entire contents of spacesBar
+						repeat with el in entireBar2
+							try
+								if (role of el as text) is "AXButton" then
+									set d to value of attribute "AXDescription" of el
+									if d is not missing value then
+										if (d as text) starts with "exit to Desktop " then
+											set deskCount to deskCount + 1
+										end if
+									end if
+								end if
+							end try
+						end repeat
+					end try
+				end if
+				key code 53
+				if deskCount >= 16 then
+					return "FAIL: cannot create Desktop: already at macOS maximum of 16 (have " & (deskCount as text) & "). Close a Desktop in Mission Control, then retry."
+				end if
+				return "FAIL: cannot find \"add desktop\" button in Spaces Bar (desktops=" & (deskCount as text) & ")"
+			end if
 			click addBtn
 		end tell
 		delay 0.35
