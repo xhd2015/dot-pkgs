@@ -1,23 +1,24 @@
 # Scenario
 
-**Feature**: wrapper respects --no-cd (no auto-cd)
+**Feature**: wrapper respects --no-cd (no auto-cd) even from home
 
 ```
-source bash.sh; wrk --no-cd from main
-  -> worktree created; no stderr cd; FinalPWD stays main
+# StartDir = FakeHome; home gate would open without --no-cd
+source bash.sh; wrk --no-cd <mainRepo>
+  -> worktree created; no stderr cd; FinalPWD stays FakeHome
 ```
 
 ## Steps
 
-1. Init main repo.
-2. Run `wrk --no-cd` via wrapper.
+1. Init main repo; start shell at FakeHome.
+2. Run `wrk --no-cd <mainRepo>` via wrapper.
 
 ```go
 func Setup(t *testing.T, req *Request) error {
 	mainRepo := setupMainRepo(t, req)
 	req.RepoDir = mainRepo
-	req.StartDir = mainRepo
-	req.CLIArgs = []string{"--no-cd"}
+	req.StartDir = req.FakeHome
+	req.CLIArgs = []string{"--no-cd", mainRepo}
 	return nil
 }
 ```

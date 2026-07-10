@@ -2,7 +2,8 @@
 
 - Exit code 0.
 - Stdout is the new worktree absolute path (trailing `\n`).
-- Follow-up file contains exactly `cd <same-worktree-abs>` with trailing newline.
+- Follow-up file contains exactly `cd <same-worktree-abs>` with trailing newline
+  (home gate opens: shell cwd was FakeHome / user home).
 - Stderr empty (no follow-up on stderr from binary).
 
 ## Exit Code

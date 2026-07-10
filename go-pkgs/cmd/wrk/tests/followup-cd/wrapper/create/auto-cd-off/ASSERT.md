@@ -3,7 +3,7 @@
 - Exit code 0.
 - Create still succeeds (stdout path).
 - Stderr has no `cd /` follow-up line.
-- FinalPWD remains main repo (start dir).
+- FinalPWD remains FakeHome (start dir / user home).
 
 ## Exit Code
 
@@ -32,6 +32,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 			t.Fatalf("WRK_AUTO_CD=0 must not print follow-up cd; got stderr line %q", line)
 		}
 	}
-	assertPathsEqual(t, resp.FinalPWD, req.MainRepo)
+	assertPathsEqual(t, resp.FinalPWD, req.StartDir)
+	assertPathsEqual(t, resp.FinalPWD, req.FakeHome)
 }
 ```

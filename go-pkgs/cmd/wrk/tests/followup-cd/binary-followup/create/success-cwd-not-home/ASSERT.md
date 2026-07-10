@@ -1,9 +1,10 @@
 ## Expected
 
 - Exit code 0.
-- Create succeeds.
-- No stderr `cd ` follow-up line.
-- FinalPWD remains FakeHome (start dir / user home).
+- Stdout is the new worktree absolute path (trailing `\n`).
+- Worktree directory exists.
+- Follow-up file is empty (shell cwd was main repo, not user home).
+- Stderr empty.
 
 ## Exit Code
 
@@ -11,7 +12,6 @@
 
 ```go
 import (
-	"strings"
 	"testing"
 
 	"github.com/xhd2015/doctest/assert"
@@ -26,13 +26,10 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 	wantPath := worktreePath(req.WrkHome, "myrepo", "main", wrkDate, 0)
 	assert.Output(t, resp.Stdout, "---\nversion: 2\n---\n"+wantPath+"\n")
-	for _, line := range strings.Split(resp.Stderr, "\n") {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "cd ") {
-			t.Fatalf("--no-cd must not print follow-up cd; got stderr line %q", line)
-		}
+	assertFollowupEmpty(t, resp)
+	if resp.Stderr != "" {
+		t.Fatalf("binary stderr should be empty (follow-ups are file-only), got %q", resp.Stderr)
 	}
-	assertPathsEqual(t, resp.FinalPWD, req.StartDir)
-	assertPathsEqual(t, resp.FinalPWD, req.FakeHome)
+	assertFileExists(t, wantPath)
 }
 ```

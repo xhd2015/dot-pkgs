@@ -3,8 +3,12 @@
 **Feature**: wrk bash follow-up auto-cd (script surface, binary protocol, wrapper)
 
 ```
-# binary may write follow-ups when channel is open
-WRK_FOLLOWUP_FILE=tmp wrk [create|--done|--set-task] -> file: cd /abs
+# create: home-gated write when channel open
+WRK_FOLLOWUP_FILE=tmp; cwd=home; wrk <repo> -> file: cd /abs-worktree
+WRK_FOLLOWUP_FILE=tmp; cwd=main; wrk -> file empty
+
+# done/set-task: existence-gated write when channel open
+WRK_FOLLOWUP_FILE=tmp wrk [--done|--set-task] -> file: cd /abs (iff shell cwd gone)
 
 # wrapper sources bash.sh, runs binary, executes whitelisted cd
 source bash.sh; wrk ... -> stderr "cd /abs"; builtin cd; pwd changes
@@ -18,6 +22,8 @@ source bash.sh; wrk ... -> stderr "cd /abs"; builtin cd; pwd changes
   (file-locked across leaf processes).
 - Each leaf uses isolated `{WorkRoot}/.wrk`, fake `{WorkRoot}/home`, and
   `WRK_DATE=2026-06-30`.
+- Tests export `HOME=FakeHome`; `os.UserHomeDir()` resolves to FakeHome on Unix,
+  so create home-gate leaves use shell cwd = FakeHome for “at home” cases.
 
 ## Steps
 
@@ -30,6 +36,8 @@ source bash.sh; wrk ... -> stderr "cd /abs"; builtin cd; pwd changes
 - User-facing stdout still ends with trailing `\n` where content is non-empty.
 - Bash-integration install modes skip `events.jsonl` for pure install/print/complete;
   binary create/done/set-task still append events (not asserted here unless needed).
+- Create home gate uses shell process cwd (`RepoDir` binary / `StartDir` wrapper),
+  not the source repo path; home success leaves pass main repo as a positional arg.
 
 ```go
 import (

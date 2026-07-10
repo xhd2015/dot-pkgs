@@ -40,6 +40,56 @@ func writeFollowupCD(disabled bool, absPath string) error {
 	return nil
 }
 
+// shouldWriteHomeGatedFollowup reports whether a create follow-up cd should be
+// written: true only when shellCwd equals the user home directory from
+// os.UserHomeDir() (exact match after Clean + EvalSymlinks when possible).
+// Empty/unresolvable home or empty shell cwd → false (fail closed).
+// Does not use os.Getenv("HOME") directly.
+func shouldWriteHomeGatedFollowup(shellCwd string) bool {
+	shellCwd = strings.TrimSpace(shellCwd)
+	if shellCwd == "" {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return false
+	}
+	return sameDirPath(shellCwd, home)
+}
+
+// sameDirPath reports exact directory equality after Clean and, when possible,
+// EvalSymlinks. Subdirectories under home do not match home itself.
+func sameDirPath(a, b string) bool {
+	return normalizeDirPath(a) == normalizeDirPath(b)
+}
+
+// normalizeDirPath returns an absolute cleaned path, resolving symlinks when possible.
+func normalizeDirPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	abs = filepath.Clean(abs)
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return filepath.Clean(resolved)
+	}
+	return abs
+}
+
+// writeFollowupCDIfCwdIsHome writes cd dest only when shellCwd is exactly the
+// user home directory. Used after successful create so non-home shells are not
+// yanked by auto-cd. Still respects --no-cd and unset WRK_FOLLOWUP_FILE.
+func writeFollowupCDIfCwdIsHome(disabled bool, shellCwd, dest string) error {
+	if !shouldWriteHomeGatedFollowup(shellCwd) {
+		return nil
+	}
+	return writeFollowupCD(disabled, dest)
+}
+
 // shouldWriteCwdGatedFollowup reports whether a done/set-task follow-up cd should
 // be written: true only when shellCwdAtStart is non-empty and no longer exists
 // on the filesystem (os.Stat not-exist). Empty path or still-existing path → false.
@@ -54,7 +104,8 @@ func shouldWriteCwdGatedFollowup(shellCwdAtStart string) bool {
 
 // writeFollowupCDIfCwdMissing writes cd dest only when shellCwd no longer exists.
 // Used after successful --done remove / --set-task move so a surviving sibling
-// or main checkout is not yanked by auto-cd. Create paths must use writeFollowupCD.
+// or main checkout is not yanked by auto-cd. Create paths must use
+// writeFollowupCDIfCwdIsHome instead.
 func writeFollowupCDIfCwdMissing(disabled bool, shellCwd, dest string) error {
 	if !shouldWriteCwdGatedFollowup(shellCwd) {
 		return nil

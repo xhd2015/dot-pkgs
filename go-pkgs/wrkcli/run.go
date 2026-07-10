@@ -1370,7 +1370,8 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 			return fmt.Errorf("resolve worktree path: %w", err)
 		}
 		fmt.Println(absPath)
-		return writeFollowupCD(noCd, absPath)
+		// Home-gate on shell process cwd (origWd), not source workDir.
+		return writeFollowupCDIfCwdIsHome(noCd, origWd, absPath)
 	}
 	return fmt.Errorf("could not find available worktree name after 99 attempts")
 }
@@ -1407,7 +1408,7 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 				return fmt.Errorf("resolve worktree path: %w", err)
 			}
 			fmt.Println(absPath)
-			return writeFollowupCD(noCd, absPath)
+			return writeFollowupCDIfCwdIsHome(noCd, origWd, absPath)
 		}
 		return fmt.Errorf("could not find available worktree name after 99 attempts")
 	}
@@ -1440,7 +1441,7 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		return fmt.Errorf("resolve worktree path: %w", err)
 	}
 	fmt.Println(absPath)
-	return writeFollowupCD(noCd, absPath)
+	return writeFollowupCDIfCwdIsHome(noCd, origWd, absPath)
 }
 
 func resolveWrkHome() (string, error) {
