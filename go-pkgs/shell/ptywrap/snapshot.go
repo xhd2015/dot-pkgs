@@ -7,6 +7,9 @@ import (
 	"github.com/hinshun/vt10x"
 )
 
+// renderScreenSnapshot cold-replays scrollback through a fresh VT.
+// Prefer exportLiveSnapshot / exportVTSnapshot for production snapshot
+// fidelity; this remains as a fallback when no live screen is available.
 func renderScreenSnapshot(scrollback []byte, cols, rows int) ([]byte, bool) {
 	if len(scrollback) == 0 {
 		return nil, false
@@ -23,11 +26,26 @@ func renderScreenSnapshot(scrollback []byte, cols, rows int) ([]byte, bool) {
 		return nil, false
 	}
 
+	return exportVTSnapshot(vt, cols, rows), true
+}
+
+// exportVTSnapshot walks cells of an existing VT into the consumer CUP frame
+// format: hide-cursor, alt-screen mode, clear, per-line CUP, cursor restore.
+// Caller must ensure the VT is not concurrently written without its own locks
+// (vt10x.Write/Resize lock internally; this function locks for the cell walk).
+func exportVTSnapshot(vt vt10x.Terminal, cols, rows int) []byte {
+	if cols <= 0 {
+		cols = 80
+	}
+	if rows <= 0 {
+		rows = 24
+	}
+
 	vt.Lock()
 	defer vt.Unlock()
 
 	var out strings.Builder
-	out.Grow(len(scrollback) / 2)
+	out.Grow(cols * rows / 2)
 	out.WriteString("\x1b[?25l")
 	if vt.Mode()&vt10x.ModeAltScreen != 0 {
 		out.WriteString("\x1b[?1049h")
@@ -51,7 +69,7 @@ func renderScreenSnapshot(scrollback []byte, cols, rows int) ([]byte, bool) {
 	if vt.CursorVisible() {
 		out.WriteString("\x1b[?25h")
 	}
-	return []byte(out.String()), true
+	return []byte(out.String())
 }
 
 func renderSnapshotLine(vt vt10x.Terminal, cols, y int) string {

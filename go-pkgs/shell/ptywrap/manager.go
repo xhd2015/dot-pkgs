@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hinshun/vt10x"
 )
 
 // Manager tracks PTY sessions in memory.
@@ -106,6 +108,7 @@ func (m *Manager) registerSessionWithID(id, name, cwd string, command []string, 
 		ptmx:      ptmx,
 		cols:      80,
 		rows:      24,
+		screen:    vt10x.New(vt10x.WithSize(80, 24)),
 		done:      make(chan struct{}),
 	}
 

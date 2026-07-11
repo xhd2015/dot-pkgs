@@ -10,6 +10,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
+	"github.com/hinshun/vt10x"
 )
 
 type attachRole string
@@ -46,12 +47,16 @@ type session struct {
 	cols int
 	rows int
 
-	mu          sync.Mutex
-	scrollback  []byte
-	done        chan struct{}
-	exited      bool
-	closeOnce   sync.Once
-	waitOnce    sync.Once
+	mu         sync.Mutex
+	scrollback []byte
+	// screen is the persistent live VT (cell model). Source of truth for
+	// attach_mode=snapshot / screen export. Updated on every PTY output chunk
+	// and resized with the PTY; scrollback is secondary history only.
+	screen vt10x.Terminal
+	done   chan struct{}
+	exited bool
+	closeOnce sync.Once
+	waitOnce  sync.Once
 
 	writeClaimed bool
 	writerConn   *websocket.Conn
@@ -70,6 +75,11 @@ func (s *session) readLoop() {
 		if n > 0 {
 			data := buf[:n]
 			s.mu.Lock()
+			// Apply to live screen before (as) scrollback append so sticky cells
+			// survive ring trim.
+			if s.screen != nil {
+				_, _ = s.screen.Write(data)
+			}
 			s.scrollback = append(s.scrollback, data...)
 			if len(s.scrollback) > maxScrollback {
 				s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
@@ -156,6 +166,9 @@ func (s *session) setSize(cols, rows int) {
 	s.mu.Lock()
 	s.cols = cols
 	s.rows = rows
+	if s.screen != nil && cols > 0 && rows > 0 {
+		s.screen.Resize(cols, rows)
+	}
 	s.mu.Unlock()
 }
 
@@ -216,13 +229,22 @@ func (s *session) unregisterConn(conn *websocket.Conn) {
 }
 
 func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
+	// screen = interactive/writer path; snapshot = read-only one-shot (does not claim writer).
+	// Both export the persistent live VT cells (source of truth), not a cold
+	// replay of the truncated scrollback ring.
+	if attachMode == "screen" || attachMode == "snapshot" {
+		if snapshot, ok := s.exportLiveSnapshot(); ok {
+			conn.WriteMessage(websocket.BinaryMessage, snapshot)
+			return
+		}
+	}
+
 	scrollbackCopy, cols, rows := s.snapshotInput()
 	if len(scrollbackCopy) == 0 {
 		return
 	}
 
-	// screen = interactive/writer path; snapshot = read-only one-shot (does not claim writer).
-	// Both prefer a rendered screen frame when available so SnapshotText stays faithful.
+	// Fallback: cold replay if live screen is unavailable (should be rare).
 	if attachMode == "screen" || attachMode == "snapshot" {
 		if snapshot, ok := renderScreenSnapshot(scrollbackCopy, cols, rows); ok {
 			conn.WriteMessage(websocket.BinaryMessage, snapshot)
@@ -237,6 +259,26 @@ func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
 		scrollbackCopy = stripTerminalQueries(scrollbackCopy)
 	}
 	conn.WriteMessage(websocket.BinaryMessage, scrollbackCopy)
+}
+
+// exportLiveSnapshot walks the persistent live VT cells into the CUP frame
+// format used by consumers. Holds session.mu so resize/output cannot race
+// with the export walk.
+func (s *session) exportLiveSnapshot() ([]byte, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.screen == nil || len(s.scrollback) == 0 {
+		return nil, false
+	}
+	cols := s.cols
+	rows := s.rows
+	if cols <= 0 {
+		cols = 80
+	}
+	if rows <= 0 {
+		rows = 24
+	}
+	return exportVTSnapshot(s.screen, cols, rows), true
 }
 
 func (s *session) sendRoleHandshake(conn *websocket.Conn, role attachRole) {
