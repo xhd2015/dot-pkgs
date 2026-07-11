@@ -114,6 +114,18 @@ wrk tests
 │   │       └── no-new-window/           # window cleared/off
 │   ├── show/
 │   │   └── prints-json/          # --set-config --show → JSON stdout
+│   ├── help/                     # nested level-specific -h/--help (RED until implemented)
+│   │   ├── set-config/           # dispatcher: --set-config --help|-h
+│   │   │   ├── long/             # --help
+│   │   │   └── short/            # -h
+│   │   ├── create/               # dedicated create usage
+│   │   │   ├── long/             # --create --help
+│   │   │   ├── short/            # --create -h
+│   │   │   ├── help-before-create/ # --help --create order
+│   │   │   └── with-ux-flag/     # --create --new-window --help; no write
+│   │   └── show/                 # show usage
+│   │       ├── long/             # --show --help
+│   │       └── short/            # --show -h
 │   └── mutual-exclusion/
 │       ├── with-list/            # --set-config … --list → non-zero
 │       └── with-create-dir/      # wrk <dir> --set-config … → non-zero; no worktree

@@ -40,6 +40,20 @@ type setConfigOpts struct {
 
 // runSetConfig handles wrk --set-config [...].
 func runSetConfig(origWd string, args []string, ctx *invocationContext) error {
+	// Nested -h/--help short-circuits before parse/write (level-specific usage).
+	if help, create, show := peelSetConfigHelp(args); help {
+		switch {
+		case create && !show:
+			fmt.Print(setConfigCreateUsage())
+		case show && !create:
+			fmt.Print(setConfigShowUsage())
+		default:
+			// No action, or both create+show with help: dispatcher page.
+			fmt.Print(setConfigUsage())
+		}
+		return nil
+	}
+
 	opts, err := parseSetConfigArgs(args)
 	if err != nil {
 		return err
@@ -94,6 +108,103 @@ func runSetConfig(origWd string, args []string, ctx *invocationContext) error {
 	}
 
 	return setConfigWriteCreate(wrkHome, f)
+}
+
+// peelSetConfigHelp scans args for -h/--help and which action flags are present.
+// Help may appear in any order among tokens.
+func peelSetConfigHelp(args []string) (help, create, show bool) {
+	for _, a := range args {
+		switch a {
+		case "-h", "--help":
+			help = true
+		case "--create":
+			create = true
+		case "--show":
+			show = true
+		}
+	}
+	return help, create, show
+}
+
+func setConfigUsage() string {
+	return `wrk --set-config — manage $WRK_HOME/config.json
+
+Usage:
+  wrk --set-config --create [UX flags...]
+  wrk --set-config --show
+  wrk --set-config -h|--help
+
+Actions (exactly one):
+  --create         merge create UX defaults into config.json
+  --show           pretty-print effective config.json
+
+Options:
+  -h,--help        show this help message
+
+Run wrk --set-config --create --help for create UX flags.
+Run wrk --set-config --show --help for show options.
+
+Examples:
+  wrk --set-config --create --new-window
+  wrk --set-config --show
+`
+}
+
+func setConfigCreateUsage() string {
+	return `wrk --set-config --create — merge create UX defaults into config.json
+
+Usage:
+  wrk --set-config --create [UX flags...]
+  wrk --set-config --create -h|--help
+
+Requires at least one UX flag for a real write.
+Successful write: empty stdout preferred.
+Config path: $WRK_HOME/config.json
+
+UX flags:
+  --new-window           persist create.window.mode=new
+                         (also sets terminal.mode=new unless a terminal flag is set)
+  --new-terminal         persist create.terminal.mode=new
+  --reuse-terminal       persist create.terminal.mode=reuse
+  --smart-terminal       persist create.terminal.mode=smart
+  --open-in-agent        enable create.agent (default runner/template/args)
+  --no-new-window        clear create.window
+  --no-new-terminal      clear create.terminal
+  --no-open-in-agent     set create.agent.enabled=false
+
+Conflicts (same as create mode):
+  --open-in-agent with --no-open-in-agent
+  --new-window with --no-new-window
+  multiple terminal mode flags
+  --new-window with --no-new-terminal
+  terminal-on with --no-new-terminal
+
+Notes:
+  Merge-only: only keys implied by flags are written; unknown top-level keys preserved.
+  --show is mutually exclusive with --create / create UX flags.
+
+Examples:
+  wrk --set-config --create --new-window
+  wrk --set-config --create --open-in-agent
+  wrk --set-config --create --no-open-in-agent
+  wrk --set-config --create --new-window --open-in-agent
+`
+}
+
+func setConfigShowUsage() string {
+	return `wrk --set-config --show — print effective config.json
+
+Usage:
+  wrk --set-config --show
+  wrk --set-config --show -h|--help
+
+Prints pretty-printed JSON for $WRK_HOME/config.json.
+If the file is missing, prints {} then a trailing newline.
+Mutually exclusive with --create and create UX flags.
+
+Example:
+  wrk --set-config --show
+`
 }
 
 func (o setConfigOpts) anyCreateFlag() bool {
