@@ -1,7 +1,7 @@
 ## Expected
 
 - Non-zero exit.
-- Stderr is exactly `wrk: --cd requires a path argument` (or contains that phrase).
+- Stderr is exactly `wrk: --cd requires a path argument` plus trailing `\n`.
 - Stdout empty.
 
 ## Errors
@@ -21,6 +21,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected non-zero exit, got 0 stdout=%q stderr=%q", resp.Stdout, resp.Stderr)
 	}
 	assertEmptyStdout(t, resp.Stdout)
-	assert.Output(t, resp.Stderr, `wrk: --cd requires a path argument`)
+	// Hard-error stderr must end with trailing newline (main.go print path).
+	assert.Output(t, resp.Stderr, "wrk: --cd requires a path argument\n")
 }
 ```

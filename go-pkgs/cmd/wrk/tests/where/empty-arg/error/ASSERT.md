@@ -1,7 +1,7 @@
 ## Expected
 
 - Non-zero exit code.
-- Stderr is exactly `wrk: --where requires a path argument`.
+- Stderr is exactly `wrk: --where requires a path argument` plus trailing `\n`.
 - Stdout is empty.
 
 ## Errors
@@ -25,6 +25,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if resp.Stdout != "" {
 		t.Fatalf("stdout should be empty, got %q", resp.Stdout)
 	}
-	assert.Output(t, resp.Stderr, `wrk: --where requires a path argument`)
+	// Hard-error stderr must end with trailing newline (main.go print path).
+	assert.Output(t, resp.Stderr, "wrk: --where requires a path argument\n")
 }
 ```

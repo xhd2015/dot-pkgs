@@ -1,7 +1,6 @@
 package wrkcli
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,61 +13,32 @@ type Config struct {
 	Create  *CreateSection `json:"create,omitempty"`
 }
 
-// CreateSection holds create-mode options.
+// CreateSection holds create-mode UX options.
+// Legacy create.interceptor is deliberately omitted so leftover JSON is ignored.
 type CreateSection struct {
-	Interceptor *CreateInterceptor `json:"interceptor,omitempty"`
+	Window   *CreateWindow   `json:"window,omitempty"`
+	Terminal *CreateTerminal `json:"terminal,omitempty"`
+	Agent    *CreateAgent    `json:"agent,omitempty"`
 }
 
-// CreateInterceptor replaces native create with an external argv when Enabled.
-type CreateInterceptor struct {
-	Enabled bool                `json:"enabled"`
-	Argv    []string            `json:"argv"`
-	Vars    map[string]VarValue `json:"vars,omitempty"`
+// CreateWindow configures Mission Control Desktop creation.
+type CreateWindow struct {
+	// Mode is "new" when window UX is on; absent/empty means off.
+	Mode string `json:"mode,omitempty"`
 }
 
-// VarValue is a JSON string or string array. Arrays expand element-wise then
-// join with "\n" after template expansion.
-type VarValue struct {
-	IsList bool
-	Scalar string
-	Lines  []string
+// CreateTerminal configures iTerm2 open mode.
+type CreateTerminal struct {
+	// Mode is "new" | "reuse" | "smart"; absent/empty means terminal off.
+	Mode string `json:"mode,omitempty"`
 }
 
-// UnmarshalJSON accepts a JSON string or array of strings.
-func (v *VarValue) UnmarshalJSON(data []byte) error {
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 {
-		return fmt.Errorf("empty var value")
-	}
-	if data[0] == '"' {
-		var s string
-		if err := json.Unmarshal(data, &s); err != nil {
-			return err
-		}
-		v.IsList = false
-		v.Scalar = s
-		v.Lines = nil
-		return nil
-	}
-	if data[0] == '[' {
-		var lines []string
-		if err := json.Unmarshal(data, &lines); err != nil {
-			return err
-		}
-		v.IsList = true
-		v.Lines = lines
-		v.Scalar = ""
-		return nil
-	}
-	return fmt.Errorf("interceptor var must be string or array of strings")
-}
-
-// MarshalJSON emits a JSON string or array of strings.
-func (v VarValue) MarshalJSON() ([]byte, error) {
-	if v.IsList {
-		return json.Marshal(v.Lines)
-	}
-	return json.Marshal(v.Scalar)
+// CreateAgent configures agent-run launch after create.
+type CreateAgent struct {
+	Enabled        *bool    `json:"enabled,omitempty"`
+	Runner         string   `json:"runner,omitempty"`
+	PromptTemplate string   `json:"prompt_template,omitempty"`
+	Args           []string `json:"args,omitempty"`
 }
 
 // loadConfig reads $WRK_HOME/config.json. Missing file returns (nil, nil).
@@ -86,19 +56,6 @@ func loadConfig(wrkHome string) (*Config, error) {
 		return nil, fmt.Errorf("wrk: parse config.json: %w", err)
 	}
 	return &cfg, nil
-}
-
-// loadCreateInterceptor returns the create.interceptor section when present.
-// Missing config or missing interceptor returns (nil, nil).
-func loadCreateInterceptor(wrkHome string) (*CreateInterceptor, error) {
-	cfg, err := loadConfig(wrkHome)
-	if err != nil {
-		return nil, err
-	}
-	if cfg == nil || cfg.Create == nil || cfg.Create.Interceptor == nil {
-		return nil, nil
-	}
-	return cfg.Create.Interceptor, nil
 }
 
 // loadConfigMap reads $WRK_HOME/config.json as a generic map so unknown keys
@@ -147,60 +104,20 @@ func saveConfigMap(wrkHome string, root map[string]interface{}) error {
 	return nil
 }
 
-// interceptorFromConfigMap extracts create.interceptor, or (nil, nil) if absent.
-func interceptorFromConfigMap(root map[string]interface{}) (*CreateInterceptor, error) {
+// ensureCreateMap returns the create object under root, creating it if needed.
+func ensureCreateMap(root map[string]interface{}) (map[string]interface{}, error) {
 	if root == nil {
-		return nil, nil
+		return nil, fmt.Errorf("wrk: nil config map")
 	}
 	createVal, ok := root["create"]
 	if !ok || createVal == nil {
-		return nil, nil
+		createMap := map[string]interface{}{}
+		root["create"] = createMap
+		return createMap, nil
 	}
 	createMap, ok := createVal.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("wrk: config.json create must be an object")
 	}
-	icVal, ok := createMap["interceptor"]
-	if !ok || icVal == nil {
-		return nil, nil
-	}
-	// Re-marshal then unmarshal into typed CreateInterceptor (handles VarValue).
-	raw, err := json.Marshal(icVal)
-	if err != nil {
-		return nil, fmt.Errorf("wrk: marshal interceptor: %w", err)
-	}
-	var ic CreateInterceptor
-	if err := json.Unmarshal(raw, &ic); err != nil {
-		return nil, fmt.Errorf("wrk: parse create.interceptor: %w", err)
-	}
-	return &ic, nil
-}
-
-// setInterceptorInConfigMap sets create.interceptor, creating create if needed.
-// Preserves other top-level and create.* keys.
-func setInterceptorInConfigMap(root map[string]interface{}, ic *CreateInterceptor) error {
-	if root == nil {
-		return fmt.Errorf("wrk: nil config map")
-	}
-	createVal, ok := root["create"]
-	var createMap map[string]interface{}
-	if ok && createVal != nil {
-		createMap, ok = createVal.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("wrk: config.json create must be an object")
-		}
-	} else {
-		createMap = map[string]interface{}{}
-		root["create"] = createMap
-	}
-	raw, err := json.Marshal(ic)
-	if err != nil {
-		return fmt.Errorf("wrk: marshal interceptor: %w", err)
-	}
-	var icMap map[string]interface{}
-	if err := json.Unmarshal(raw, &icMap); err != nil {
-		return fmt.Errorf("wrk: marshal interceptor: %w", err)
-	}
-	createMap["interceptor"] = icMap
-	return nil
+	return createMap, nil
 }

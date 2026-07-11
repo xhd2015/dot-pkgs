@@ -5,9 +5,9 @@
 
 Decision tree covering the `wrk` CLI: no-args worktree creation, optional `wrk <dir>`
 first positional, `wrk <dir> <target-dir>` second positional spawn-location override,
-optional create interceptor (`$WRK_HOME/config.json` → `create.interceptor`) and its
-management surface (`wrk --interceptor …`), `wrk --dep` external dependency worktrees,
-`wrk --done` merge-back (including external cascade), `wrk --list`, `wrk --status`,
+create UX (`$WRK_HOME/config.json` → `create.window` / `create.terminal` / `create.agent`
+plus one-shot flags and `wrk --set-config --create …`), `wrk --dep` external dependency
+worktrees, `wrk --done` merge-back (including external cascade), `wrk --list`, `wrk --status`,
 project persistence (`wrk --projects`, `wrk --add`, `wrk --rm`, auto-record,
 events.jsonl), `wrk --cd` directory jump (in-place follow-up or fallback
 interactive shell), and `wrk --exec` cut-flag (run a trailing command in the mode
@@ -50,12 +50,13 @@ target directory after successful create / `--cd` / `--dep` / `--set-task` / `--
 - **Request.SetTaskDesc** — when set, tests pass `--set-task <desc>` to wrk; test assertions verify rename side effects.
 - **Request.SetTaskEnv** — when set, appended to wrk's environment (e.g., `WRK_SET_TASK_CONFIRM=1` to auto-confirm rename in tests).
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos), `events.jsonl` (append-only event log), and optional `config.json` (user config; no `hooks/` directory); tests isolate at `{WorkRoot}/.wrk`.
-- **create.interceptor** — optional replace of native create-mode worktree creation via `{WRK_HOME}/config.json` (`version` + `create.interceptor`). Schema: `enabled` bool, `argv` string array (required when enabled; empty → error), `vars` map of string or string-array values. When create mode is selected, workDir/task/basename resolve, and auto-record run: if intercept is active → expand templates and `exec` `argv` (inherit stdio/env; no outer shell); outer wrk **skips** native `runCreate` and home-gated follow-up `cd`; wrk exit status is the interceptor child's. Non-create modes ignore the interceptor entirely. Escape hatches (skip intercept → native create): CLI `--no-interceptor` (no-op on non-create modes) and env `WRK_NO_INTERCEPTOR=1`. Inactive when no config / no interceptor section / `enabled: false`. Fail hard (no silent native fallback): unknown `${name}` / unknown filter / cycle / user override of reserved builtin var names / binary missing or exec failure / child non-zero exit (wrk propagates that exit code). Outer intercepted run still logs `events.jsonl` with `command: "create"`.
-- **Interceptor templates** — forms `${name}` (raw) and `${name|shell_safe}` (POSIX single-quote one word: empty → `''`; `'` → `'\''` style). Expansion: seed builtins → expand user `vars` in topo order (array elements expanded then joined with `\n`) → expand each `argv[i]` at use site (filters only at use site; intermediate vars stay raw). Reserved builtins (user vars cannot override): `work_dir` (resolved source abs), `orig_wd` (shell cwd at start), `source` (raw positional 0), `spawn_target` (raw positional 1), `task` (raw `-t`/`--task` text), `task_slug`, `args` (raw args space-joined), `args_shell_safe` (each arg shell-safe-quoted, space-joined), `wrk_home`. No `native_flag` / `no_interceptor_flag` builtin — recipes hardcode `--no-interceptor` literally. No hooks protocol, no project-local config, no `|shjoin` / `${@args}` / array-as-argv in v1.
-- **wrk --interceptor** — management mode for `create.interceptor` under `{WRK_HOME}/config.json` (parent flag + exactly one action among `--status`, `--show`, `--path`, `--enable`, `--disable`, `--init` [`--force`], `--check`, `--dry-run`). Style mirrors `wrk --bash-integration …`. Mutually exclusive with create and all other modes (`--list`, `--done`, `--projects`, …). Does **not** exec the create interceptor; `--dry-run` expands argv only and prints one element per line. **`--status`** stdout is exactly three lines: `state: absent|disabled|enabled`, `path: <abs-config-path>`, `argv0: <first argv or ->`. **`--path`** prints abs path to `config.json` even if missing. **`--show`** pretty-prints the interceptor object (exit 1 if absent). **`--init`** writes a **neutral disabled stub** (`enabled: false`, `argv: ["echo","wrk-interceptor-not-configured"]`); refuses existing interceptor without `--force`; merges into existing config without wiping unrelated keys. **`--enable`** requires an existing block (else non-zero, hint `--init`); **`--disable`** sets `enabled: false`. **`--check`** exit 0 if absent or valid; non-zero if present but invalid (e.g. unknown `${var}`). **`--dry-run`** requires present + enabled. Empty stdout preferred for mutators. Events: `command: "interceptor"`. Runtime escape `--no-interceptor` / `WRK_NO_INTERCEPTOR=1` remains create-only and is not a management action. Tests: `interceptor-mgmt/` (reuses root Request/Run; isolated `WRK_HOME`).
-- **Request.PathPrepend / ExtraEnv / InterceptorLog** — create-interceptor harness: `PathPrepend` is a bin dir prepended to `PATH` (fake interceptor tools); `ExtraEnv` is additional `KEY=VAL` entries for the wrk process (e.g. `WRK_NO_INTERCEPTOR=1`, `FAKE_INTERCEPTOR_LOG=…`, `FAKE_INTERCEPTOR_EXIT=3`); `InterceptorLog` is the path where the fake tool records argv for asserts.
+- **create UX (window / terminal / agent)** — first-class create-mode UX from `$WRK_HOME/config.json` `create` section + one-shot CLI flags, implemented in-process via `computer-use/macos/space` (Mission Control Desktop) and `shell/iterm2` (iTerm2 open + follow-ups). Schema: `create.window.mode` (`"new"` only in v1; absent = window off), `create.terminal.mode` (`"new"` | `"reuse"` | `"smart"`; absent = terminal off), `create.agent` (`enabled` bool, `runner` default `grok-tty`, `prompt_template` default `/brainstorm ${task}`, `args` default `["--session-id-from-prompt","--no-submit","--open"]`). Legacy `create.interceptor` (and interceptor-only keys) are **silently ignored**; interceptor code/flags/env (`--interceptor`, `--no-interceptor`, `WRK_NO_INTERCEPTOR`, template argv engine) are **removed**.
+- **create UX flags (create mode)** — `--new-window` (window on + implies terminal `new` unless another terminal mode flag sets reuse/smart), `--new-terminal` / `--reuse-terminal` / `--smart-terminal` (mutually exclusive), `--open-in-agent` / `--no-open-in-agent`, `--no-new-window`, `--no-new-terminal`. Conflicts: open/no-open together, new-window/no-new-window, terminal-on/no-new-terminal, **`--new-window` + `--no-new-terminal`**, multiple terminal mode flags. Effective merge: load config (ignore interceptor) → apply CLI → if window on && terminal off → terminal=`new` → validate. Pipeline after native create + path stdout: window (`space.CreateAndActivate`) → terminal (`iterm2.OpenConfig` with optional agent follow-up) **or** agent-in-current-process (`agent-run run <args> --agent-runner=<runner> <prompt>`) → `--exec` → follow-up cd. Never double-run agent (terminal+agent ⇒ iterm follow-up only). Non-darwin window/terminal → clear platform error.
+- **wrk --set-config** — management mode for `config.json` (v1: `--create` section and recommended `--show`). Mutually exclusive with create and all other modes. Merge-only keys implied by flags; `--new-window` also persists `terminal.mode=new`; negatives clear/disable axes; preserve unknown top-level keys. No git required. Successful write: empty stdout preferred; `--show` prints JSON + trailing `
+`. Event `command: "set-config"` when implemented.
+- **Request.PathPrepend / ExtraEnv / InterceptorLog** — shared harness fields: `PathPrepend` prepends a bin dir to `PATH` (fake `agent-run` for create-ux; historically fake interceptor tools); `ExtraEnv` adds `KEY=VAL` for the wrk process (create-ux mocks: `WRK_SPACE_INVOKE_LOG`, `DOT_PKGS_SPACE_GOOS`, `KOOL_ITERM2_*`, `FAKE_AGENT_RUN_LOG` / `FAKE_AGENT_RUN_CWD`); `InterceptorLog` remains for any leaf that records fake argv logs (create-ux prefers WorkRoot paths via helpers).
 - **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
-- **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event. **Create intercept** still auto-records before running the interceptor.
+- **Auto-record** — on **every** `wrk` invocation, after resolving the effective work directory: if dir missing → no record; if not inside git → no record; otherwise resolve to main repo via `worktree.ResolveMainRepo()` and append to `projects.json` with `source: "auto"` if not already present. Auto-record runs even when the command fails later; failed commands still append an event.
 - **WRK_PROJECTS_PERF_LOG** — when set to a file path, `wrk --projects` appends JSONL latency events (`run_start`, `project_start`, `phase`, `worktree_status`, `phase_total`, `project_end`, `run_end`) without changing stdout/stderr; zero overhead when unset.
 - **Request.ProjectsPerfLog** — perf-profile tests: path written to `WRK_PROJECTS_PERF_LOG`.
 - **wrk --projects** — standalone mode; mutually exclusive with all other modes; prints one **detailed status block** per recorded main repo, sorted lexicographically by absolute path, with blank lines between blocks. **Never aborts** the run due to per-project or per-worktree git failures (exit 0 unless `projects.json` is unreadable); errors surface inline in stdout blocks; stderr stays empty for these cases (unless `-v` is set). **Default (no `--fetch`)**: skip `git fetch`; `Remote:` uses `git.CompareBranches` against local upstream tracking refs. **With `--fetch`**: run scoped upstream fetch (`gitFetchUpstreamQuietNoOptionalLocks`) before `Remote:` comparison per project. **Healthy main repo** blocks include absolute `Dir`, `Branch`, `Commit`, `Status` (same fields as `--status` for the main repo), plus `Remote:` (brief upstream sync summary via `git.CompareBranches`: `identical`, `needs push(+N commit(s))`, `needs pull(N commit(s) behind)`, `diverged(N commit(s))`, `(no upstream)` when the branch has no upstream, or `error: ...` inline when fetch/compare fails), and `Worktrees:` (four spaces after colon, aligned with other fields) with composable summary segments: `N total` and `M dirty` always; `K error` only when K > 0 (alive linked worktree path exists but `git status` fails); `P prune` only when P > 0 (registered in `git worktree list` but checkout directory missing per `worktree.IsDead`). After the `Worktrees:` line, each broken (alive, git-fails) worktree emits `  <absolute-path>  error: <full git stderr message>` (two-space indent); no per-path lines for prunable/dead worktrees. **Broken main repo** blocks omit Branch, Commit, Remote, and Worktrees entirely — only `Dir:` and `Status:       error: <full git stderr message>`. When stdout is a TTY or `--color` is set, highlights attention-worthy **value** portions only: red for the word `dirty`, each dirty count segment with N > 0, `Remote: diverged(...)`, `N dirty` when N > 0, `K error` when K > 0, broken-main `Status: error: ...` value, and per-worktree `error: ...` detail values; grey (`#90`) for dirty count segments with N = 0; orange (`#33`) for `needs push(...)` and `needs pull(...)`; separators `(`, `, `, `)` in dirty status lines stay uncolored; `clean`/`identical`/no-upstream/zero-dirty stay plain (no green on `--projects`). No `<dir>` required; exit 0 when empty (no output). Note: `needs merge back(+N commit(s))` and `needs fast forward(+N commit(s))` apply only to `--status` `Master:` (not `Remote:`).
@@ -63,18 +64,19 @@ target directory after successful create / `--cd` / `--dep` / `--set-task` / `--
 - **-v / --verbose** — global bool flag; valid with **any** wrk mode; does not change mode selection or stdout content. When set, log **major** git subprocesses (mutating/network: `worktree add`/`remove`/`move`, `fetch` when executed, `checkout`, `branch` `-D`/`-m`/`-b`, `merge`, `rebase`, `stash`) to **stderr** as one line per invocation before the command runs: `[YYYY-MM-DD HH:MM:SS] $ git <args...>` (local timezone, format `2006-01-02 15:04:05`; include `-C <dir>` when used). **Create mode only**: additionally stream `git worktree add` subprocess stdout+stderr to process stderr as the command runs (after the pre-command log line; e.g. `Preparing worktree (new branch '…')`, `HEAD is now at <hash>`); success and failure paths; applies to both `-b` new-branch and `--no-checkout` add invocations in `createWorktree` — does **not** stream separate `checkout` output on the branch-collision path. **Not logged**: read-only introspection (`rev-parse`, `log`, `status`, `diff`, `merge-base`, `rev-list --count`, `worktree list`, `show-toplevel`, `config`, etc.) and non-git commands. When `-v` is off: zero stderr logging overhead (create mode still captures `worktree add` via `CombinedOutput` silently). Recorded in `events.jsonl` `args` when passed.
 - **--color** — bool flag (no value); valid with any mode; forces ANSI coloring on `--projects` and `--status` output even when stdout is a pipe (doctest-safe); no-op on other modes today (e.g. `--list --color` unchanged).
 - **Stdout trailing newline** — all wrk modes that print non-empty stdout end with `\n` after the last content line (shell prompt stays on its own line). Empty stdout has no bytes.
-- **Stdout assertions** — doctest leaves use `assert.Output` with `version: 2` full-match templates only (no `<contains>` for stdout). Multi-block stdout (e.g. `--status` scan blocks, `--projects` project blocks) is asserted with one v2 template covering the entire stdout; blocks are joined with `\n\n`. Stderr error messages continue to use `<contains>` partial match.
+- **Stderr hard-error trailing newline** — when `main` receives a non-nil error that is **not** `wrkcli.ExitCodeError`, it writes `err.Error()` to stderr and ensures the last byte is `\n` (prefer `Fprintln` / single append; do not double-append if the string already ends with `\n`), then exits `1`. `ExitCodeError` stays silent (exit with `Code` only). Shell prompt must not glue to the error line.
+- **Stdout assertions** — doctest leaves use `assert.Output` with `version: 2` full-match templates only (no `<contains>` for stdout). Multi-block stdout (e.g. `--status` scan blocks, `--projects` project blocks) is asserted with one v2 template covering the entire stdout; blocks are joined with `\n\n`. Stderr error messages continue to use `<contains>` partial match (except sealed exact-body cases that also pin trailing `\n`).
 - **wrk --projects streaming** — stdout must flush each lex-ordered project block as soon as that project's gather completes (not after all projects finish). `output-streaming/fast-before-slow-gather` probes pipe timing: first bytes are the fast `aaa` block while the slow `zzz` project (12 worktrees) is still gathering.
 - **Run profile labels** — seven leaves are labeled `slow` (>10s cold: 12-worktree perf fixtures, multi-repo `--projects`, linked `--list`, output-streaming probe); `many-worktrees-parallel` is also `flaky` (timing budget). Discovery runs (`doctest test ./tests`) skip labeled leaves; run them with `doctest test --label slow ./tests`.
 - **wrk --add `<dir>`** — standalone mode; `--add` consumes the next argument as `<dir>`; validates dir exists + is git; resolves to main repo root; records with `source: "manual"` (idempotent); mutually exclusive with other modes; prints resolved main repo path on stdout (single line) on success.
 - **wrk --rm `<dir>`** — standalone mode; `--rm <dir>` (no `--remove` alias); `--rm` consumes the next argument as `<dir>`; mutually exclusive with all other modes; requires non-empty path (`wrk: --rm requires a path argument`). Help text: `--rm <dir>  remove a recorded main repository path`. Resolves target: `filepath.Abs` + `storage.NormalizePath`; if path exists and is inside a git work tree → resolve to main repo via `worktree.ShowToplevel` + `worktree.ResolveMainRepo` (same as `--add`); if path does not exist → use normalized absolute path as-is (stale/moved entries). **Success (entry removed)**: exit 0; stdout = removed main-repo absolute path (single line, trimmed). **Idempotent (not in projects.json)**: exit 0; empty stdout; no error. Does not delete worktrees, git repos, or events.jsonl history. Appends event `command: "rm"`, `args: ["--rm", "<path-arg>"]`, `exit_code: 0`. Auto-record still runs before remove.
 - **wrk --where `<basename>`** — standalone read-only lookup mode; `--where` consumes the next argument as a **basename only** (no path separators, not absolute); loads `{WRK_HOME}/projects.json` via `storage.FindProjectsByBasename(wrkHome, basename)` matching `filepath.Base(NormalizePath(p.Path)) == basename`; **does not** stat cwd, `filepath.Abs(name)`, or resolve paths on disk (unlike create-mode basename fallback). **0 matches** → non-zero exit, stderr no-match message, empty stdout. **1 match** → exit 0, stdout = one full absolute path + trailing `\n`. **2+ matches** → exit 0, stdout = all matching full paths sorted lexicographically, one per line, trailing `\n` after last line (no TTY prompt). **Empty/missing arg** (`wrk --where`) → non-zero exit, stderr `wrk: --where requires a path argument`. **Non-basename input** (contains `/` or `\`, or absolute path) → non-zero exit, basename-only rejection. **Mutually exclusive** with all other modes (`--status`, `--list`, `--projects`, create, etc.). **Extra positionals** → non-zero exit, `wrk: unexpected arguments`. No writes (no git ops, no worktree creation, no `projects.json` mutation). Appends event `command: "where"`, `args: ["--where", "<basename>"]`. Auto-record still runs on invocation.
 - **RemoveProject** — storage API `RemoveProject(wrkHome, path string) (removed bool, err error)` deletes the `projects.json` entry matching normalized absolute `path`; returns whether an entry was removed.
-- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`, `where`, `cd`, `interceptor`), `work_dir` (resolved effective cwd; for `--cd` the resolved absolute target path), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
+- **events.jsonl** — one JSON object per line appended on every wrk invocation (success or failure): `ts` (ISO-8601 UTC), `command` (mode: `create`, `done`, `list`, `status`, `dep`, `all-deps`, `merge-back`, `set-task`, `repos`, `projects`, `add`, `rm`, `where`, `cd`, `set-config`), `work_dir` (resolved effective cwd; for `--cd` the resolved absolute target path), `main_repo` (resolved main repo or empty), `args` (remaining CLI flag args, not positionals), `exit_code`.
 - **wrk --cd** — standalone mode: `Bool("--cd")` plus **exactly one** path positional. Forms: `wrk --cd <path|basename>` and `wrk <path|basename> --cd`. Resolves path via `resolveDirArg(..., allowBasenameFallback=true, ...)` (local dir under cwd wins; else `projects.json` basename lookup; ambiguous non-TTY lists candidates). **Git not required** for the target. **Branch A (in-place)**: when `WRK_FOLLOWUP_FILE` is non-empty, write `cd /absolute/path\n` via `writeFollowupCD(false, abs)` unconditionally (no create home-gate / done cwd-gate), **empty stdout**, exit 0, do **not** launch a shell. **Branch B (fallback)**: channel unset/empty → stderr warning containing `wrk --bash-integration --install`, stdout = absolute path + trailing `\n`, then `shell/interactive.LoginInteractive(abs, filepath.Base(abs), optional extraEnv...)` and propagate shell exit code. Mutually exclusive with create / `--done` / `--merge-back` / `--list` / `--status` / `--repos` / `--projects` / `--add` / `--rm` / `--where` / `--dep` / `--all-deps` / `--task` / `--set-task` / spawn target / **`--no-cd`**. Missing path → `wrk: --cd requires a path argument`. Extra positionals → `wrk: unexpected arguments`. Event `command: "cd"`. Doctest harness: `Request.UseFollowupEnv` + `FollowupFile` for Branch A; `installFakeBash` (`FakeShellDir` / `FakeShellLog` / `SHELL`) so Branch B never hangs CI.
 - **Request.FollowupFile / UseFollowupEnv** — when `UseFollowupEnv` is true, root `Run` truncates `FollowupFile` and exports `WRK_FOLLOWUP_FILE` (in-place channel for `--cd` and related tests).
 - **Request.FakeShellDir / FakeShellLog / FakeShellExit / ShellEnv** — fallback `--cd` harness: prepend fake `bash` on PATH, set `SHELL`, `WRK_FAKE_SHELL_LOG`, and optional non-zero `WRK_FAKE_SHELL_EXIT` so `LoginInteractive` cannot hang.
-- **wrk --exec** — long-only cut flag (no `-e`); less-flags `Cut("--exec", &execArgs)`. On seeing `--exec`: if no tokens after → **error** (requires a command); else copy all subsequent tokens into `execArgs` and **stop parsing** (tokens never treated as wrk flags — e.g. `wrk --no-interceptor --exec echo --task` runs `echo --task`). Reject equals form `--exec=value`. Absent `--exec` → no post-mode command. After a **successful** allowed mode, run `exec.Command(execArgs[0], execArgs[1:]...)` with `cmd.Dir` set to the mode target absolute directory; inherit stdin/stdout/stderr; non-zero child exit → `ExitCodeError` (same pattern as create interceptor / `--cd` shell). **Allowed modes & `cmd.Dir`**: **create** (native) → newly created worktree; **`--cd`** → resolved jump directory; **`--dep`** → external dep worktree; **`--set-task`** → renamed worktree (post-move); **`--done`** → main repo (`MergeBack` `TargetPath`, never the removed worktree). **`--done`**: exec only after successful done (not aborted / failed confirm). **Create interceptor + `--exec`**: error unless `--no-interceptor` / `WRK_NO_INTERCEPTOR=1` (message should mention interceptor escape). **Reject `--exec` with**: `--list`, `--status`, `--repos`, `--projects`, `--add`, `--rm`, `--where`, `--merge-back`, `--all-deps`, interceptor management, skill, bash-integration, and other non-allowed modes. Mode path/message lines still print **before** the child command's stdout (create/dep/set-task path; done `worktree removed:…`; in-place `--cd` keeps empty mode stdout so only child output appears). Follow-up shell cd rules unchanged (create home-gate; done/set-task cwd-missing); exec is a child process and does not replace follow-up writes.
+- **wrk --exec** — long-only cut flag (no `-e`); less-flags `Cut("--exec", &execArgs)`. On seeing `--exec`: if no tokens after → **error** (requires a command); else copy all subsequent tokens into `execArgs` and **stop parsing** (tokens never treated as wrk flags — e.g. `wrk --exec echo --task` runs `echo --task`). Reject equals form `--exec=value`. Absent `--exec` → no post-mode command. After a **successful** allowed mode, run `exec.Command(execArgs[0], execArgs[1:]...)` with `cmd.Dir` set to the mode target absolute directory; inherit stdin/stdout/stderr; non-zero child exit → `ExitCodeError` (same pattern as `--cd` shell / agent-run). **Allowed modes & `cmd.Dir`**: **create** (native) → newly created worktree; **`--cd`** → resolved jump directory; **`--dep`** → external dep worktree; **`--set-task`** → renamed worktree (post-move); **`--done`** → main repo (`MergeBack` `TargetPath`, never the removed worktree). **`--done`**: exec only after successful done (not aborted / failed confirm). **Reject `--exec` with**: `--list`, `--status`, `--repos`, `--projects`, `--add`, `--rm`, `--where`, `--merge-back`, `--all-deps`, set-config, skill, bash-integration, and other non-allowed modes. Mode path/message lines still print **before** the child command's stdout (create/dep/set-task path; done `worktree removed:…`; in-place `--cd` keeps empty mode stdout so only child output appears). Follow-up shell cd rules unchanged (create home-gate; done/set-task cwd-missing); exec is a child process and does not replace follow-up writes.
 - **Request.Args with `--exec`** — leaves pass `--exec` and command tokens as trailing `req.Args` (or after `SetTaskDesc`/`TargetDir` assembly via `buildWrkCLIArgs`); no separate Request field for exec argv.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
 - **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd as a **directory** (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Cwd file collision** (new): when `filepath.Join(cwd, <dir>)` exists and is a **regular file** (not a directory), do not proceed to git-repo resolution; instead load `projects.json` and emit guided stderr. **1** registered match → multi-line stderr: `wrk: <abs-cwd-file> exists and is a file`, `wrk: "<basename>" matches registered project(s):`, one indented project path, `wrk: use \`wrk <concrete-saved-path> <reconstructed-args>\` instead` (hint preserves user flags/args such as `-t`, `--status`, `--dep`, spawn target). **2+** matches → same shape listing all project paths (lex order) and hint `wrk: use \`wrk <full-path> <reconstructed-args>\` instead` (literal `<full-path>` placeholder). **0** matches → single line `wrk: <abs-cwd-file> exists and is a file` only (no registry block, no hint). Exit non-zero; stdout empty; no worktree created. Directory blocking behavior is unchanged. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup. `--where` unchanged (no cwd stat).
@@ -100,63 +102,46 @@ wrk tests
 │   └── git-lfs-hooks/            # LFS post-checkout hook requires git-lfs on PATH
 │       ├── minimal-path-succeeds/  # stripped PATH; git-lfs in $HOME/.local/bin → create fails
 │       └── from-other-cwd/         # wrk <repo> from foreign cwd + stripped PATH → create fails
-├── create-interceptor/           # optional create.interceptor via $WRK_HOME/config.json
-│   ├── native/                   # interceptor path NOT taken → native create / other modes
-│   │   ├── no-config/
-│   │   │   └── native-create/    # no config.json → native worktree create
-│   │   ├── disabled/
-│   │   │   └── native-create/    # enabled:false + fake on PATH → native; fake not run
-│   │   ├── escape/
-│   │   │   ├── no-interceptor-flag/  # --no-interceptor → native; fake not run
-│   │   │   └── env-no-interceptor/   # WRK_NO_INTERCEPTOR=1 → native; fake not run
-│   │   └── non-create/
-│   │       └── status-unaffected/    # wrk --status; fake not run
-│   └── intercept/                # create + interceptor enabled → exec argv
-│       ├── success/
-│       │   ├── fake-runs-no-worktree/     # fake kool logs argv; no WRK_HOME worktree
-│       │   ├── expand/
-│       │   │   ├── adversarial-task-quotes/ # ${…|shell_safe} encodes " in task
-│       │   │   └── array-var-multiline/     # vars send[] → --send arg with \n
-│       │   ├── followup/
-│       │   │   └── no-outer-cd/             # WRK_FOLLOWUP_FILE set; outer writes no cd
-│       │   └── auto-record/
-│       │       └── still-records/           # projects.json + events command create
-│       └── fail/
-│           ├── fake-exit-nonzero/           # fake exit 3 → wrk exit 3
-│           ├── unknown-var/                 # ${no_such} → non-zero; no worktree
-│           └── missing-binary/              # argv[0] not on PATH → non-zero; no worktree
-├── interceptor-mgmt/             # wrk --interceptor management CLI (config.json create.interceptor)
-│   ├── path/
-│   │   └── prints-config-path/   # abs {WRK_HOME}/config.json even if missing
-│   ├── status/
-│   │   ├── absent/               # state: absent; argv0: -
-│   │   ├── disabled/             # enabled:false → state: disabled
-│   │   └── enabled/              # enabled:true → state: enabled
+├── set-config/                   # wrk --set-config management for create UX config.json
+│   ├── write/                    # --set-config --create mutators
+│   │   ├── full-on/              # window+terminal+agent defaults
+│   │   ├── new-window-implies-terminal/ # --new-window alone also writes terminal.mode=new
+│   │   ├── merge/
+│   │   │   ├── terminal-then-agent/     # sequential writes preserve both
+│   │   │   └── preserve-extra-key/      # top-level extra:1 preserved
+│   │   └── negatives/
+│   │       ├── no-open-in-agent/        # agent.enabled=false
+│   │       └── no-new-window/           # window cleared/off
 │   ├── show/
-│   │   ├── present/              # pretty JSON of interceptor object
-│   │   └── absent/               # non-zero + stderr when missing
-│   ├── init/
-│   │   ├── writes-disabled-stub/ # fresh config → disabled neutral stub
-│   │   ├── refuses-existing/     # without --force → non-zero; unchanged
-│   │   ├── force-overwrites/     # --force replaces interceptor block
-│   │   └── merges-existing-config/ # preserves unrelated top-level keys
-│   ├── enable/
-│   │   ├── requires-block/       # no interceptor → non-zero; hint --init
-│   │   └── sets-true/            # disabled → enabled true
-│   ├── disable/
-│   │   └── sets-false/           # enabled true → false
-│   ├── check/
-│   │   ├── valid/                # good config → exit 0
-│   │   ├── absent-ok/            # missing interceptor → exit 0
-│   │   └── invalid-unknown-var/  # ${no_such} → non-zero
-│   ├── dry-run/
-│   │   ├── prints-expanded-argv/ # expand ${task} from -t; one arg per line
-│   │   ├── absent-errors/        # no interceptor → non-zero
-│   │   └── disabled-errors/      # enabled:false → non-zero
-│   ├── mutual-exclusion/
-│   │   └── with-list/            # --interceptor --status --list → non-zero
-│   └── entry/
-│       └── requires-action/      # bare --interceptor → non-zero
+│   │   └── prints-json/          # --set-config --show → JSON stdout
+│   └── mutual-exclusion/
+│       ├── with-list/            # --set-config … --list → non-zero
+│       └── with-create-dir/      # wrk <dir> --set-config … → non-zero; no worktree
+├── create-ux/                    # create-mode window/terminal/agent UX (config + flags)
+│   ├── bare/
+│   │   └── empty-config/         # native create only; mocks silent
+│   ├── pipeline/
+│   │   ├── flags/                # CLI-only effective UX
+│   │   │   ├── new-window-only/  # space + iterm ForceNew; no agent
+│   │   │   ├── new-terminal/     # iterm ForceNew; no space
+│   │   │   ├── reuse-terminal/   # ModeReuseCurrent
+│   │   │   ├── smart-terminal/   # ModeSmart
+│   │   │   ├── open-in-agent-only/ # agent-run in current process
+│   │   │   ├── terminal-plus-agent/ # iterm follow-up only; outer agent not exec'd
+│   │   │   ├── full-pipeline/    # window + terminal + agent follow-up
+│   │   │   └── with-exec/        # UX then --exec pwd in worktree
+│   │   └── config/               # config defaults ± --no-* override
+│   │       ├── defaults-match-flags/
+│   │       └── no-open-in-agent-override/
+│   ├── errors/
+│   │   ├── new-window-no-terminal/
+│   │   ├── mutual-terminal-flags/
+│   │   └── non-darwin-window/
+│   ├── interceptor-ignored/
+│   │   └── native-create/        # leftover create.interceptor ignored
+│   └── agent-quoting/
+│       ├── adversarial-task-quotes/      # argv-safe prompt for agent-in-process
+│       └── terminal-followup-quotes/     # shell-safe prompt in iterm follow-up
 ├── dep/                          # wrk --dep external dependency worktree
 │   ├── basic/                    # require + --dep → external wt, replace, tidy, gitignore
 │   ├── gitignore-already/        # /external already in .gitignore → no duplicate
@@ -329,6 +314,7 @@ wrk tests
 │       ├── ordering-two-external/ # two external wts → ListLinked order
 │       └── color-broken/         # --color red error on appended broken block
 ├── non-git-cwd/                  # cwd is not a git repo (error, no-args create)
+├── stderr-newline/               # hard-error stderr ends with trailing \n (main print path)
 ├── dir-arg/                      # wrk <dir> optional first positional
 │   ├── create/
 │   │   └── basic/                # wrk <repoDir> from WorkRoot creates worktree
@@ -391,9 +377,8 @@ wrk tests
 │       └── tty-auto-yes/         # TTY + -y auto-confirms cascade merge (label: tty)
 ├── exec/                         # --exec cut-flag: run command in mode target dir
 │   ├── create/                   # native create + --exec
-│   │   ├── basic-pwd/            # --no-interceptor --exec pwd → path then pwd in wt
-│   │   ├── args-passthrough/     # --exec echo --task → --task not wrk flag
-│   │   └── interceptor-blocked/  # interceptor on + --exec without escape → error
+│   │   ├── basic-pwd/            # --exec pwd → path then pwd in wt
+│   │   └── args-passthrough/     # --exec echo --task → --task not wrk flag
 │   ├── cd/                       # --cd + --exec
 │   │   └── with-followup/        # follow-up written; stdout = pwd of jump dir
 │   ├── dep/                      # --dep + --exec
@@ -794,43 +779,34 @@ wrk tests
 | 150 | cd/mutual-exclusion/with-no-cd | `--cd` + `--no-cd` → error |
 | 151 | cd/mutual-exclusion/with-where | `--cd` + `--where` → mutually exclusive |
 | 152 | cd/events/command-cd | success → `events.jsonl` `command: "cd"`, args include `--cd` |
-| 153 | create-interceptor/native/no-config/native-create | No config.json; create → native worktree under WRK_HOME |
-| 154 | create-interceptor/native/disabled/native-create | `enabled: false` + fake on PATH → native create; fake not invoked |
-| 155 | create-interceptor/native/escape/no-interceptor-flag | Config enabled; `wrk --no-interceptor` → native create; fake not invoked |
-| 156 | create-interceptor/native/escape/env-no-interceptor | `WRK_NO_INTERCEPTOR=1` → native create; fake not invoked |
-| 157 | create-interceptor/native/non-create/status-unaffected | Config enabled; `wrk --status` → status succeeds; fake not invoked |
-| 158 | create-interceptor/intercept/success/fake-runs-no-worktree | Enabled intercept; fake `kool` runs; stdout from fake; no new worktree |
-| 159 | create-interceptor/intercept/success/expand/adversarial-task-quotes | `-t` with `"`; `${intent_prompt\|shell_safe}` in send payload |
-| 160 | create-interceptor/intercept/success/expand/array-var-multiline | `send` string array → `--send` arg contains newline between lines |
-| 161 | create-interceptor/intercept/success/followup/no-outer-cd | Intercept + home-gated follow-up env → no outer `cd` in follow-up file |
-| 162 | create-interceptor/intercept/success/auto-record/still-records | Intercept create still records projects.json + event `command: create` |
-| 163 | create-interceptor/intercept/fail/fake-exit-nonzero | Fake exit 3 → wrk exit 3; no worktree |
-| 164 | create-interceptor/intercept/fail/unknown-var | Config refs `${no_such}` → non-zero; clear error; no worktree |
-| 165 | create-interceptor/intercept/fail/missing-binary | Interceptor binary not on PATH → non-zero; no worktree |
-| 166 | interceptor-mgmt/path/prints-config-path | `--path` → abs `{WRK_HOME}/config.json` + `\n`; exit 0; file may be missing |
-| 167 | interceptor-mgmt/status/absent | No interceptor → `state: absent`, `argv0: -` |
-| 168 | interceptor-mgmt/status/disabled | Seeded `enabled:false` → `state: disabled`; argv0 set |
-| 169 | interceptor-mgmt/status/enabled | Seeded `enabled:true` → `state: enabled` |
-| 170 | interceptor-mgmt/show/present | Pretty JSON of interceptor object; exit 0 |
-| 171 | interceptor-mgmt/show/absent | No interceptor → non-zero; stderr message |
-| 172 | interceptor-mgmt/init/writes-disabled-stub | No prior config → disabled stub + non-empty argv |
-| 173 | interceptor-mgmt/init/refuses-existing | Existing without `--force` → non-zero; unchanged |
-| 174 | interceptor-mgmt/init/force-overwrites | Existing + `--force` → neutral stub replaces block |
-| 175 | interceptor-mgmt/init/merges-existing-config | Config without interceptor → merge stub; keep other keys |
-| 176 | interceptor-mgmt/enable/requires-block | No block → non-zero; hint `--init` |
-| 177 | interceptor-mgmt/enable/sets-true | After disabled seed → `enabled: true` |
-| 178 | interceptor-mgmt/disable/sets-false | Enabled → `enabled: false`; create would stay native |
-| 179 | interceptor-mgmt/check/valid | Valid config → exit 0; empty stdout |
-| 180 | interceptor-mgmt/check/absent-ok | Missing interceptor → exit 0 |
-| 181 | interceptor-mgmt/check/invalid-unknown-var | `${no_such}` → non-zero; stderr mentions var |
-| 182 | interceptor-mgmt/dry-run/prints-expanded-argv | Enabled + `-t hi` → lines `echo` / `task=hi` |
-| 183 | interceptor-mgmt/dry-run/absent-errors | No interceptor → non-zero |
-| 184 | interceptor-mgmt/dry-run/disabled-errors | Disabled interceptor → non-zero |
-| 185 | interceptor-mgmt/mutual-exclusion/with-list | `--interceptor --status --list` → mutually exclusive |
-| 186 | interceptor-mgmt/entry/requires-action | Bare `--interceptor` → non-zero |
-| 187 | exec/create/basic-pwd | create + `--no-interceptor --exec pwd` → path then pwd in new wt |
-| 188 | exec/create/args-passthrough | `--exec echo --task` → child sees `--task`; no task slug on path |
-| 189 | exec/create/interceptor-blocked | interceptor enabled + `--exec` without escape → non-zero |
+| 153 | set-config/write/full-on | `--set-config --create --new-window --new-terminal --open-in-agent` → full defaults |
+| 154 | set-config/write/new-window-implies-terminal | `--new-window` alone also writes `terminal.mode=new` |
+| 155 | set-config/write/merge/terminal-then-agent | sequential terminal then agent writes; both present |
+| 156 | set-config/write/merge/preserve-extra-key | top-level `extra: 1` preserved after set-config |
+| 157 | set-config/write/negatives/no-open-in-agent | agent.enabled=false after prior on |
+| 158 | set-config/write/negatives/no-new-window | window cleared/off |
+| 159 | set-config/show/prints-json | `--set-config --show` prints JSON |
+| 160 | set-config/mutual-exclusion/with-list | `--set-config … --list` → non-zero |
+| 161 | set-config/mutual-exclusion/with-create-dir | `wrk <dir> --set-config …` → non-zero; no worktree |
+| 162 | create-ux/bare/empty-config | bare create; no space/iterm/agent |
+| 163 | create-ux/pipeline/flags/new-window-only | space + iterm ForceNew; no agent |
+| 164 | create-ux/pipeline/flags/new-terminal | iterm ForceNew; no space |
+| 165 | create-ux/pipeline/flags/reuse-terminal | ModeReuseCurrent script |
+| 166 | create-ux/pipeline/flags/smart-terminal | ModeSmart script |
+| 167 | create-ux/pipeline/flags/open-in-agent-only | agent-run in-process; cwd=wt |
+| 168 | create-ux/pipeline/flags/terminal-plus-agent | iterm follow-up only; outer agent not exec'd |
+| 169 | create-ux/pipeline/flags/full-pipeline | window + terminal + agent follow-up |
+| 170 | create-ux/pipeline/flags/with-exec | UX then `--exec pwd` |
+| 171 | create-ux/pipeline/config/defaults-match-flags | config-only full UX matches flags |
+| 172 | create-ux/pipeline/config/no-open-in-agent-override | config agent on + `--no-open-in-agent` |
+| 173 | create-ux/errors/new-window-no-terminal | `--new-window --no-new-terminal` → error |
+| 174 | create-ux/errors/mutual-terminal-flags | two terminal mode flags → error |
+| 175 | create-ux/errors/non-darwin-window | mocked linux GOOS → platform error |
+| 176 | create-ux/interceptor-ignored/native-create | leftover interceptor ignored; native create |
+| 177 | create-ux/agent-quoting/adversarial-task-quotes | argv-safe prompt for agent-in-process |
+| 178 | create-ux/agent-quoting/terminal-followup-quotes | shell-safe prompt in iterm follow-up |
+| 179 | exec/create/basic-pwd | create + `--exec pwd` → path then pwd in new wt |
+| 180 | exec/create/args-passthrough | `--exec echo --task` → child sees `--task`; no task slug on path |
 | 190 | exec/cd/with-followup | `--cd` + follow-up + `--exec pwd` → follow-up + stdout pwd |
 | 191 | exec/dep/basic-pwd | `--dep` + `--exec pwd` → external path then pwd there |
 | 192 | exec/set-task/after-rename | `--set-task` + `--exec pwd` → new path then pwd |
@@ -839,6 +815,7 @@ wrk tests
 | 195 | exec/reject/with-status | `--status --exec true` → non-zero |
 | 196 | exec/empty-flag/bare-exec | bare `--exec` → requires command; no wt |
 | 197 | exec/empty-flag/equals-form | `--exec=pwd` → reject equals form |
+| 198 | stderr-newline | unrecognized flag → exit 1; stderr body + trailing `\n` |
 
 ## How to Run
 
@@ -1013,29 +990,15 @@ doctest test ./tests/cd/fallback/shell-exit-nonzero
 doctest test ./tests/cd/resolution/missing-arg
 doctest test ./tests/cd/events/command-cd
 
-# Run create-interceptor leaves (expect RED until create.interceptor is implemented)
-doctest vet ./tests/create-interceptor
-doctest test ./tests/create-interceptor
-doctest test ./tests/create-interceptor/native
-doctest test ./tests/create-interceptor/intercept
-doctest test ./tests/create-interceptor/native/no-config/native-create
-doctest test ./tests/create-interceptor/intercept/success/fake-runs-no-worktree
-doctest test ./tests/create-interceptor/intercept/success/expand
-doctest test ./tests/create-interceptor/intercept/fail
-
-# Run interceptor management leaves (expect RED until wrk --interceptor is implemented)
-doctest vet ./tests/interceptor-mgmt
-doctest test ./tests/interceptor-mgmt
-doctest test ./tests/interceptor-mgmt/path
-doctest test ./tests/interceptor-mgmt/status
-doctest test ./tests/interceptor-mgmt/show
-doctest test ./tests/interceptor-mgmt/init
-doctest test ./tests/interceptor-mgmt/enable
-doctest test ./tests/interceptor-mgmt/disable
-doctest test ./tests/interceptor-mgmt/check
-doctest test ./tests/interceptor-mgmt/dry-run
-doctest test ./tests/interceptor-mgmt/mutual-exclusion
-doctest test ./tests/interceptor-mgmt/entry
+# Run set-config + create-ux leaves (expect RED until create UX / --set-config implemented)
+doctest vet ./tests/set-config
+doctest vet ./tests/create-ux
+doctest test ./tests/set-config
+doctest test ./tests/create-ux
+doctest test ./tests/set-config/write/full-on
+doctest test ./tests/create-ux/bare/empty-config
+doctest test ./tests/create-ux/pipeline/flags/full-pipeline
+doctest test ./tests/create-ux/errors/new-window-no-terminal
 ```
 
 
@@ -1089,10 +1052,10 @@ type Request struct {
 	FakeShellExit  int    // exit code of fake bash (default 0; set via env for non-zero)
 	ShellEnv       string // when set, export SHELL=<value> (detect.Shell basename)
 
-	// create-interceptor harness
-	PathPrepend    string   // bin dir prepended to PATH (fake interceptor tools)
-	ExtraEnv       []string // additional KEY=VAL env entries for wrk
-	InterceptorLog string   // path where fake interceptor records argv
+	// PathPrepend / ExtraEnv / InterceptorLog — create-ux (fake agent-run + mock env) and shared harness
+	PathPrepend    string   // bin dir prepended to PATH (fake agent-run / tools)
+	ExtraEnv       []string // additional KEY=VAL env entries for wrk (UX mocks, etc.)
+	InterceptorLog string   // optional path for fake argv logs (create-ux uses WorkRoot helpers)
 }
 
 type Response struct {

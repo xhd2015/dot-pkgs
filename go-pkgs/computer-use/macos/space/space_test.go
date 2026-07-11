@@ -130,6 +130,78 @@ func TestCreateAndActivate(t *testing.T) {
 	}
 }
 
+func TestCreateAndActivate_RetriesSwitchNotCreate(t *testing.T) {
+	SetGOOSForTest("darwin")
+	defer SetGOOSForTest("")
+	var calls []string
+	switchN := 0
+	cfg := &Config{
+		Settle: -1,
+		Osascript: func(script string, args ...string) (string, error) {
+			switch {
+			case strings.Contains(script, "add desktop"):
+				calls = append(calls, "create")
+				return "OK", nil
+			case strings.Contains(script, "maxN"):
+				calls = append(calls, "highest")
+				return "5", nil
+			case strings.Contains(script, "exit to Desktop"):
+				switchN++
+				calls = append(calls, "switch")
+				if switchN == 1 {
+					return "FAIL: desktop not found: Desktop 5", nil
+				}
+				return "OK", nil
+			default:
+				t.Fatalf("unexpected script")
+				return "", nil
+			}
+		},
+	}
+	n, err := CreateAndActivate(cfg)
+	if err != nil || n != 5 {
+		t.Fatalf("n=%d err=%v calls=%v", n, err, calls)
+	}
+	// One create only; highest+switch retried after first switch fail.
+	want := []string{"create", "highest", "switch", "highest", "switch"}
+	if strings.Join(calls, "|") != strings.Join(want, "|") {
+		t.Fatalf("calls=%v want=%v", calls, want)
+	}
+}
+
+func TestCreateAndActivate_RetriesTransientCreate(t *testing.T) {
+	SetGOOSForTest("darwin")
+	defer SetGOOSForTest("")
+	var creates int
+	cfg := &Config{
+		Settle: -1,
+		Osascript: func(script string, args ...string) (string, error) {
+			switch {
+			case strings.Contains(script, "add desktop"):
+				creates++
+				if creates == 1 {
+					return "FAIL: System Events got an error: Can’t get group 1 of application process \"Dock\" whose name = \"Mission Control\". Invalid index. (-1719)", nil
+				}
+				return "OK", nil
+			case strings.Contains(script, "maxN"):
+				return "3", nil
+			case strings.Contains(script, "exit to Desktop"):
+				return "OK", nil
+			default:
+				t.Fatalf("unexpected script")
+				return "", nil
+			}
+		},
+	}
+	n, err := CreateAndActivate(cfg)
+	if err != nil || n != 3 {
+		t.Fatalf("n=%d err=%v creates=%d", n, err, creates)
+	}
+	if creates != 2 {
+		t.Fatalf("creates=%d want 2", creates)
+	}
+}
+
 func TestCreateFail(t *testing.T) {
 	SetGOOSForTest("darwin")
 	defer SetGOOSForTest("")

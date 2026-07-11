@@ -36,6 +36,15 @@ var (
 
 const (
 	defaultSettle = 500 * time.Millisecond
+	// postCreateSettle waits after Create before Highest/Switch so the Spaces
+	// Bar AX tree includes the new Desktop (without this, Switch often fails
+	// with "desktop not found: Desktop N").
+	postCreateSettle = 400 * time.Millisecond
+	// switchRetries is how many times to re-query Highest + Switch after Create
+	// (does not re-Create — that would spawn extra Desktops near the 16 cap).
+	switchRetries = 3
+	// createRetries for flaky Mission Control open (-1719 Invalid index).
+	createRetries = 3
 	envGOOS       = "DOT_PKGS_SPACE_GOOS"
 )
 
@@ -117,23 +126,93 @@ func Highest(cfg *Config) (int, error) {
 
 // CreateAndActivate creates a Desktop, switches to it, and returns its number.
 // Used when a caller needs the new Space frontmost before further work.
+//
+// Stability notes (Mission Control AX is racy):
+//   - Create is retried on transient Dock/MC errors (-1719 Invalid index).
+//   - After a successful Create, settle briefly, then Highest+Switch with
+//     retries. Switch failures do NOT re-Create (avoids extra Desktops).
 func CreateAndActivate(cfg *Config) (int, error) {
 	if err := requireDarwin(); err != nil {
 		return 0, err
 	}
 	ax := newAX(cfg)
-	if err := ax.Create(); err != nil {
-		return 0, err
+
+	var createErr error
+	for attempt := 0; attempt < createRetries; attempt++ {
+		createErr = ax.Create()
+		if createErr == nil {
+			break
+		}
+		if !isTransientSpaceError(createErr) || attempt+1 == createRetries {
+			return 0, createErr
+		}
+		settle(cfg)
 	}
-	n, err := ax.Highest()
-	if err != nil {
-		return 0, fmt.Errorf("space: created but could not resolve new desktop: %w", err)
+
+	// Let the new Desktop appear in the Spaces Bar before Highest/Switch.
+	sleepDuration(cfg, postCreateSettle)
+
+	var lastErr error
+	for attempt := 0; attempt < switchRetries; attempt++ {
+		n, err := ax.Highest()
+		if err != nil {
+			lastErr = fmt.Errorf("space: created but could not resolve new desktop: %w", err)
+			if !isTransientSpaceError(err) || attempt+1 == switchRetries {
+				return 0, lastErr
+			}
+			settle(cfg)
+			continue
+		}
+		if err := ax.Switch(n); err != nil {
+			lastErr = err
+			if !isTransientSpaceError(err) || attempt+1 == switchRetries {
+				return 0, lastErr
+			}
+			settle(cfg)
+			continue
+		}
+		settle(cfg)
+		return n, nil
 	}
-	if err := ax.Switch(n); err != nil {
-		return 0, err
+	if lastErr != nil {
+		return 0, lastErr
 	}
-	settle(cfg)
-	return n, nil
+	return 0, fmt.Errorf("space: CreateAndActivate failed after retries")
+}
+
+// isTransientSpaceError reports Mission Control AX races worth retrying.
+func isTransientSpaceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	switch {
+	case strings.Contains(s, "desktop not found"):
+		return true
+	case strings.Contains(s, "Invalid index"):
+		return true
+	case strings.Contains(s, "-1719"):
+		return true
+	case strings.Contains(s, "no Desktop buttons found"):
+		return true
+	case strings.Contains(s, "can’t get group") || strings.Contains(s, "Can't get group"):
+		return true
+	case strings.Contains(s, "Mission Control"):
+		// Broad: MC group/list missing while animation runs.
+		return strings.Contains(s, "FAIL:")
+	default:
+		return false
+	}
+}
+
+// sleepDuration sleeps d unless cfg.Settle is negative (tests disable sleeps).
+func sleepDuration(cfg *Config, d time.Duration) {
+	if cfg != nil && cfg.Settle < 0 {
+		return
+	}
+	if d > 0 {
+		time.Sleep(d)
+	}
 }
 
 func requireDarwin() error {

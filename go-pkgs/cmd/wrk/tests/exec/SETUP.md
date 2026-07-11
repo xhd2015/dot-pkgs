@@ -6,7 +6,7 @@
 # less-flags Cut("--exec", &execArgs): tokens after --exec never parsed as wrk flags
 # after successful allowed mode → exec.Command(execArgs[0], execArgs[1:]...); cmd.Dir = target abs
 
-wrk --no-interceptor --exec pwd
+wrk --exec pwd
   -> create wt; print wt path; run pwd in wt (stdout path then pwd)
 
 wrk --cd <dir> --exec pwd          # follow-up still written; exec output on stdout
@@ -18,7 +18,6 @@ wrk --done -y --exec pwd           # merge-back --rm; exec in main repo (not rem
 wrk --list --exec true             # non-zero; not valid with this mode
 wrk --exec                         # non-zero; requires a command
 wrk --exec=pwd                     # non-zero; equals form rejected
-create + interceptor + --exec      # non-zero unless --no-interceptor / WRK_NO_INTERCEPTOR=1
 ```
 
 ## Preconditions
@@ -36,7 +35,6 @@ create + interceptor + --exec      # non-zero unless --no-interceptor / WRK_NO_I
 
 - Allowed modes: create (native), `--cd`, `--dep`, `--set-task`, `--done`.
 - Rejected with `--exec`: `--list`, `--status`, and other non-allowed modes.
-- Create interceptor + `--exec` is an error unless escape hatch.
 - Mode path lines (create/dep/set-task/done messages) print **before** the child command's stdout.
 
 ```go

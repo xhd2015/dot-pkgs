@@ -693,7 +693,7 @@ func wrkEnv(req *Request) []string {
 	return env
 }
 
-// appendExtraEnv adds create-interceptor ExtraEnv KEY=VAL entries.
+// appendExtraEnv adds ExtraEnv KEY=VAL entries (create-ux mocks, etc.).
 func appendExtraEnv(env []string, req *Request) []string {
 	if len(req.ExtraEnv) == 0 {
 		return env
@@ -716,13 +716,13 @@ func prependPATH(env []string, dir string) []string {
 }
 
 // appendCDEnv adds --cd test harness env: WRK_FOLLOWUP_FILE, fake-shell PATH/SHELL,
-// PathPrepend (create-interceptor fake tools), and WRK_FAKE_SHELL_* for the shim
+// PathPrepend (fake agent-run / tools), and WRK_FAKE_SHELL_* for the shim
 // that LoginInteractive must resolve without hanging.
 func appendCDEnv(env []string, req *Request) []string {
 	if req.UseFollowupEnv && req.FollowupFile != "" {
 		env = append(env, "WRK_FOLLOWUP_FILE="+req.FollowupFile)
 	}
-	// PathPrepend first so interceptor fakes win over FakeShellDir when both set.
+	// PathPrepend first so UX fakes win over FakeShellDir when both set.
 	env = prependPATH(env, req.PathPrepend)
 	env = prependPATH(env, req.FakeShellDir)
 	if req.ShellEnv != "" {

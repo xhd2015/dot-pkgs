@@ -87,8 +87,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		ctx.skipEvent = true
 		return runBashIntegration(args)
 	}
-	if hasArg(args, "--interceptor") {
-		return runInterceptorMgmt(origWd, args, ctx)
+	if hasArg(args, "--set-config") {
+		return runSetConfig(origWd, args, ctx)
 	}
 
 	if err := validateWhereFlagArg(args); err != nil {
@@ -118,9 +118,17 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var noCd bool
 	var forceCd bool
 	var cd bool
-	var noInterceptor bool
 	var mainFlag bool
 	var execArgs []string
+	// Create UX one-shot flags.
+	var newWindow bool
+	var noNewWindow bool
+	var newTerminal bool
+	var reuseTerminal bool
+	var smartTerminal bool
+	var noNewTerminal bool
+	var openInAgent bool
+	var noOpenInAgent bool
 	// *string targets: nil = flag absent; non-nil empty = present but empty.
 	// Cut("--exec") must be registered so tokens after --exec are never re-parsed as flags.
 	remaining, err := lessflags.Bool("--done", &done).
@@ -140,10 +148,17 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--no-cd", &noCd).
 		Bool("--force-cd", &forceCd).
 		Bool("--cd", &cd).
-		Bool("--no-interceptor", &noInterceptor).
 		Bool("--main", &mainFlag).
 		Bool("--all-deps", &allDeps).
 		Bool("--dry-run", &dryRun).
+		Bool("--new-window", &newWindow).
+		Bool("--no-new-window", &noNewWindow).
+		Bool("--new-terminal", &newTerminal).
+		Bool("--reuse-terminal", &reuseTerminal).
+		Bool("--smart-terminal", &smartTerminal).
+		Bool("--no-new-terminal", &noNewTerminal).
+		Bool("--open-in-agent", &openInAgent).
+		Bool("--no-open-in-agent", &noOpenInAgent).
 		String("--dep", &depPath).
 		String("-t,--task", &taskDesc).
 		String("--set-task", &setTaskDesc).
@@ -251,6 +266,22 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	// Resolve sourceDir to absolute; default to process cwd when absent.
 	// Passed to every sub-command as workDir instead of using os.Getwd/Chdir.
 	createMode := isCreateMode(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, repos, status, depPath, allDeps, list, done, mergeBack, cd, mainFlag)
+	uxFlags := createUXFlags{
+		newWindow:     newWindow,
+		noNewWindow:   noNewWindow,
+		newTerminal:   newTerminal,
+		reuseTerminal: reuseTerminal,
+		smartTerminal: smartTerminal,
+		noNewTerminal: noNewTerminal,
+		openInAgent:   openInAgent,
+		noOpenInAgent: noOpenInAgent,
+	}
+	if err := uxFlags.validate(); err != nil {
+		return err
+	}
+	if uxFlags.any() && !createMode {
+		return fmt.Errorf("wrk: create UX flags are only valid with create mode")
+	}
 	dirHint := &DirHintOptions{
 		RawArgs:     args,
 		Positionals: remaining,
@@ -434,33 +465,12 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	if taskDesc != nil {
 		task = *taskDesc
 	}
-	// Optional create-mode interceptor: expand argv/vars from config.json and
-	// exec instead of native worktree create. Escape: --no-interceptor /
-	// WRK_NO_INTERCEPTOR=1. No-op on non-create modes (flag already parsed).
-	// --exec is incompatible with an enabled interceptor unless escaped.
-	// Outer path still does not land/follow-up when interceptor runs (force-cd
-	// does not force outer write/shell on intercept path).
-	if !noInterceptor && os.Getenv("WRK_NO_INTERCEPTOR") != "1" {
-		ic, err := loadCreateInterceptor(wrkHome)
-		if err != nil {
-			return err
-		}
-		if ic != nil && ic.Enabled {
-			if hasExec {
-				return fmt.Errorf("wrk: --exec is not valid when create interceptor is enabled; use --no-interceptor")
-			}
-			return runCreateInterceptor(ic, createInterceptorInput{
-				wrkHome:     wrkHome,
-				workDir:     workDir,
-				origWd:      origWd,
-				source:      sourceDir,
-				spawnTarget: spawnTarget,
-				task:        task,
-				args:        args,
-			})
-		}
+
+	uxPlan, err := resolveCreateUX(wrkHome, uxFlags)
+	if err != nil {
+		return err
 	}
-	return runCreate(workDir, origWd, spawnTarget, task, noCd, forceCd, execArgs)
+	return runCreate(workDir, origWd, spawnTarget, task, noCd, forceCd, execArgs, uxPlan)
 }
 
 // usage returns the wrk help text printed by lessflags when -h/--help is given.
@@ -505,19 +515,20 @@ Flags:
   -y, --yes                       auto-confirm Y/n prompts (own worktree; cascade on TTY only)
   --no-cd                         do not write shell follow-up cd lines (for bash auto-cd wrapper)
   --force-cd                      always land in dest after create/--done/--set-task (bypass gates)
-  --no-interceptor                skip create.interceptor and use native create (no-op on non-create)
+  --new-window                    create Mission Control Desktop (implies --new-terminal)
+  --new-terminal                  open iTerm2 in a new window at the worktree
+  --reuse-terminal                reuse current iTerm2 session when possible
+  --smart-terminal                smart iTerm2 window/tab reuse
+  --open-in-agent                 launch agent-run after create (iTerm follow-up or current process)
+  --no-new-window                 disable window UX for this run
+  --no-new-terminal               disable terminal UX for this run
+  --no-open-in-agent              disable agent UX for this run
   --exec <cmd> [args...]          after success, run command in the mode target directory
   --help, -h                      show this help and exit
 
-Interceptor management:
-  wrk --interceptor --status      show absent|disabled|enabled, path, argv0
-  wrk --interceptor --show        pretty-print create.interceptor JSON
-  wrk --interceptor --path        print absolute path to $WRK_HOME/config.json
-  wrk --interceptor --enable      set enabled=true (requires existing block)
-  wrk --interceptor --disable     set enabled=false
-  wrk --interceptor --init [--force]  write disabled neutral stub
-  wrk --interceptor --check       validate interceptor when present
-  wrk --interceptor --dry-run [--] [create-args...]  expand argv without exec
+Config management:
+  wrk --set-config --create [flags]  merge create UX defaults into $WRK_HOME/config.json
+  wrk --set-config --show            pretty-print effective config.json
 
 Skill commands:
   wrk skill --list|-l             list available skills (wrk)
@@ -527,7 +538,6 @@ Skill commands:
 Environment:
   WRK_HOME              worktree storage root (default: ~/.wrk)
   WRK_DATE              override the run date (YYYY-MM-DD) used in worktree/branch names
-  WRK_NO_INTERCEPTOR    set to 1 to skip create.interceptor (same as --no-interceptor)
 `
 }
 
@@ -1457,7 +1467,7 @@ func externalCandidateBlocked(mainRepo, wtPath, branch string) bool {
 	return branchExists(mainRepo, branch)
 }
 
-func runCreate(workDir string, origWd string, targetDir string, taskDesc string, noCd, forceCd bool, execArgs []string) error {
+func runCreate(workDir string, origWd string, targetDir string, taskDesc string, noCd, forceCd bool, execArgs []string, ux createUXPlan) error {
 	cwd, err := filepath.Abs(workDir)
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
@@ -1503,11 +1513,16 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 	}
 
 	if targetDir != "" {
-		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug, noCd, forceCd, execArgs)
+		return runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug, noCd, forceCd, execArgs, taskDesc, ux)
 	}
 
 	wrkHome, err := resolveWrkHome()
 	if err != nil {
+		return err
+	}
+
+	// Window (space) before worktree so a space failure leaves no orphan path.
+	if err := ensureCreateWindow(&ux); err != nil {
 		return err
 	}
 
@@ -1516,6 +1531,10 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 		return err
 	}
 	fmt.Println(result.Path)
+	// Pipeline: [window] → create (path printed) → terminal-or-agent → exec → follow-up cd.
+	if err := runCreateUX(result.Path, taskDesc, ux); err != nil {
+		return err
+	}
 	if err := runExecInDir(result.Path, execArgs); err != nil {
 		return err
 	}
@@ -1529,7 +1548,7 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 // runCreateTargetDir handles wrk <dir> <target-dir>. A relative <target-dir> is
 // resolved against origWd (the process/shell cwd), NOT the repo dir that Run
 // chdir'd into.
-func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string, noCd, forceCd bool, execArgs []string) error {
+func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string, noCd, forceCd bool, execArgs []string, taskDesc string, ux createUXPlan) error {
 	// Resolve <target-dir> against the shell cwd (origWd), not the repo dir.
 	absTarget := targetDir
 	if !filepath.IsAbs(absTarget) {
@@ -1545,6 +1564,10 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		}
 		// Case 2: spawn a default-named sub-dir under <target-dir>, with the
 		// usual -N collision handling on both path and branch.
+		// Window once before any worktree attempt (same plan for all suffixes).
+		if err := ensureCreateWindow(&ux); err != nil {
+			return err
+		}
 		for suffix := 0; suffix < 100; suffix++ {
 			wtPath, branch := candidateNames(absTarget, basename, branchBase, pathToken, date, slug, suffix)
 			if candidateBlocked(mainRepo, wtPath, branch) {
@@ -1558,6 +1581,9 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 				return fmt.Errorf("resolve worktree path: %w", err)
 			}
 			fmt.Println(absPath)
+			if err := runCreateUX(absPath, taskDesc, ux); err != nil {
+				return err
+			}
 			// Target-dir create skips home-gated auto-cd; --force-cd still lands.
 			if err := runExecInDir(absPath, execArgs); err != nil {
 				return err
@@ -1585,6 +1611,9 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 	// Case 1: spawn the worktree exactly at <target-dir> (fixed path, no naming
 	// suffix on the path). Branch follows the default convention; if that branch
 	// ref already exists, reuse it via the branchPreExists checkout path.
+	if err := ensureCreateWindow(&ux); err != nil {
+		return err
+	}
 	wtPath := absTarget
 	branch := branchBase + "-" + date
 	if slug != "" {
@@ -1598,6 +1627,9 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		return fmt.Errorf("resolve worktree path: %w", err)
 	}
 	fmt.Println(absPath)
+	if err := runCreateUX(absPath, taskDesc, ux); err != nil {
+		return err
+	}
 	// Target-dir create skips home-gated auto-cd; --force-cd still lands.
 	if err := runExecInDir(absPath, execArgs); err != nil {
 		return err

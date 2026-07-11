@@ -76,9 +76,9 @@ with `--no-cd`.
   shell at dest via `shell/interactive.LoginInteractive` (tests install a
   fake `bash` on PATH). Without `--force-cd`, gates and no-shell behavior are
   unchanged. Failures, abort, dry-run, task-unchanged, `--merge-back`, inspect
-  modes, and create-interceptor **outer** path still do not land (interceptor
-  owns UX; `--force-cd` does not force outer write/shell on intercept).
-  Wrapper does not special-case `--force-cd` (binary-side only).
+  modes still do not land. Create UX (window/terminal/agent) runs in-process after
+  create; follow-up cd rules unchanged. Wrapper does not special-case `--force-cd`
+  (binary-side only).
 - **`WRK_FOLLOWUP_FILE`** — ephemeral path set only by the bash `wrk()`
   wrapper when auto-cd is enabled. Binary may write `cd /abs` lines there.
 - **`WRK_AUTO_CD`** — user env; `0` makes the wrapper skip temp file creation,
@@ -205,10 +205,8 @@ followup-cd/
 | 37 | wrapper/set-task/sibling-cwd-stays | wrapper rename other from sibling → pwd stays; no stderr `cd` |
 | 38 | wrapper/bad-path/cd-fails | follow-up `cd` to missing path → wrapper non-zero, binary 0 |
 
-**Out-of-band / not in this tree:** create-interceptor outer path + `--force-cd`
-still must not write outer follow-up or launch outer shell (interceptor owns
-UX). Covered by existing `create-interceptor/.../followup/no-outer-cd` as the
-no-force baseline; force-on-intercept is implementer regression, not a new leaf.
+**Out-of-band / not in this tree:** create UX pipeline details (space/iterm/agent)
+are covered by `create-ux/` under the parent wrk tests root.
 
 ## How to Run
 

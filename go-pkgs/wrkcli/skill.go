@@ -50,7 +50,15 @@ var wrkModeFlags = map[string]struct{}{
 	"--set-task":             {},
 	"--where":                {},
 	"--cd":                   {},
-	"--no-interceptor":       {},
+	"--new-window":           {},
+	"--no-new-window":        {},
+	"--new-terminal":         {},
+	"--reuse-terminal":       {},
+	"--smart-terminal":       {},
+	"--no-new-terminal":      {},
+	"--open-in-agent":        {},
+	"--no-open-in-agent":     {},
+	"--set-config":           {},
 	"--main":                 {},
 }
 
