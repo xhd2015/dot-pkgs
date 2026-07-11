@@ -178,10 +178,6 @@ func detectByContentSniff(buf []byte) (bool, string) {
 		return true, "binary file"
 	}
 
-	if buf[0] >= 0x80 {
-		return true, "binary file"
-	}
-
 	return false, "text file"
 }
 
@@ -525,8 +521,15 @@ func looksLikeUTF8(data []byte) bool {
 		default:
 			return false
 		}
+		// Incomplete multi-byte sequence only at the end of the sniff buffer
+		// is treated as a valid UTF-8 prefix (truncation-safe).
 		if i+seqLen > len(data) {
-			return false
+			for j := 1; j < len(data)-i; j++ {
+				if data[i+j]&0xC0 != 0x80 {
+					return false
+				}
+			}
+			return true
 		}
 		for j := 1; j < seqLen; j++ {
 			if data[i+j]&0xC0 != 0x80 {
