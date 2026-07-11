@@ -13,13 +13,13 @@ require (
 	github.com/xhd2015/xgo v1.2.0
 	golang.org/x/term v0.43.0
 	golang.org/x/tools v0.45.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
 	github.com/xhd2015/go-coverage v1.0.41 // indirect
 	github.com/xhd2015/go-inspect v0.0.49 // indirect
 	github.com/xhd2015/less-gen v0.0.19 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
