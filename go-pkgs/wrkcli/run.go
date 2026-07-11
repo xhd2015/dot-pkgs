@@ -1538,9 +1538,13 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 	if err := runExecInDir(result.Path, execArgs); err != nil {
 		return err
 	}
-	// --force-cd bypasses home gate; otherwise home-gate on shell cwd (origWd).
+	// --force-cd always lands parent; otherwise skip home-gated auto-cd when
+	// create already opens agent and/or terminal (parent need not cd).
 	if forceCd {
 		return forceLandInDir(result.Path)
+	}
+	if ux.agent || ux.terminalMode != "" {
+		return nil
 	}
 	return writeFollowupCDIfCwdIsHome(noCd, origWd, result.Path)
 }

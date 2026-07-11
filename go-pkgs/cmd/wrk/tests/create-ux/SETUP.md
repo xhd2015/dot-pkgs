@@ -33,9 +33,13 @@ legacy create.interceptor ignored
 
 ## Context
 
-- Agent default argv: `agent-run run --session-id-from-prompt --no-submit --open --agent-runner=grok-tty <prompt>`.
+- Agent default argv: `agent-run run --dir <abs-worktree> --session-id-from-prompt --no-submit --open --agent-runner=grok-tty <prompt>`
+  (`--dir` may appear immediately after `run`; space form preferred).
 - Default prompt template: `/brainstorm ${task}` (empty task → empty substitution).
 - Terminal+agent: agent only as iTerm follow-up command string; outer wrk must **not** exec agent-run.
+- In-process agent: `--dir` is the workspace source of truth; process cwd of agent-run **need not** equal worktree.
+- Parent follow-up after create: when agent and/or terminal UX is active, skip home-gated
+  auto-cd (`writeFollowupCDIfCwdIsHome`) unless `--force-cd`. Bare create still home-gates.
 - Pipeline order: create → window → terminal-or-agent → `--exec` → follow-up cd.
 - Reuses root `Request`/`Run`; paths for logs live under `{WorkRoot}`.
 
@@ -366,7 +370,7 @@ func assertAgentRunInvoked(t *testing.T, req *Request, wtPath, task string) []st
 	if args[0] != fakeAgentRunName {
 		t.Fatalf("argv0: want %q, got %q", fakeAgentRunName, args[0])
 	}
-	// Shape: agent-run run <args...> --agent-runner=<runner> <prompt>
+	// Shape: agent-run run --dir <wt> <args...> --agent-runner=<runner> <prompt>
 	if len(args) < 3 || args[1] != "run" {
 		t.Fatalf("argv should start with agent-run run …, got %v", args)
 	}
@@ -379,6 +383,7 @@ func assertAgentRunInvoked(t *testing.T, req *Request, wtPath, task string) []st
 	if !strings.Contains(joined, "grok-tty") {
 		t.Fatalf("argv missing grok-tty runner: %v", args)
 	}
+	assertAgentArgvHasDir(t, args, wtPath)
 	wantPrompt := "/brainstorm"
 	if task != "" {
 		wantPrompt = "/brainstorm " + task
@@ -391,20 +396,11 @@ func assertAgentRunInvoked(t *testing.T, req *Request, wtPath, task string) []st
 			t.Fatalf("prompt token: want %q, got last=%q full=%v", wantPrompt, last, args)
 		}
 	}
+	// Process cwd of agent-run may differ from worktree; --dir is the workspace source of truth.
+	// Still require the fake to have been invoked (cwd log non-empty when mock records it).
 	cwd := strings.TrimSpace(readFileEmptyOK(t, uxAgentRunCwdPath(req)))
 	if cwd == "" {
-		t.Fatal("agent-run cwd log empty")
-	}
-	wantCwd := wtPath
-	if r, err := filepath.EvalSymlinks(wtPath); err == nil {
-		wantCwd = r
-	}
-	gotCwd := cwd
-	if r, err := filepath.EvalSymlinks(cwd); err == nil {
-		gotCwd = r
-	}
-	if gotCwd != wantCwd && cwd != wtPath {
-		t.Fatalf("agent-run cwd: want %q, got %q", wantCwd, cwd)
+		t.Fatal("agent-run cwd log empty (fake agent-run should record pwd)")
 	}
 	return args
 }
@@ -418,7 +414,45 @@ func containsArg(args []string, want string) bool {
 	return false
 }
 
-func assertItermFollowUpHasAgentRun(t *testing.T, script, task string) {
+// agentArgvDir returns the --dir value from argv (space form or --dir=PATH).
+func agentArgvDir(args []string) (string, bool) {
+	for i, a := range args {
+		if a == "--dir" {
+			if i+1 < len(args) {
+				return args[i+1], true
+			}
+			return "", false
+		}
+		if strings.HasPrefix(a, "--dir=") {
+			return strings.TrimPrefix(a, "--dir="), true
+		}
+	}
+	return "", false
+}
+
+func uxPathsEqual(a, b string) bool {
+	ca, cb := a, b
+	if r, err := filepath.EvalSymlinks(a); err == nil {
+		ca = r
+	}
+	if r, err := filepath.EvalSymlinks(b); err == nil {
+		cb = r
+	}
+	return filepath.Clean(ca) == filepath.Clean(cb)
+}
+
+func assertAgentArgvHasDir(t *testing.T, args []string, wtPath string) {
+	t.Helper()
+	dir, ok := agentArgvDir(args)
+	if !ok || strings.TrimSpace(dir) == "" {
+		t.Fatalf("agent-run argv missing --dir <worktree>; argv=%v", args)
+	}
+	if !uxPathsEqual(dir, wtPath) {
+		t.Fatalf("agent-run --dir: want worktree %q, got %q (argv=%v)", wtPath, dir, args)
+	}
+}
+
+func assertItermFollowUpHasAgentRun(t *testing.T, script, wtPath, task string) {
 	t.Helper()
 	if !strings.Contains(script, "agent-run") {
 		t.Fatalf("iterm follow-up should contain agent-run; script:\n%s", script)
@@ -428,6 +462,24 @@ func assertItermFollowUpHasAgentRun(t *testing.T, script, task string) {
 	}
 	if !strings.Contains(script, "grok-tty") {
 		t.Fatalf("iterm follow-up should include grok-tty; script:\n%s", script)
+	}
+	if !strings.Contains(script, "--dir") {
+		t.Fatalf("iterm follow-up should include --dir; script:\n%s", script)
+	}
+	// Worktree path (raw or shell-quoted) must appear next to --dir usage.
+	needles := []string{wtPath}
+	if resolved, err := filepath.EvalSymlinks(wtPath); err == nil {
+		needles = append(needles, resolved)
+	}
+	foundWT := false
+	for _, n := range needles {
+		if n != "" && (strings.Contains(script, n) || strings.Contains(script, shellSafeQuoteUX(n))) {
+			foundWT = true
+			break
+		}
+	}
+	if !foundWT {
+		t.Fatalf("iterm follow-up should include worktree path for --dir %q; script:\n%s", wtPath, script)
 	}
 	if task != "" && !strings.Contains(script, task) && !strings.Contains(script, shellSafeQuoteUX(task)) {
 		// task may be shell-quoted inside the command line
@@ -440,6 +492,63 @@ func shellSafeQuoteUX(s string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func readFollowupFileUX(t *testing.T, req *Request) string {
+	t.Helper()
+	if req.FollowupFile == "" {
+		t.Fatal("FollowupFile empty")
+	}
+	return readFileEmptyOK(t, req.FollowupFile)
+}
+
+func assertFollowupEmptyUX(t *testing.T, req *Request) {
+	t.Helper()
+	if req.FollowupFile == "" {
+		return
+	}
+	got := readFollowupFileUX(t, req)
+	if strings.TrimSpace(got) != "" {
+		t.Fatalf("follow-up should be empty, got %q", got)
+	}
+}
+
+func assertFollowupCDUX(t *testing.T, req *Request, wantAbs string) {
+	t.Helper()
+	got := readFollowupFileUX(t, req)
+	candidates := []string{filepath.Clean(wantAbs)}
+	if r, err := filepath.EvalSymlinks(wantAbs); err == nil {
+		candidates = append(candidates, r)
+	}
+	trimmed := strings.TrimSpace(got)
+	matched := false
+	for _, c := range candidates {
+		if trimmed == "cd "+c {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		t.Fatalf("follow-up content: want cd <worktree>, got %q (candidates %v)", got, candidates)
+	}
+	if got != "" && !strings.HasSuffix(got, "\n") {
+		t.Fatalf("follow-up file should end with newline; got %q", got)
+	}
+}
+
+// setupCreateUXFromFakeHome prepares create from FakeHome with WRK_FOLLOWUP_FILE open
+// so home-gated parent auto-cd can be observed. Main repo is passed as TargetDir.
+func setupCreateUXFromFakeHome(t *testing.T, req *Request) string {
+	t.Helper()
+	mainRepo := setupMainRepoForCreateUX(t, req)
+	installCreateUXMocks(t, req, "darwin")
+	req.FakeHome = filepath.Join(req.WorkRoot, "home")
+	mkdirAll(t, req.FakeHome)
+	req.RepoDir = req.FakeHome
+	req.TargetDir = mainRepo
+	req.FollowupFile = filepath.Join(req.WorkRoot, "followup.txt")
+	req.UseFollowupEnv = true
+	return mainRepo
 }
 
 func assertNativeCreateOK(t *testing.T, req *Request, resp *Response, err error, wtPath string) {
@@ -480,10 +589,17 @@ func ensureCreateUXHelpersUsed() {
 	_ = assertAgentRunNotInvoked
 	_ = assertAgentRunInvoked
 	_ = containsArg
+	_ = agentArgvDir
+	_ = uxPathsEqual
+	_ = assertAgentArgvHasDir
 	_ = assertItermFollowUpHasAgentRun
 	_ = shellSafeQuoteUX
 	_ = assertNativeCreateOK
 	_ = envSpaceInvokeLog
 	_ = envFakeAgentRunLog
+	_ = readFollowupFileUX
+	_ = assertFollowupEmptyUX
+	_ = assertFollowupCDUX
+	_ = setupCreateUXFromFakeHome
 }
 ```

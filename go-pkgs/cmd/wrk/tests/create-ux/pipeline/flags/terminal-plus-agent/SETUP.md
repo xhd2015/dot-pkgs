@@ -1,10 +1,10 @@
 # Scenario
 
-**Feature**: terminal + agent only sends agent-run as iTerm follow-up
+**Feature**: terminal + agent only sends agent-run as iTerm follow-up (with `--dir`)
 
 ```
 wrk -t 'ship feature' --new-terminal --open-in-agent
-  -> iterm FollowUpCommands contain agent-run line
+  -> iterm FollowUpCommands contain agent-run --dir <wt> …
   -> outer agent-run binary NOT executed
 ```
 

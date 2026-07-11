@@ -1,10 +1,11 @@
 # Scenario
 
-**Feature**: `--open-in-agent` without terminal runs agent-run in current process
+**Feature**: `--open-in-agent` without terminal runs agent-run in current process with `--dir`
 
 ```
 wrk -t 'ship feature' --open-in-agent
-  -> create; agent-run cwd=wt; no space; no iterm
+  -> create; agent-run argv includes --dir <abs-worktree>; no space; no iterm
+  -> process cwd of agent-run need not equal worktree (--dir is source of truth)
 ```
 
 ## Steps

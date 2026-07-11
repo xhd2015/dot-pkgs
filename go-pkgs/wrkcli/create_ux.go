@@ -189,7 +189,7 @@ func runCreateUX(worktreePath, task string, plan createUXPlan) error {
 	if plan.terminalMode != "" {
 		var followUps []string
 		if plan.agent {
-			followUps = []string{buildAgentShellCommand(plan, task)}
+			followUps = []string{buildAgentShellCommand(worktreePath, plan, task)}
 		}
 		mode, err := itermOpenMode(plan.terminalMode)
 		if err != nil {
@@ -283,8 +283,9 @@ func expandAgentPrompt(tmpl, task string) string {
 	return strings.ReplaceAll(tmpl, "${task}", task)
 }
 
-// buildAgentArgv builds: agent-run run <args...> --agent-runner=<runner> <prompt>
-func buildAgentArgv(plan createUXPlan, task string) []string {
+// buildAgentArgv builds: agent-run run --dir <absWorktree> <args...> --agent-runner=<runner> <prompt>
+// --dir is the workspace source of truth (process cwd need not equal the worktree).
+func buildAgentArgv(worktreePath string, plan createUXPlan, task string) []string {
 	runner := plan.runner
 	if runner == "" {
 		runner = defaultAgentRunner
@@ -293,17 +294,21 @@ func buildAgentArgv(plan createUXPlan, task string) []string {
 	if args == nil {
 		args = defaultAgentArgs()
 	}
+	absDir, err := filepath.Abs(worktreePath)
+	if err != nil {
+		absDir = worktreePath
+	}
 	prompt := expandAgentPrompt(plan.promptTmpl, task)
-	argv := make([]string, 0, 2+len(args)+2)
-	argv = append(argv, "agent-run", "run")
+	argv := make([]string, 0, 4+len(args)+2)
+	argv = append(argv, "agent-run", "run", "--dir", absDir)
 	argv = append(argv, args...)
 	argv = append(argv, "--agent-runner="+runner)
 	argv = append(argv, prompt)
 	return argv
 }
 
-func buildAgentShellCommand(plan createUXPlan, task string) string {
-	return shellJoinArgv(buildAgentArgv(plan, task))
+func buildAgentShellCommand(worktreePath string, plan createUXPlan, task string) string {
+	return shellJoinArgv(buildAgentArgv(worktreePath, plan, task))
 }
 
 func shellJoinArgv(argv []string) string {
@@ -334,13 +339,9 @@ func isSimpleShellWord(s string) bool {
 }
 
 func runAgentInProcess(worktreePath string, plan createUXPlan, task string) error {
-	argv := buildAgentArgv(plan, task)
-	absDir, err := filepath.Abs(worktreePath)
-	if err != nil {
-		return fmt.Errorf("resolve agent dir: %w", err)
-	}
+	// --dir on argv is the workspace source of truth; process cwd may differ from worktree.
+	argv := buildAgentArgv(worktreePath, plan, task)
 	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = absDir
 	cmd.Stdin = os.Stdin
 	// Keep create's worktree path as the sole stdout contract; agent diagnostics
 	// go to stderr. Interactive agent UIs typically use stderr/TTY directly.

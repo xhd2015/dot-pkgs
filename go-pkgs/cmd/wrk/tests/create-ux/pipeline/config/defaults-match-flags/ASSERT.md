@@ -18,7 +18,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertSpaceInvokedOnce(t, req)
 	script := assertItermInvokedAtPath(t, req, wt)
 	assertItermModeForceNew(t, script)
-	assertItermFollowUpHasAgentRun(t, script, req.TaskDesc)
+	assertItermFollowUpHasAgentRun(t, script, wt, req.TaskDesc)
 	assertAgentRunNotInvoked(t, req)
 }
 ```
