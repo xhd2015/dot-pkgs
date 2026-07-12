@@ -246,12 +246,18 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		}
 	}
 
-	// --main takes no path positional. Mutual exclusion is checked later; if another
-	// mode flag is also set, prefer that error over unexpected arguments.
+	// --main takes no path positional when used alone. It may compose with --status
+	// (status of main repo, no shell); positionals then follow --status rules.
+	// Mutual exclusion with other modes is checked later; if another mode flag is
+	// also set, prefer that error over unexpected arguments.
 	if mainFlag {
-		otherMode := done || list || status || repos || projects || addFlagSet || removeFlagSet ||
+		otherMode := done || list || repos || projects || addFlagSet || removeFlagSet ||
 			whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet ||
-			setTaskFlagSet || fetchFlag || noCd || cd || spawnTarget != ""
+			setTaskFlagSet || noCd || cd || spawnTarget != ""
+		// --fetch is only valid with --status (or --projects); allow with --main --status.
+		if !status {
+			otherMode = otherMode || fetchFlag
+		}
 		if otherMode {
 			ctx.workDir = origWd
 			if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
@@ -259,7 +265,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 			}
 			return fmt.Errorf("wrk: --main is mutually exclusive with other modes")
 		}
-		if len(remaining) > 0 {
+		if !status && len(remaining) > 0 {
 			ctx.workDir = origWd
 			if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
 				return err
@@ -395,10 +401,11 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	if cd && (done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || fetchFlag || noCd || mainFlag) {
 		return fmt.Errorf("wrk: --cd is mutually exclusive with other modes")
 	}
-	if mainFlag && (done || list || status || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || fetchFlag || noCd || cd) {
+	// --main composes with --status (and --fetch when status is set); exclusive otherwise.
+	if mainFlag && (done || list || repos || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || mergeBack || taskFlagSet || setTaskFlagSet || spawnTarget != "" || noCd || cd || (!status && fetchFlag)) {
 		return fmt.Errorf("wrk: --main is mutually exclusive with other modes")
 	}
-	if status && (done || list || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd || mainFlag) {
+	if status && (done || list || projects || addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps || dryRun || spawnTarget != "" || cd) {
 		return fmt.Errorf("wrk: --status is mutually exclusive with other modes")
 	}
 	if confirmFromStdin && !done && !mergeBack {
@@ -438,6 +445,19 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	if whereFlagSet {
 		return runWhere(wrkHome, *wherePath)
 	}
+	if status {
+		colorEnabled := term.IsTerminal(int(os.Stdout.Fd())) || colorFlag
+		statusRoot := workDir
+		if mainFlag {
+			// Status the main repository of this checkout (no nested shell).
+			mainRepo, err := resolveMainRepoForWorkDir(workDir)
+			if err != nil {
+				return err
+			}
+			statusRoot = mainRepo
+		}
+		return runStatus(statusRoot, colorEnabled, fetchFlag)
+	}
 	if mainFlag {
 		return runMain(workDir)
 	}
@@ -446,10 +466,6 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	}
 	if repos {
 		return runRepos(workDir)
-	}
-	if status {
-		colorEnabled := term.IsTerminal(int(os.Stdout.Fd())) || colorFlag
-		return runStatus(workDir, colorEnabled, fetchFlag)
 	}
 	if depPath != "" {
 		return runDep(workDir, depPath, wrkHome, args, execArgs)
@@ -513,6 +529,7 @@ Flags:
   --where <basename>              look up saved project path(s) by basename
   --cd <path|basename>            jump into directory (in-place follow-up or interactive shell)
   --main                          open nested shell at main repository root for this checkout
+                                  (with --status: run status against the main repo instead)
   --dep <path>                    spawn a dependency worktree under ./external
   --all-deps                      link every required dep from registered projects
   --dry-run                       with --all-deps: plan only, no writes

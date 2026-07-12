@@ -68,14 +68,15 @@ func resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFl
 		return "rm"
 	case whereFlagSet:
 		return "where"
+	case status:
+		// status wins over main when both set (wrk --main --status)
+		return "status"
 	case mainFlag:
 		return "main"
 	case cd:
 		return "cd"
 	case repos:
 		return "repos"
-	case status:
-		return "status"
 	case depPath != "":
 		return "dep"
 	case allDeps:
