@@ -5,7 +5,15 @@
 ```
 # consumer requires dep; wrk --dep <dep-repo> -> external/<name> worktree + replace + tidy + gitignore
 consumer (go.mod + git) + dep repo -> wrk --dep -> stdout external path
+# path: external/{depBasename}-{token}-{date}[-N]
+# branch: {token}-{date}[-N]  (NO dep basename; always worktree add -b)
 ```
+
+## Branch naming (P2 behavior-change)
+
+- External **branch** is `{token}-{date}[-N]` — not `{depBasename}-{token}-{date}`.
+- Always create a new branch (`-b`); joint path+branch collision against dep main.
+- `basic/` asserts no basename on branch; `branch-collision-suffix/` covers preferred-branch pre-exists → `-1`.
 
 ## Preconditions
 

@@ -24,6 +24,10 @@ self / not-required / already-replaced / seen dedup / non-git / missing path -> 
 
 - One external worktree per matched repo (multiple sub-modules → multiple replaces, one worktree).
 - Empty or absent `projects.json` → `wrked 0 deps` with no side effects.
+- Branch per dep is `{token}-{date}[-N]` without dep basename (P2). Separate dep
+  repos both on `main` each get `main-{date}` (collision is per depMain; do **not**
+  force artificial `-1` across repos). Preferred-branch pre-exists in one dep →
+  `-1` is covered by `dep/branch-collision-suffix/`. See `multi-dep-branch-names/`.
 
 ```go
 import "path/filepath"

@@ -30,9 +30,19 @@ wrk <dir> <target-dir> -> spawn path overridden; WRK_HOME ignored
 
 - The worktree spawn location changes from `{WRK_HOME}/worktrees/...` to either
   `<target-dir>` (target missing, parent exists) or
-  `<target-dir>/{basename}-{token}-{WRK_DATE}[-N]` (target exists). Branch naming is
-  unchanged. `WRK_HOME` is ignored when `<target-dir>` is given.
+  `<target-dir>/{basename}-{token}-{WRK_DATE}[-N]` (target exists).
+- Branch naming is always `{token}-{date}[-slug][-N]` via `worktree add -b` (never
+  reuse / never `--no-checkout`). Fixed path: if preferred branch exists, suffix the
+  **branch only** (`-1`, `-2`, …); path stays fixed. Named subdir under existing
+  target: joint path+branch suffix via `candidateBlocked`.
+- `WRK_HOME` is ignored when `<target-dir>` is given.
 - basename=`myrepo`, token=`main`, date=`2026-06-30` for all leaves.
+
+## New / behavior-change coverage
+
+- `target-missing/parent-exists/basic/` — fixed path, branch free (P0 C4; was leaf `parent-exists/`).
+- `target-missing/parent-exists/branch-collision/` — fixed path + pre-existing branch →
+  path fixed, branch `main-{date}-1` (P0 C3). Grouping node `parent-exists/` is SETUP-only (no ASSERT.md).
 
 ```go
 import (

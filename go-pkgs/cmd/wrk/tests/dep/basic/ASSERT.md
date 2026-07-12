@@ -3,6 +3,7 @@
 - Exit code 0.
 - Stdout (trimmed) equals `{consumerTop}/external/mydep-main-{WRK_DATE}`.
 - External path exists as a linked git worktree.
+- Branch in the dep repo is `main-{WRK_DATE}` (**no** dep basename prefix on the branch; P2).
 - Consumer `go.mod` has `replace example.com/dep => <external path>`.
 - Consumer `.gitignore` contains `/external`.
 
@@ -26,6 +27,12 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	// The external dep worktree is owned by the DEP repo, not the consumer.
 	assertWorktreeListContains(t, req.DepPath, wantPath)
 	assertWorktreeListNotContains(t, req.ConsumerTop, wantPath)
+
+	// P2: branch is {token}-{date}, not {depBasename}-{token}-{date}.
+	wantBranch := branchName("main", wrkDate, 0)
+	assertBranchExists(t, req.DepPath, wantBranch)
+	assertBranchNotExists(t, req.DepPath, "mydep-"+wantBranch)
+	assertBranchCheckedOutInWorktree(t, wantPath, wantBranch)
 
 	mod, err := readGoMod(req.RepoDir)
 	if err != nil {

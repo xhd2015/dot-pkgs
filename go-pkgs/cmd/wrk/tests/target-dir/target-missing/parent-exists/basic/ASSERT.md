@@ -4,7 +4,7 @@
 - Stdout (trimmed) equals `{WorkRoot}/wt` exactly — the worktree is spawned at the fixed
   `<target-dir>` path with no default-naming suffix on the path.
 - Worktree directory exists at `{WorkRoot}/wt` with a `.git` regular file (linked worktree).
-- Branch `main-2026-06-30` exists in the source repo and is checked out in the worktree.
+- Branch `main-2026-06-30` exists in the source repo and is checked out in the worktree (new `-b`).
 - `git worktree list` from `myrepo` contains `{WorkRoot}/wt`.
 - The worktree does NOT live under `{WRK_HOME}/worktrees`.
 - Stderr is empty.

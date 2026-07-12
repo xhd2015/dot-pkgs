@@ -1,9 +1,10 @@
 # Scenario
 
-**Feature**: second wrk increments collision suffix
+**Feature**: second wrk increments collision suffix (always new branch; P0 C1)
 
 ```
-# first wrk creates myrepo-main-{date}; second wrk from same repo/branch
+# first wrk creates myrepo-main-{date} + branch main-{date}
+# second wrk creates myrepo-main-{date}-1 + NEW branch main-{date}-1 (never reuses first branch)
 myrepo (main) -> wrk -> myrepo-main-2026-06-30
 myrepo (main) -> wrk -> myrepo-main-2026-06-30-1
 ```

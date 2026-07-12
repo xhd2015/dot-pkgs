@@ -1,10 +1,10 @@
 # Scenario
 
-**Feature**: branch ref collision skips date-suffixed attempt
+**Feature**: pre-existing branch ref forces joint path+branch suffix (always new branch; P0)
 
 ```
 # branch main-{date} pre-exists while cwd is on main; then wrk
-myrepo (main) + refs/heads/main-2026-06-30 -> wrk -> myrepo-main-2026-06-30-1
+myrepo (main) + refs/heads/main-2026-06-30 -> wrk -> path+branch -1 (new -b, no reuse)
 ```
 
 ## Steps

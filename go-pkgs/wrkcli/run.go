@@ -970,7 +970,7 @@ func runDep(workDir string, depArg string, wrkHome string, rawArgs []string, exe
 		return err
 	}
 	basename := filepath.Base(depMain)
-	branchBase, pathToken, err := resolveNamingInputs(depPath, baseBranch)
+	_, pathToken, err := resolveNamingInputs(depPath, baseBranch)
 	if err != nil {
 		return err
 	}
@@ -978,7 +978,7 @@ func runDep(workDir string, depArg string, wrkHome string, rawArgs []string, exe
 
 	var externalPath string
 	for suffix := 0; suffix < 100; suffix++ {
-		candidatePath, branch := externalCandidateNames(consumerTop, basename, branchBase, pathToken, date, suffix)
+		candidatePath, branch := externalCandidateNames(consumerTop, basename, pathToken, date, suffix)
 		// The external worktree + its branch are owned by the DEP repo, so the
 		// branch-collision check must run against depMain (not the consumer).
 		if externalCandidateBlocked(depMain, candidatePath, branch) {
@@ -1081,14 +1081,14 @@ func planExternalWorktreePath(consumerTop, depPath string) (externalPath string,
 		return "", err
 	}
 	basename := filepath.Base(depMain)
-	branchBase, pathToken, err := resolveNamingInputs(depPath, baseBranch)
+	_, pathToken, err := resolveNamingInputs(depPath, baseBranch)
 	if err != nil {
 		return "", err
 	}
 	date := resolveWrkDate()
 
 	for suffix := 0; suffix < 100; suffix++ {
-		candidatePath, branch := externalCandidateNames(consumerTop, basename, branchBase, pathToken, date, suffix)
+		candidatePath, branch := externalCandidateNames(consumerTop, basename, pathToken, date, suffix)
 		// Branch-collision check runs against depMain: the external worktree's
 		// branch lives in the dep repo (see createExternalWorktree).
 		if externalCandidateBlocked(depMain, candidatePath, branch) {
@@ -1133,14 +1133,14 @@ func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath st
 		return "", err
 	}
 	basename := filepath.Base(depMain)
-	branchBase, pathToken, err := resolveNamingInputs(depPath, baseBranch)
+	_, pathToken, err := resolveNamingInputs(depPath, baseBranch)
 	if err != nil {
 		return "", err
 	}
 	date := resolveWrkDate()
 
 	for suffix := 0; suffix < 100; suffix++ {
-		candidatePath, branch := externalCandidateNames(consumerTop, basename, branchBase, pathToken, date, suffix)
+		candidatePath, branch := externalCandidateNames(consumerTop, basename, pathToken, date, suffix)
 		if candidatePath != externalPath {
 			// planExternalWorktreePath already selected the first non-blocked
 			// candidate; later suffixes are never needed here.
@@ -1347,24 +1347,11 @@ func createExternalWorktree(depMain, depPath, externalPath, branch string) error
 		return fmt.Errorf("dep repository is on a detached HEAD")
 	}
 
-	if !branchExists(depMain, branch) {
-		cmd := gitCommand("-C", depMain, "worktree", "add", "-b", branch, externalPath, depBranch)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git worktree add: %w\n%s", err, out)
-		}
-		return nil
-	}
-
-	// Branch already exists in the dep repo (e.g. an earlier --dep created it):
-	// add a linked worktree on that branch without checkout, then check it out.
-	cmd := gitCommand("-C", depMain, "worktree", "add", "--no-checkout", externalPath)
+	// Always create a new branch from the dep's current tip. Callers must have
+	// already walked to a free branch name (externalCandidateBlocked).
+	cmd := gitCommand("-C", depMain, "worktree", "add", "-b", branch, externalPath, depBranch)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree add: %w\n%s", err, out)
-	}
-	checkout := gitCommand("-C", externalPath, "checkout", "--ignore-other-worktrees", branch)
-	if out, err := checkout.CombinedOutput(); err != nil {
-		_ = gitCommand("-C", depMain, "worktree", "remove", "--force", externalPath).Run()
-		return fmt.Errorf("git checkout: %w\n%s", err, out)
 	}
 	return nil
 }
@@ -1447,12 +1434,12 @@ func findGoModDir(cwd, top string) (string, error) {
 	return "", fmt.Errorf("no go.mod found within %s", top)
 }
 
-func externalCandidateNames(consumerTop, basename, branchBase, pathToken, date string, suffix int) (path, branch string) {
+func externalCandidateNames(consumerTop, basename, pathToken, date string, suffix int) (path, branch string) {
+	// Path keeps dep basename; branch is {token}-{date}[-N] with no dep basename
+	// prefix (P2). Distinct deps live in separate git repos so same branch name
+	// across deps is fine; within one dep, joint path+branch -N via blocked loop.
 	name := fmt.Sprintf("%s-%s-%s", basename, pathToken, date)
-	// Branch includes the dep basename so that multiple distinct deps on the
-	// same source branch (e.g. wrk --all-deps) do not collide on the branch
-	// name and get spurious path suffixes. The printed path/name is unchanged.
-	branch = basename + "-" + branchBase + "-" + date
+	branch = pathToken + "-" + date
 	if suffix > 0 {
 		name = fmt.Sprintf("%s-%d", name, suffix)
 		branch = fmt.Sprintf("%s-%d", branch, suffix)
@@ -1573,11 +1560,11 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 			return err
 		}
 		for suffix := 0; suffix < 100; suffix++ {
-			wtPath, branch := candidateNames(absTarget, basename, branchBase, pathToken, date, slug, suffix)
+			wtPath, branch := candidateNames(absTarget, basename, pathToken, date, slug, suffix)
 			if candidateBlocked(mainRepo, wtPath, branch) {
 				continue
 			}
-			if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
+			if err := createWorktree(checkoutRoot, wtPath, branch); err != nil {
 				return err
 			}
 			absPath, err := filepath.Abs(wtPath)
@@ -1613,35 +1600,46 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 	}
 
 	// Case 1: spawn the worktree exactly at <target-dir> (fixed path, no naming
-	// suffix on the path). Branch follows the default convention; if that branch
-	// ref already exists, reuse it via the branchPreExists checkout path.
+	// suffix on the path). Branch follows {token}-{date}[-slug][-N]; if the
+	// preferred branch ref already exists, walk -N on the branch only (path stays).
 	if err := ensureCreateWindow(&ux); err != nil {
 		return err
 	}
 	wtPath := absTarget
-	branch := branchBase + "-" + date
+	// branchBase is sanitized (same token as pathToken) via resolveNamingInputs.
+	preferredBranch := branchBase + "-" + date
 	if slug != "" {
-		branch = branch + "-" + slug
+		preferredBranch = preferredBranch + "-" + slug
 	}
-	if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
-		return err
+	for suffix := 0; suffix < 100; suffix++ {
+		branch := preferredBranch
+		if suffix > 0 {
+			branch = fmt.Sprintf("%s-%d", preferredBranch, suffix)
+		}
+		if branchExists(mainRepo, branch) {
+			continue
+		}
+		if err := createWorktree(checkoutRoot, wtPath, branch); err != nil {
+			return err
+		}
+		absPath, err := filepath.Abs(wtPath)
+		if err != nil {
+			return fmt.Errorf("resolve worktree path: %w", err)
+		}
+		fmt.Println(absPath)
+		if err := runCreateUX(absPath, taskDesc, ux); err != nil {
+			return err
+		}
+		// Target-dir create skips home-gated auto-cd; --force-cd still lands.
+		if err := runExecInDir(absPath, execArgs); err != nil {
+			return err
+		}
+		if forceCd {
+			return forceLandInDir(absPath)
+		}
+		return nil
 	}
-	absPath, err := filepath.Abs(wtPath)
-	if err != nil {
-		return fmt.Errorf("resolve worktree path: %w", err)
-	}
-	fmt.Println(absPath)
-	if err := runCreateUX(absPath, taskDesc, ux); err != nil {
-		return err
-	}
-	// Target-dir create skips home-gated auto-cd; --force-cd still lands.
-	if err := runExecInDir(absPath, execArgs); err != nil {
-		return err
-	}
-	if forceCd {
-		return forceLandInDir(absPath)
-	}
-	return nil
+	return fmt.Errorf("could not find available branch name after 99 attempts")
 }
 
 func resolveWrkHome() (string, error) {
@@ -1670,7 +1668,10 @@ func resolveNamingInputs(cwd, baseBranch string) (branchBase, pathToken string, 
 		}
 		return hash, hash, nil
 	}
-	return baseBranch, sanitizeBranchToken(baseBranch), nil
+	// Sanitize for both path token and branch segment so branch names never
+	// contain '/' (P1: feature/foo → feature-foo).
+	token := sanitizeBranchToken(baseBranch)
+	return token, token, nil
 }
 
 func shortHEAD(repo string) (string, error) {
@@ -1686,12 +1687,14 @@ func sanitizeBranchToken(branch string) string {
 	return strings.ReplaceAll(branch, "/", "-")
 }
 
-func candidateNames(worktreesDir, basename, branchBase, pathToken, date, slug string, suffix int) (path, branch string) {
+func candidateNames(worktreesDir, basename, pathToken, date, slug string, suffix int) (path, branch string) {
+	// pathToken is the sanitized branch segment from resolveNamingInputs.
+	// Invariant for wrk-managed paths: Base(path) == basename + "-" + branch.
 	name := fmt.Sprintf("%s-%s-%s", basename, pathToken, date)
 	if slug != "" {
 		name = fmt.Sprintf("%s-%s", name, slug)
 	}
-	branch = branchBase + "-" + date
+	branch = pathToken + "-" + date
 	if slug != "" {
 		branch = branch + "-" + slug
 	}
@@ -1714,23 +1717,11 @@ func branchExists(repo, branch string) bool {
 	return cmd.Run() == nil
 }
 
-func createWorktree(sourceDir, wtPath, branch string, branchPreExists bool) error {
-	if !branchPreExists {
-		cmd := gitCommand("-C", sourceDir, "worktree", "add", "-b", branch, wtPath)
-		return runGitWorktreeAdd(cmd)
-	}
-
-	cmd := gitCommand("-C", sourceDir, "worktree", "add", "--no-checkout", wtPath)
-	if err := runGitWorktreeAdd(cmd); err != nil {
-		return err
-	}
-
-	checkout := gitCommand("-C", wtPath, "checkout", "--ignore-other-worktrees", branch)
-	if out, err := checkout.CombinedOutput(); err != nil {
-		_ = gitCommand("-C", sourceDir, "worktree", "remove", "--force", wtPath).Run()
-		return fmt.Errorf("git checkout: %w\n%s", err, out)
-	}
-	return nil
+// createWorktree always creates a new branch via `git worktree add -b`.
+// Callers must ensure the branch name is free (candidateBlocked / fixed-path walk).
+func createWorktree(sourceDir, wtPath, branch string) error {
+	cmd := gitCommand("-C", sourceDir, "worktree", "add", "-b", branch, wtPath)
+	return runGitWorktreeAdd(cmd)
 }
 
 
@@ -1845,11 +1836,13 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, 
 	}
 
 	basename := filepath.Base(mainRepo)
+	// Sanitize so legacy slash branches (feature/foo-DATE) migrate to feature-foo-…
 	pathToken := sanitizeBranchToken(branchBase)
 
 	// Compute new names. We don't know the old suffix from the dir name alone,
 	// so we derive it from the current dir basename. Find the wrk-style naming
 	// by looking for the date pattern in the dir basename.
+	// Fixed/non-wrk directory names lack the date pattern and are rejected (P3).
 	curBase := filepath.Base(cwd)
 	curLoc := datePattern.FindStringSubmatchIndex(curBase)
 	if curLoc == nil {
@@ -1873,20 +1866,50 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, 
 		return fmt.Errorf("wrk: date mismatch between branch (%s) and directory (%s)", date, curDate)
 	}
 
-	newDirName := fmt.Sprintf("%s-%s-%s", basename, pathToken, date)
-	if newSlug != "" {
-		newDirName = fmt.Sprintf("%s-%s", newDirName, newSlug)
-	}
-	if curSuffix > 0 {
-		newDirName = fmt.Sprintf("%s-%d", newDirName, curSuffix)
-	}
+	parentDir := filepath.Dir(cwd)
+	cleanCwdForName := filepath.Clean(cwd)
 
-	newBranch := branchBase + "-" + date
-	if newSlug != "" {
-		newBranch = newBranch + "-" + newSlug
+	// Preferred names use sanitized token; walk -N from curSuffix on path OR
+	// branch collision (P3). Self (current path/branch) is not a collision.
+	var newDirName, newBranch, newPath string
+	found := false
+	for suffix := curSuffix; suffix < 100; suffix++ {
+		newDirName = fmt.Sprintf("%s-%s-%s", basename, pathToken, date)
+		if newSlug != "" {
+			newDirName = fmt.Sprintf("%s-%s", newDirName, newSlug)
+		}
+		if suffix > 0 {
+			newDirName = fmt.Sprintf("%s-%d", newDirName, suffix)
+		}
+
+		newBranch = pathToken + "-" + date
+		if newSlug != "" {
+			newBranch = newBranch + "-" + newSlug
+		}
+		if suffix > 0 {
+			newBranch = fmt.Sprintf("%s-%d", newBranch, suffix)
+		}
+
+		newPath = filepath.Join(parentDir, newDirName)
+
+		pathBlocked := false
+		if filepath.Clean(newPath) != cleanCwdForName {
+			if _, err := os.Stat(newPath); err == nil {
+				pathBlocked = true
+			}
+		}
+		branchBlocked := false
+		if newBranch != branch && branchExists(mainRepo, newBranch) {
+			branchBlocked = true
+		}
+		if pathBlocked || branchBlocked {
+			continue
+		}
+		found = true
+		break
 	}
-	if curSuffix > 0 {
-		newBranch = fmt.Sprintf("%s-%d", newBranch, curSuffix)
+	if !found {
+		return fmt.Errorf("wrk: could not find available path/branch name after 99 attempts")
 	}
 
 	// If nothing changed, just report.
@@ -1895,13 +1918,8 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, 
 		return runExecInDir(cwd, execArgs)
 	}
 
-	parentDir := filepath.Dir(cwd)
-	newPath := filepath.Join(parentDir, newDirName)
-
-	// Check if new path already exists
-	if _, err := os.Stat(newPath); err == nil {
-		return fmt.Errorf("wrk: target path %s already exists", newPath)
-	}
+	pathChanges := filepath.Clean(newPath) != cleanCwdForName
+	branchChanges := newBranch != branch
 
 	// Before renaming: discover nested linked worktrees under cwd so we can
 	// update their gitdir metadata after the move.
@@ -1910,26 +1928,27 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, 
 		relPath string // relative to cwd
 	}
 	var nested []nestedWT
-	repos, err := discoverStatusRepos(context.Background(), cwd)
-	if err != nil {
-		return fmt.Errorf("discover nested worktrees: %w", err)
-	}
-	cleanCwd := filepath.Clean(cwd)
-	for _, repo := range repos {
-		if repo.RepoType != scan_repo.RepoTypeWorktree {
-			continue
-		}
-		if !worktree.IsLinked(repo.Path) {
-			continue
-		}
-		if filepath.Clean(repo.Path) == cleanCwd {
-			continue
-		}
-		rel, err := filepath.Rel(cwd, repo.Path)
+	if pathChanges {
+		repos, err := discoverStatusRepos(context.Background(), cwd)
 		if err != nil {
-			continue
+			return fmt.Errorf("discover nested worktrees: %w", err)
 		}
-		nested = append(nested, nestedWT{oldPath: repo.Path, relPath: rel})
+		for _, repo := range repos {
+			if repo.RepoType != scan_repo.RepoTypeWorktree {
+				continue
+			}
+			if !worktree.IsLinked(repo.Path) {
+				continue
+			}
+			if filepath.Clean(repo.Path) == cleanCwdForName {
+				continue
+			}
+			rel, err := filepath.Rel(cwd, repo.Path)
+			if err != nil {
+				continue
+			}
+			nested = append(nested, nestedWT{oldPath: repo.Path, relPath: rel})
+		}
 	}
 
 	// TTY check (escape hatch for testing via WRK_SET_TASK_CONFIRM=1; -y bypasses)
@@ -1947,18 +1966,22 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, 
 		}
 	}
 
-	// Execute git worktree move
-	cmd := gitCommand("-C", mainRepo, "worktree", "move", cwd, newPath)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git worktree move: %w\n%s", err, out)
+	if pathChanges {
+		// Execute git worktree move
+		cmd := gitCommand("-C", mainRepo, "worktree", "move", cwd, newPath)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git worktree move: %w\n%s", err, out)
+		}
 	}
 
-	// Also rename the branch
-	branchCmd := gitCommand("-C", mainRepo, "branch", "-m", branch, newBranch)
-	out, err = branchCmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git branch rename: %w\n%s", err, out)
+	if branchChanges {
+		// Rename the branch (also covers legacy slash → sanitized migration).
+		branchCmd := gitCommand("-C", mainRepo, "branch", "-m", branch, newBranch)
+		out, err := branchCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git branch rename: %w\n%s", err, out)
+		}
 	}
 
 	// Update gitdir metadata for nested worktrees that moved with the parent.
@@ -1983,8 +2006,10 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, 
 		_ = os.WriteFile(gitdirFile, []byte(newGitdirContent), 0644)
 	}
 
-	if err := rewriteConsumerReplacePaths(cwd, newPath); err != nil {
-		return fmt.Errorf("rewrite go.mod replace paths: %w", err)
+	if pathChanges {
+		if err := rewriteConsumerReplacePaths(cwd, newPath); err != nil {
+			return fmt.Errorf("rewrite go.mod replace paths: %w", err)
+		}
 	}
 
 	fmt.Println(newPath)
@@ -1997,5 +2022,8 @@ func runSetTask(workDir string, taskDesc string, assumeYes, noCd, forceCd bool, 
 	if forceCd {
 		return forceLandInDir(newPath)
 	}
-	return writeFollowupCDIfCwdMissing(noCd, shellCwd, newPath)
+	if pathChanges {
+		return writeFollowupCDIfCwdMissing(noCd, shellCwd, newPath)
+	}
+	return nil
 }

@@ -1,9 +1,10 @@
 ## Expected
 
 - Exit code 0.
-- Date-suffixed path `{WRK_HOME}/worktrees/myrepo-main-2026-06-30` is **not** created.
-- Stdout (trimmed) equals `{WRK_HOME}/worktrees/myrepo-main-2026-06-30-1` (branch `main-2026-06-30` already exists → `-1` suffix).
-- Branch `main-2026-06-30-1` exists and is checked out in the new worktree.
+- Date-suffixed path `{WRK_HOME}/worktrees/myrepo-main-2026-06-30` is **not** created (branch `main-2026-06-30` already exists → skip 0).
+- Stdout (trimmed) equals `{WRK_HOME}/worktrees/myrepo-main-2026-06-30-1`.
+- Branch `main-2026-06-30-1` is a **new** ref checked out in the new worktree (always `worktree add -b`; never reuses the pre-existing branch).
+- Pre-existing orphan ref `main-2026-06-30` still exists (not checked out into a second worktree).
 
 ## Exit Code
 
@@ -29,6 +30,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	assertStdoutExactPath(t, resp.Stdout, wantPath)
 	assertFileExists(t, wantPath)
 	assertGitFileIsWorktreeLink(t, wantPath)
+	assertBranchExists(t, req.RepoDir, branchName("main", wrkDate, 0))
 	assertBranchExists(t, req.RepoDir, branchName("main", wrkDate, 1))
 	assertBranchCheckedOutInWorktree(t, wantPath, branchName("main", wrkDate, 1))
 	assertWorktreeListContains(t, req.RepoDir, wantPath)

@@ -5,14 +5,19 @@
 ```
 # parent {WorkRoot} exists, <target-dir> {WorkRoot}/wt does not
 myrepo (main) -> wrk myrepo {WorkRoot}/wt -> worktree at {WorkRoot}/wt (no naming suffix on path)
-# branch still defaults to main-{date}; WRK_HOME ignored
+# branch: main-{date}[-N] via always-new -b; WRK_HOME ignored
 ```
+
+## Children
+
+- `basic/` — preferred branch free (P0 C4).
+- `branch-collision/` — preferred branch pre-exists → branch `-1` only (P0 C3).
 
 ## Steps
 
 1. Source repo `myrepo` on `main` is initialized by the parent setup.
 2. Set `req.SpawnDir = {WorkRoot}/wt` (does not exist; parent `{WorkRoot}` exists).
-3. Run `wrk myrepo {WorkRoot}/wt` from process cwd `{WorkRoot}`.
+3. Leaves may pre-create branch refs before run.
 
 ```go
 import (

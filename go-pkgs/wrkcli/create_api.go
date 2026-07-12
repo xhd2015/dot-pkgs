@@ -56,7 +56,7 @@ func CreateDefaultWorktree(projectPath, wrkHome, taskSlug string) (*CreateWorktr
 	}
 
 	date := resolveWrkDate()
-	branchBase, pathToken, err := resolveNamingInputs(cwd, baseBranch)
+	_, pathToken, err := resolveNamingInputs(cwd, baseBranch)
 	if err != nil {
 		return nil, err
 	}
@@ -68,12 +68,12 @@ func CreateDefaultWorktree(projectPath, wrkHome, taskSlug string) (*CreateWorktr
 	}
 
 	for suffix := 0; suffix < 100; suffix++ {
-		wtPath, branch := candidateNames(worktreesDir, basename, branchBase, pathToken, date, taskSlug, suffix)
+		wtPath, branch := candidateNames(worktreesDir, basename, pathToken, date, taskSlug, suffix)
 		if candidateBlocked(mainRepo, wtPath, branch) {
 			continue
 		}
 
-		if err := createWorktree(checkoutRoot, wtPath, branch, branchExists(mainRepo, branch)); err != nil {
+		if err := createWorktree(checkoutRoot, wtPath, branch); err != nil {
 			return nil, err
 		}
 

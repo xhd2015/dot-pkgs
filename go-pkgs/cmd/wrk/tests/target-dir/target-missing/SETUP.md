@@ -10,7 +10,8 @@ wrk <dir> <absent-target> -> <target-dir> (parent exists) | error (parent missin
 ## Steps
 
 - Leaves set `req.SpawnDir` to a path that does not exist under `{WorkRoot}`.
-- `parent-exists/` uses `{WorkRoot}/wt`; `parent-missing/` uses `{WorkRoot}/missing-parent/wt`.
+- `parent-exists/` is a SETUP-only grouping node (no ASSERT.md); children use `{WorkRoot}/wt`.
+- `parent-missing/` uses `{WorkRoot}/missing-parent/wt`.
 
 ```go
 func Setup(t *testing.T, req *Request) error {
