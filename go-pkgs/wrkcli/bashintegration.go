@@ -112,6 +112,7 @@ var wrkCompletionFlags = []string{
 	"--cd",
 	"--main",
 	"--dep",
+	"--bring",
 	"--all-deps",
 	"--dry-run",
 	"-t", "--task",
@@ -144,7 +145,7 @@ var bashIntegrationDisallowedFlags = []string{
 	"--fetch", "-v", "--verbose", "--color", "--add", "--rm", "--where",
 	"--cd",
 	"--main",
-	"--dep", "--all-deps", "-t", "--task", "--set-task", "-y", "--yes",
+	"--dep", "--bring", "--all-deps", "-t", "--task", "--set-task", "-y", "--yes",
 	"--confirm-from-stdin", "--no-in-module-replace",
 }
 
@@ -642,7 +643,7 @@ func completionContext(words []string, cword int) (kind, prefix string) {
 
 	if cword > 0 {
 		switch words[cword-1] {
-		case "--dep", "--where", "--add", "--rm", "--cd", "-l", "--list", "--status":
+		case "--dep", "--bring", "--where", "--add", "--rm", "--cd", "-l", "--list", "--status":
 			return "basenames", cur
 		case "-t", "--task", "--set-task":
 			return "none", ""

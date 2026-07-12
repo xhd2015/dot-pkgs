@@ -14,7 +14,7 @@ import (
 var setConfigDisallowedFlags = []string{
 	"--done", "--merge-back", "-l", "--list", "--status", "--repos", "--projects",
 	"--fetch", "--add", "--rm", "--where", "--cd", "--main",
-	"--dep", "--all-deps", "--dry-run",
+	"--dep", "--bring", "--all-deps", "--dry-run",
 	"-t", "--task", "--set-task",
 	"--exec",
 	"--bash-integration", "--interceptor",
@@ -258,7 +258,7 @@ func parseSetConfigArgs(args []string) (setConfigOpts, error) {
 				return opts, nil
 			}
 			// String flags with values that belong to other modes.
-			if arg == "--add" || arg == "--rm" || arg == "--where" || arg == "--dep" ||
+			if arg == "--add" || arg == "--rm" || arg == "--where" || arg == "--dep" || arg == "--bring" ||
 				arg == "--task" || arg == "-t" || arg == "--set-task" {
 				opts.conflict = arg
 				return opts, nil

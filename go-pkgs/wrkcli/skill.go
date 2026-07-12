@@ -45,6 +45,7 @@ var wrkModeFlags = map[string]struct{}{
 	"--no-in-module-replace": {},
 	"--all-deps":             {},
 	"--dep":                  {},
+	"--bring":                {},
 	"-t":                     {},
 	"--task":                 {},
 	"--set-task":             {},

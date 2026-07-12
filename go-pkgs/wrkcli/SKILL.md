@@ -46,6 +46,7 @@ wrk --main                       # nested shell at main repository root
 
 ```sh
 wrk --dep <path>                 # spawn a dependency worktree under ./external
+wrk --bring <path>               # like --dep; soft-skip replace when not a module dep
 wrk --all-deps                   # link required deps from registered projects
 wrk --all-deps --dry-run         # plan only, no writes
 ```
