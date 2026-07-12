@@ -3,7 +3,7 @@
 **Feature**: `--set-config` is mutually exclusive with other wrk modes
 
 ```
-wrk --set-config ... --list | with create dir positional
+wrk --set-config ... --list | with create dir positional | --no-config
   -> non-zero; mutual exclusion / unexpected arguments
 ```
 

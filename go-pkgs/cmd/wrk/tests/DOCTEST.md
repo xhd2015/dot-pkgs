@@ -52,7 +52,8 @@ target directory after successful create / `--cd` / `--dep` / `--set-task` / `--
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos), `events.jsonl` (append-only event log), and optional `config.json` (user config; no `hooks/` directory); tests isolate at `{WorkRoot}/.wrk`.
 - **create UX (window / terminal / agent)** — first-class create-mode UX from `$WRK_HOME/config.json` `create` section + one-shot CLI flags, implemented in-process via `computer-use/macos/space` (Mission Control Desktop) and `shell/iterm2` (iTerm2 open + follow-ups). Schema: `create.window.mode` (`"new"` only in v1; absent = window off), `create.terminal.mode` (`"new"` | `"reuse"` | `"smart"`; absent = terminal off), `create.agent` (`enabled` bool, `runner` default `grok-tty`, `prompt_template` default `/brainstorm ${task}`, `args` default `["--session-id-from-prompt","--no-submit","--open"]`). Legacy `create.interceptor` (and interceptor-only keys) are **silently ignored**; interceptor code/flags/env (`--interceptor`, `--no-interceptor`, `WRK_NO_INTERCEPTOR`, template argv engine) are **removed**.
 - **create UX flags (create mode)** — `--new-window` (window on + implies terminal `new` unless another terminal mode flag sets reuse/smart), `--new-terminal` / `--reuse-terminal` / `--smart-terminal` (mutually exclusive), `--open-in-agent` / `--no-open-in-agent`, `--no-new-window`, `--no-new-terminal`. Conflicts: open/no-open together, new-window/no-new-window, terminal-on/no-new-terminal, **`--new-window` + `--no-new-terminal`**, multiple terminal mode flags. Effective merge for plain create (`wrk [dir]`, no second positional): load config create.* (ignore interceptor) → apply CLI → if window on && terminal off → terminal=`new` → validate. **Create-with-target-dir** (`wrk [dir] <target-dir>`, `spawnTarget` non-empty): **skip** config create.* entirely (silent; not an error); empty base + CLI flags only → same window-implies-terminal-new after flags → validate. One-shot UX flags remain valid with `<target-dir>`. Pipeline after native create + path stdout: window (`space.CreateAndActivate`) → terminal (`iterm2.OpenConfig` with optional agent follow-up) **or** agent-in-current-process (`agent-run run <args> --agent-runner=<runner> <prompt>`) → `--exec` → follow-up cd. Never double-run agent (terminal+agent ⇒ iterm follow-up only). Non-darwin window/terminal → clear platform error.
-- **wrk --set-config** — management mode for `config.json` (v1: `--create` section and recommended `--show`). Mutually exclusive with create and all other modes. Merge-only keys implied by flags; `--new-window` also persists `terminal.mode=new`; negatives clear/disable axes; preserve unknown top-level keys. No git required. Successful write: empty stdout preferred; `--show` prints JSON + trailing `
+- **--no-config** — long-only top-level bool flag (no short alias). When set, wrk must **not read** and **not apply** `$WRK_HOME/config.json` for this invocation (scope: that file only; not `WRK_HOME` layout, env vars, events/projects). One-shot CLI flags still parse and apply. Create UX gate: `applyConfig = (spawnTarget == "") && !noConfig` (same silent skip as create-with-target-dir when `noConfig`). Missing config file → no-op; corrupt config with `--no-config` → never open/read → no parse error. **Hard mutual exclusion** with `--set-config`: non-zero exit, preferred stderr `wrk: --no-config is mutually exclusive with --set-config`. `--set-config` alone still reads/writes `config.json`.
+- **wrk --set-config** — management mode for `config.json` (v1: `--create` section and recommended `--show`). Mutually exclusive with create, all other modes, and **`--no-config`**. Merge-only keys implied by flags; `--new-window` also persists `terminal.mode=new`; negatives clear/disable axes; preserve unknown top-level keys. No git required. Successful write: empty stdout preferred; `--show` prints JSON + trailing `
 `. Event `command: "set-config"` when implemented.
 - **Request.PathPrepend / ExtraEnv / InterceptorLog** — shared harness fields: `PathPrepend` prepends a bin dir to `PATH` (fake `agent-run` for create-ux; historically fake interceptor tools); `ExtraEnv` adds `KEY=VAL` for the wrk process (create-ux mocks: `WRK_SPACE_INVOKE_LOG`, `DOT_PKGS_SPACE_GOOS`, `KOOL_ITERM2_*`, `FAKE_AGENT_RUN_LOG` / `FAKE_AGENT_RUN_CWD`); `InterceptorLog` remains for any leaf that records fake argv logs (create-ux prefers WorkRoot paths via helpers).
 - **Project record** — absolute path to the **main repo** (never a linked worktree path); deduplicated by normalized absolute `path`; fields `path`, `added_at` (ISO-8601 UTC), `source` (`auto` or `manual`); re-adding is idempotent (no duplicate entries; first `source` wins).
@@ -128,7 +129,8 @@ wrk tests
 │   │       └── short/            # --show -h
 │   └── mutual-exclusion/
 │       ├── with-list/            # --set-config … --list → non-zero
-│       └── with-create-dir/      # wrk <dir> --set-config … → non-zero; no worktree
+│       ├── with-create-dir/      # wrk <dir> --set-config … → non-zero; no worktree
+│       └── with-no-config/       # --no-config --set-config … → non-zero; no write
 ├── create-ux/                    # create-mode window/terminal/agent UX (config + flags)
 │   ├── bare/
 │   │   └── empty-config/         # native create only; mocks silent
@@ -154,10 +156,14 @@ wrk tests
 │   ├── agent-quoting/
 │   │   ├── adversarial-task-quotes/      # argv-safe prompt for agent-in-process
 │   │   └── terminal-followup-quotes/     # shell-safe prompt in iterm follow-up
-│   └── target-dir-config-skipped/ # SpawnDir set → config create.* not applied
-│       ├── config-ignored/        # full config; no CLI UX → no space/iterm/agent
-│       ├── flags-still-apply/     # empty config; full CLI UX flags still run
-│       └── flag-only-no-config-agent/ # config agent on; --new-terminal only → no agent
+│   ├── target-dir-config-skipped/ # SpawnDir set → config create.* not applied
+│   │   ├── config-ignored/        # full config; no CLI UX → no space/iterm/agent
+│   │   ├── flags-still-apply/     # empty config; full CLI UX flags still run
+│   │   └── flag-only-no-config-agent/ # config agent on; --new-terminal only → no agent
+│   └── no-config/                 # --no-config skips $WRK_HOME/config.json on plain create
+│       ├── config-ignored/        # full config + --no-config; no UX flags → mocks silent
+│       ├── flags-still-apply/     # full config + --no-config + full CLI UX → flags run
+│       └── corrupt-ignored/       # corrupt config.json + --no-config → no parse error
 ├── dep/                          # wrk --dep external dependency worktree
 │   ├── basic/                    # require + --dep → external wt; branch main-{date} (no basename)
 │   ├── branch-collision-suffix/  # preferred branch taken → path+branch -1; no basename
@@ -819,6 +825,7 @@ wrk tests
 | 159 | set-config/show/prints-json | `--set-config --show` prints JSON |
 | 160 | set-config/mutual-exclusion/with-list | `--set-config … --list` → non-zero |
 | 161 | set-config/mutual-exclusion/with-create-dir | `wrk <dir> --set-config …` → non-zero; no worktree |
+| 161b | set-config/mutual-exclusion/with-no-config | `--no-config --set-config --show` → non-zero; no write |
 | 162 | create-ux/bare/empty-config | bare create; no space/iterm/agent |
 | 163 | create-ux/pipeline/flags/new-window-only | space + iterm ForceNew; no agent |
 | 164 | create-ux/pipeline/flags/new-terminal | iterm ForceNew; no space |
@@ -839,6 +846,9 @@ wrk tests
 | 179a | create-ux/target-dir-config-skipped/config-ignored | full config + SpawnDir; no CLI UX → mocks silent |
 | 179b | create-ux/target-dir-config-skipped/flags-still-apply | empty config + SpawnDir + full CLI UX → pipeline runs |
 | 179c | create-ux/target-dir-config-skipped/flag-only-no-config-agent | config agent on + SpawnDir + `--new-terminal` only → no agent |
+| 179d | create-ux/no-config/config-ignored | full config + `--no-config`; no UX flags → mocks silent |
+| 179e | create-ux/no-config/flags-still-apply | full config + `--no-config` + full CLI UX → flags drive pipeline |
+| 179f | create-ux/no-config/corrupt-ignored | corrupt config.json + `--no-config` → no parse error; bare create |
 | 179 | exec/create/basic-pwd | create + `--exec pwd` → path then pwd in new wt |
 | 180 | exec/create/args-passthrough | `--exec echo --task` → child sees `--task`; no task slug on path |
 | 190 | exec/cd/with-followup | `--cd` + follow-up + `--exec pwd` → follow-up + stdout pwd |

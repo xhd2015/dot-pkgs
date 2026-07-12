@@ -88,6 +88,9 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return runBashIntegration(args)
 	}
 	if hasArg(args, "--set-config") {
+		if hasArg(args, "--no-config") {
+			return fmt.Errorf("wrk: --no-config is mutually exclusive with --set-config")
+		}
 		return runSetConfig(origWd, args, ctx)
 	}
 
@@ -129,6 +132,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var noNewTerminal bool
 	var openInAgent bool
 	var noOpenInAgent bool
+	var noConfig bool
 	// *string targets: nil = flag absent; non-nil empty = present but empty.
 	// Cut("--exec") must be registered so tokens after --exec are never re-parsed as flags.
 	remaining, err := lessflags.Bool("--done", &done).
@@ -159,6 +163,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--no-new-terminal", &noNewTerminal).
 		Bool("--open-in-agent", &openInAgent).
 		Bool("--no-open-in-agent", &noOpenInAgent).
+		Bool("--no-config", &noConfig).
 		String("--dep", &depPath).
 		String("-t,--task", &taskDesc).
 		String("--set-task", &setTaskDesc).
@@ -466,8 +471,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		task = *taskDesc
 	}
 
-	// With <target-dir> (spawnTarget set), skip config create.* UX; CLI flags still apply.
-	uxPlan, err := resolveCreateUX(wrkHome, uxFlags, spawnTarget == "")
+	// With <target-dir> or --no-config, skip config create.* UX; CLI flags still apply.
+	uxPlan, err := resolveCreateUX(wrkHome, uxFlags, spawnTarget == "" && !noConfig)
 	if err != nil {
 		return err
 	}
@@ -524,6 +529,7 @@ Flags:
   --no-new-window                 disable window UX for this run
   --no-new-terminal               disable terminal UX for this run
   --no-open-in-agent              disable agent UX for this run
+  --no-config                     do not read $WRK_HOME/config.json for this run
   --exec <cmd> [args...]          after success, run command in the mode target directory
   --help, -h                      show this help and exit
 

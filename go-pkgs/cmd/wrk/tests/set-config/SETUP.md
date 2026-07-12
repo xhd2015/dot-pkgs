@@ -12,7 +12,7 @@ wrk --set-config --show
   -> pretty-print effective config.json (or create section)
 
 # mutual exclusion
---set-config + --list | positional create dir | other modes → non-zero
+--set-config + --list | positional create dir | --no-config | other modes → non-zero
 ```
 
 ## Preconditions

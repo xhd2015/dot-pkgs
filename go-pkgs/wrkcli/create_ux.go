@@ -83,10 +83,11 @@ type createUXPlan struct {
 }
 
 // resolveCreateUX builds the create UX plan. When applyConfig is true (plain
-// create, no <target-dir>), it loads config create section (ignoring interceptor)
-// then applies CLI flags. When applyConfig is false (create-with-target-dir),
-// config create.* is skipped silently and only CLI flags apply. In both cases
-// window on implies terminal=new when terminal is still off.
+// create, no <target-dir>, no --no-config), it loads config create section
+// (ignoring interceptor) then applies CLI flags. When applyConfig is false
+// (create-with-target-dir or --no-config), config create.* is skipped silently
+// and only CLI flags apply. In both cases window on implies terminal=new when
+// terminal is still off.
 func resolveCreateUX(wrkHome string, flags createUXFlags, applyConfig bool) (createUXPlan, error) {
 	if err := flags.validate(); err != nil {
 		return createUXPlan{}, err

@@ -129,6 +129,7 @@ var wrkCompletionFlags = []string{
 	"--no-new-terminal",
 	"--open-in-agent",
 	"--no-open-in-agent",
+	"--no-config",
 	"--set-config",
 	"--create",
 	"--show",

@@ -13,6 +13,7 @@ myrepo -> wrk [UX flags] [-t task]
 # effective merge
 plain create (no <target-dir>): config create.* + CLI flags; --no-* clears axis
 create-with-target-dir: skip config create.*; CLI flags only (silent)
+--no-config: skip $WRK_HOME/config.json entirely (CLI flags still apply)
 window on implies terminal new (after flag apply); legacy create.interceptor ignored
 ```
 
