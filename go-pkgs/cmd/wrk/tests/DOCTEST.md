@@ -51,7 +51,7 @@ target directory after successful create / `--cd` / `--dep` / `--set-task` / `--
 - **Request.SetTaskEnv** — when set, appended to wrk's environment (e.g., `WRK_SET_TASK_CONFIRM=1` to auto-confirm rename in tests).
 - **WRK data storage** — under `{WRK_HOME}`: `projects.json` (recorded main repos), `events.jsonl` (append-only event log), and optional `config.json` (user config; no `hooks/` directory); tests isolate at `{WorkRoot}/.wrk`.
 - **create UX (window / terminal / agent)** — first-class create-mode UX from `$WRK_HOME/config.json` `create` section + one-shot CLI flags, implemented in-process via `computer-use/macos/space` (Mission Control Desktop) and `shell/iterm2` (iTerm2 open + follow-ups). Schema: `create.window.mode` (`"new"` only in v1; absent = window off), `create.terminal.mode` (`"new"` | `"reuse"` | `"smart"`; absent = terminal off), `create.agent` (`enabled` bool, `runner` default `grok-tty`, `prompt_template` default `/brainstorm ${task}`, `args` default `["--session-id-from-prompt","--no-submit","--open"]`). Legacy `create.interceptor` (and interceptor-only keys) are **silently ignored**; interceptor code/flags/env (`--interceptor`, `--no-interceptor`, `WRK_NO_INTERCEPTOR`, template argv engine) are **removed**.
-- **create UX flags (create mode)** — `--new-window` (window on + implies terminal `new` unless another terminal mode flag sets reuse/smart), `--new-terminal` / `--reuse-terminal` / `--smart-terminal` (mutually exclusive), `--open-in-agent` / `--no-open-in-agent`, `--no-new-window`, `--no-new-terminal`. Conflicts: open/no-open together, new-window/no-new-window, terminal-on/no-new-terminal, **`--new-window` + `--no-new-terminal`**, multiple terminal mode flags. Effective merge: load config (ignore interceptor) → apply CLI → if window on && terminal off → terminal=`new` → validate. Pipeline after native create + path stdout: window (`space.CreateAndActivate`) → terminal (`iterm2.OpenConfig` with optional agent follow-up) **or** agent-in-current-process (`agent-run run <args> --agent-runner=<runner> <prompt>`) → `--exec` → follow-up cd. Never double-run agent (terminal+agent ⇒ iterm follow-up only). Non-darwin window/terminal → clear platform error.
+- **create UX flags (create mode)** — `--new-window` (window on + implies terminal `new` unless another terminal mode flag sets reuse/smart), `--new-terminal` / `--reuse-terminal` / `--smart-terminal` (mutually exclusive), `--open-in-agent` / `--no-open-in-agent`, `--no-new-window`, `--no-new-terminal`. Conflicts: open/no-open together, new-window/no-new-window, terminal-on/no-new-terminal, **`--new-window` + `--no-new-terminal`**, multiple terminal mode flags. Effective merge for plain create (`wrk [dir]`, no second positional): load config create.* (ignore interceptor) → apply CLI → if window on && terminal off → terminal=`new` → validate. **Create-with-target-dir** (`wrk [dir] <target-dir>`, `spawnTarget` non-empty): **skip** config create.* entirely (silent; not an error); empty base + CLI flags only → same window-implies-terminal-new after flags → validate. One-shot UX flags remain valid with `<target-dir>`. Pipeline after native create + path stdout: window (`space.CreateAndActivate`) → terminal (`iterm2.OpenConfig` with optional agent follow-up) **or** agent-in-current-process (`agent-run run <args> --agent-runner=<runner> <prompt>`) → `--exec` → follow-up cd. Never double-run agent (terminal+agent ⇒ iterm follow-up only). Non-darwin window/terminal → clear platform error.
 - **wrk --set-config** — management mode for `config.json` (v1: `--create` section and recommended `--show`). Mutually exclusive with create and all other modes. Merge-only keys implied by flags; `--new-window` also persists `terminal.mode=new`; negatives clear/disable axes; preserve unknown top-level keys. No git required. Successful write: empty stdout preferred; `--show` prints JSON + trailing `
 `. Event `command: "set-config"` when implemented.
 - **Request.PathPrepend / ExtraEnv / InterceptorLog** — shared harness fields: `PathPrepend` prepends a bin dir to `PATH` (fake `agent-run` for create-ux; historically fake interceptor tools); `ExtraEnv` adds `KEY=VAL` for the wrk process (create-ux mocks: `WRK_SPACE_INVOKE_LOG`, `DOT_PKGS_SPACE_GOOS`, `KOOL_ITERM2_*`, `FAKE_AGENT_RUN_LOG` / `FAKE_AGENT_RUN_CWD`); `InterceptorLog` remains for any leaf that records fake argv logs (create-ux prefers WorkRoot paths via helpers).
@@ -151,9 +151,13 @@ wrk tests
 │   │   └── non-darwin-window/
 │   ├── interceptor-ignored/
 │   │   └── native-create/        # leftover create.interceptor ignored
-│   └── agent-quoting/
-│       ├── adversarial-task-quotes/      # argv-safe prompt for agent-in-process
-│       └── terminal-followup-quotes/     # shell-safe prompt in iterm follow-up
+│   ├── agent-quoting/
+│   │   ├── adversarial-task-quotes/      # argv-safe prompt for agent-in-process
+│   │   └── terminal-followup-quotes/     # shell-safe prompt in iterm follow-up
+│   └── target-dir-config-skipped/ # SpawnDir set → config create.* not applied
+│       ├── config-ignored/        # full config; no CLI UX → no space/iterm/agent
+│       ├── flags-still-apply/     # empty config; full CLI UX flags still run
+│       └── flag-only-no-config-agent/ # config agent on; --new-terminal only → no agent
 ├── dep/                          # wrk --dep external dependency worktree
 │   ├── basic/                    # require + --dep → external wt; branch main-{date} (no basename)
 │   ├── branch-collision-suffix/  # preferred branch taken → path+branch -1; no basename
@@ -832,6 +836,9 @@ wrk tests
 | 176 | create-ux/interceptor-ignored/native-create | leftover interceptor ignored; native create |
 | 177 | create-ux/agent-quoting/adversarial-task-quotes | argv-safe prompt for agent-in-process |
 | 178 | create-ux/agent-quoting/terminal-followup-quotes | shell-safe prompt in iterm follow-up |
+| 179a | create-ux/target-dir-config-skipped/config-ignored | full config + SpawnDir; no CLI UX → mocks silent |
+| 179b | create-ux/target-dir-config-skipped/flags-still-apply | empty config + SpawnDir + full CLI UX → pipeline runs |
+| 179c | create-ux/target-dir-config-skipped/flag-only-no-config-agent | config agent on + SpawnDir + `--new-terminal` only → no agent |
 | 179 | exec/create/basic-pwd | create + `--exec pwd` → path then pwd in new wt |
 | 180 | exec/create/args-passthrough | `--exec echo --task` → child sees `--task`; no task slug on path |
 | 190 | exec/cd/with-followup | `--cd` + follow-up + `--exec pwd` → follow-up + stdout pwd |

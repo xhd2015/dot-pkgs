@@ -466,7 +466,8 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		task = *taskDesc
 	}
 
-	uxPlan, err := resolveCreateUX(wrkHome, uxFlags)
+	// With <target-dir> (spawnTarget set), skip config create.* UX; CLI flags still apply.
+	uxPlan, err := resolveCreateUX(wrkHome, uxFlags, spawnTarget == "")
 	if err != nil {
 		return err
 	}

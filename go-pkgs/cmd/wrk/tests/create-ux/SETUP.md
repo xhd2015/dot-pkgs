@@ -11,8 +11,9 @@ myrepo -> wrk [UX flags] [-t task]
   -> optional agent-run in current process (agent without terminal)
 
 # effective merge
-config create.* + CLI flags; --no-* clears axis; window on implies terminal new
-legacy create.interceptor ignored
+plain create (no <target-dir>): config create.* + CLI flags; --no-* clears axis
+create-with-target-dir: skip config create.*; CLI flags only (silent)
+window on implies terminal new (after flag apply); legacy create.interceptor ignored
 ```
 
 ## Preconditions

@@ -82,9 +82,12 @@ type createUXPlan struct {
 	agentArgs    []string
 }
 
-// resolveCreateUX loads config create section (ignoring interceptor), applies flags,
-// implies terminal=new when window is on, and returns the plan.
-func resolveCreateUX(wrkHome string, flags createUXFlags) (createUXPlan, error) {
+// resolveCreateUX builds the create UX plan. When applyConfig is true (plain
+// create, no <target-dir>), it loads config create section (ignoring interceptor)
+// then applies CLI flags. When applyConfig is false (create-with-target-dir),
+// config create.* is skipped silently and only CLI flags apply. In both cases
+// window on implies terminal=new when terminal is still off.
+func resolveCreateUX(wrkHome string, flags createUXFlags, applyConfig bool) (createUXPlan, error) {
 	if err := flags.validate(); err != nil {
 		return createUXPlan{}, err
 	}
@@ -95,33 +98,35 @@ func resolveCreateUX(wrkHome string, flags createUXFlags) (createUXPlan, error) 
 		agentArgs:  defaultAgentArgs(),
 	}
 
-	cfg, err := loadConfig(wrkHome)
-	if err != nil {
-		return createUXPlan{}, err
-	}
-	if cfg != nil && cfg.Create != nil {
-		c := cfg.Create
-		if c.Window != nil && c.Window.Mode == "new" {
-			plan.window = true
+	if applyConfig {
+		cfg, err := loadConfig(wrkHome)
+		if err != nil {
+			return createUXPlan{}, err
 		}
-		if c.Terminal != nil {
-			switch c.Terminal.Mode {
-			case "new", "reuse", "smart":
-				plan.terminalMode = c.Terminal.Mode
+		if cfg != nil && cfg.Create != nil {
+			c := cfg.Create
+			if c.Window != nil && c.Window.Mode == "new" {
+				plan.window = true
 			}
-		}
-		if c.Agent != nil {
-			if c.Agent.Enabled != nil && *c.Agent.Enabled {
-				plan.agent = true
+			if c.Terminal != nil {
+				switch c.Terminal.Mode {
+				case "new", "reuse", "smart":
+					plan.terminalMode = c.Terminal.Mode
+				}
 			}
-			if c.Agent.Runner != "" {
-				plan.runner = c.Agent.Runner
-			}
-			if c.Agent.PromptTemplate != "" {
-				plan.promptTmpl = c.Agent.PromptTemplate
-			}
-			if len(c.Agent.Args) > 0 {
-				plan.agentArgs = append([]string(nil), c.Agent.Args...)
+			if c.Agent != nil {
+				if c.Agent.Enabled != nil && *c.Agent.Enabled {
+					plan.agent = true
+				}
+				if c.Agent.Runner != "" {
+					plan.runner = c.Agent.Runner
+				}
+				if c.Agent.PromptTemplate != "" {
+					plan.promptTmpl = c.Agent.PromptTemplate
+				}
+				if len(c.Agent.Args) > 0 {
+					plan.agentArgs = append([]string(nil), c.Agent.Args...)
+				}
 			}
 		}
 	}
