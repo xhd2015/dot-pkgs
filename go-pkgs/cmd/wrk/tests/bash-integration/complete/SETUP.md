@@ -54,7 +54,9 @@ func assertCompleteLines(t *testing.T, stdout string, want []string) {
 }
 
 func splitCompletionLines(stdout string) []string {
-	trimmed := strings.TrimSuffix(stdout, "\n")
+	// runBashComplete prints each candidate + a trailing empty line; drop all
+	// trailing newlines before splitting so "" is not a spurious candidate.
+	trimmed := strings.TrimRight(stdout, "\n")
 	if trimmed == "" {
 		return nil
 	}

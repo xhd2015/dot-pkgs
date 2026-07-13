@@ -2,8 +2,10 @@
 
 - Exit code 0.
 - Stdout is non-empty and ends with trailing `\n`.
-- Stdout contains `complete -F _wrk wrk`.
-- Stdout contains `$WRK_HOME` or `WRK_HOME` resolution for script path.
+- Stdout registers compspec with default filename fallback:
+  `complete -o default -F _wrk wrk`.
+- Stdout `_wrk` path-like branch yields via `compopt -o default`.
+- Stdout contains `WRK_HOME` resolution for script path.
 - Stdout contains `--bash-integration --complete` callback invocation.
 - Stderr is empty.
 - No `events.jsonl` created.
@@ -33,7 +35,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("stderr should be empty, got %q", resp.Stderr)
 	}
 	assertStdoutEndsWithNewline(t, resp.Stdout)
-	assertContains(t, resp.Stdout, "complete -F _wrk wrk")
+	assertContains(t, resp.Stdout, "complete -o default -F _wrk wrk")
+	assertContains(t, resp.Stdout, "compopt -o default")
 	assertContains(t, resp.Stdout, "WRK_HOME")
 	assertContains(t, resp.Stdout, "--bash-integration --complete")
 	assertNoEventsJSONL(t, resp)

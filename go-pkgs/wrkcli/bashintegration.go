@@ -20,6 +20,14 @@ const bashIntegrationScript = `#!/usr/bin/env bash
 # wrk bash tab completion + auto-cd wrapper (installed at ${WRK_HOME:-$HOME/.wrk}/integration/bash.sh)
 
 _wrk() {
+  local cur
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  # Path-like cur (/ ./ ../): yield to bash default filename completion.
+  if [[ "$cur" == /* || "$cur" == ./* || "$cur" == ../* ]]; then
+    COMPREPLY=()
+    compopt -o default 2>/dev/null
+    return
+  fi
   local candidates
   candidates=$(command wrk --bash-integration --complete -- "${COMP_WORDS[@]}" "$COMP_CWORD")
   COMPREPLY=()
@@ -86,7 +94,7 @@ wrk() {
   return "$_wrk_status"
 }
 
-complete -F _wrk wrk
+complete -o default -F _wrk wrk
 `
 
 const wrkMarkerBlock = `# === wrk integration begin ===
@@ -608,12 +616,23 @@ func runBashComplete(req *CompletionRequest) error {
 	return nil
 }
 
+// isPathLike reports whether cur should yield to bash default filename
+// completion rather than wrk basenames/flags. Path-like prefixes: /, ./, ../.
+func isPathLike(cur string) bool {
+	return strings.HasPrefix(cur, "/") ||
+		strings.HasPrefix(cur, "./") ||
+		strings.HasPrefix(cur, "../")
+}
+
 // Complete returns bash tab-completion candidates for the given request.
 func Complete(wrkHome string, req CompletionRequest) []string {
 	if req.CWord < 0 || req.CWord >= len(req.Words) {
 		return nil
 	}
 	cur := req.Words[req.CWord]
+	if isPathLike(cur) {
+		return nil
+	}
 
 	kind, prefix := completionContext(req.Words, req.CWord)
 	switch kind {
@@ -626,7 +645,6 @@ func Complete(wrkHome string, req CompletionRequest) []string {
 		}
 		return candidates
 	default:
-		_ = cur
 		return nil
 	}
 }

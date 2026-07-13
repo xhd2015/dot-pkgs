@@ -13,6 +13,7 @@ wrk --bash-integration --status -> installed | not installed | partial
 
 # completion callback
 wrk --bash-integration --complete -- <words> <cword> -> basename/flag candidates
+# path-like cur (/ ./ ../) -> empty candidates; script yields via -o default / compopt
 ```
 
 ## Preconditions

@@ -5,11 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1116,6 +1117,129 @@ func resolveDepModule(consumerModDir, depPath string) (modDir string, modPath st
 	return "", "", fmt.Errorf("%s is not a dependency of the consumer module", depPath)
 }
 
+// pathIsUnder reports whether path is strictly inside parent (not parent itself).
+func pathIsUnder(path, parent string) bool {
+	path = filepath.Clean(path)
+	parent = filepath.Clean(parent)
+	rel, err := filepath.Rel(parent, path)
+	if err != nil {
+		return false
+	}
+	if rel == "." || rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// readStdinLineForPrompt reads one line from stdin for an interactive Y/n prompt.
+// Under `script`(1) with piped StdinInput (doctest UseScriptTTY harness on macOS),
+// the first ReadString can observe a spurious empty EOF before the answer bytes
+// arrive on the PTY; retry briefly. Persistent empty EOF is treated as empty
+// input (default answer).
+func readStdinLineForPrompt() (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err == nil {
+		return line, nil
+	}
+	if len(line) > 0 {
+		// Partial line without trailing newline still usable (e.g. "n" + EOF).
+		return line, nil
+	}
+	if !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	// Spurious empty EOF: retry for up to ~1s.
+	for attempt := 0; attempt < 50; attempt++ {
+		time.Sleep(20 * time.Millisecond)
+		line, err = reader.ReadString('\n')
+		if err == nil {
+			return line, nil
+		}
+		if len(line) > 0 {
+			return line, nil
+		}
+		if !errors.Is(err, io.EOF) {
+			return "", err
+		}
+	}
+	// No data after retries: empty line → default Y/skip.
+	return "\n", nil
+}
+
+// findLiveLinkedWorktrees returns absolute paths of live linked worktrees of
+// mainRepo, sorted lexicographically. Dead (missing on disk) entries are omitted.
+func findLiveLinkedWorktrees(mainRepo string) ([]string, error) {
+	linked, err := worktree.ListLinked(mainRepo)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	seen := make(map[string]bool)
+	for _, e := range linked {
+		if e.Path == "" {
+			continue
+		}
+		abs, err := filepath.Abs(e.Path)
+		if err != nil {
+			continue
+		}
+		abs = filepath.Clean(abs)
+		if worktree.IsDead(abs) {
+			continue
+		}
+		if !worktree.IsLinked(abs) {
+			continue
+		}
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
+		paths = append(paths, abs)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+// findExistingExternalForDep returns live linked worktrees of depMain whose
+// paths lie under {consumerTop}/external/, sorted lexicographically (lex-smallest
+// first). Identity is the cleaned absolute path of each worktree.
+func findExistingExternalForDep(consumerTop, depMain string) ([]string, error) {
+	consumerTop, err := filepath.Abs(consumerTop)
+	if err != nil {
+		return nil, err
+	}
+	externalRoot := filepath.Join(consumerTop, "external")
+	all, err := findLiveLinkedWorktrees(depMain)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, p := range all {
+		if pathIsUnder(p, externalRoot) {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
+}
+
+// warnReuseExternal prints Policy A reuse warnings on stderr for the existing
+// external worktree paths (paths must be non-empty and sorted).
+func warnReuseExternal(basename string, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	primary := paths[0]
+	if len(paths) == 1 {
+		fmt.Fprintf(os.Stderr, "wrk: warning: %s already exists under external/; reusing %s\n", basename, primary)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "wrk: warning: %s already has %d worktrees under external/; reusing %s\n", basename, len(paths), primary)
+	for _, p := range paths[1:] {
+		fmt.Fprintf(os.Stderr, "wrk: warning: also present: %s\n", p)
+	}
+}
+
 // planExternalWorktreePath is the read-only planner for an external dep
 // worktree: it resolves the dep's main repo, basename, branch base, path token,
 // date and consumer main repo, then runs the suffix loop
@@ -1124,6 +1248,10 @@ func resolveDepModule(consumerModDir, depPath string) (modDir string, modPath st
 // MkdirAll(external/), no ensureGitignoreExternal, no createExternalWorktree.
 // It may call read-only git helpers (ShowToplevel, ResolveMainRepo, ReadBranch,
 // resolveNamingInputs) which only run git rev-parse / git symbolic-ref.
+//
+// Policy A: if any live linked worktree of depMain already exists under
+// {consumerTop}/external/, returns the lex-smallest path and emits reuse
+// warnings on stderr (shared by --bring/--dep/--all-deps and --dry-run).
 func planExternalWorktreePath(consumerTop, depPath string) (externalPath string, err error) {
 	depSource, err := worktree.ShowToplevel(depPath)
 	if err != nil {
@@ -1132,6 +1260,13 @@ func planExternalWorktreePath(consumerTop, depPath string) (externalPath string,
 	depMain, err := worktree.ResolveMainRepo(depSource)
 	if err != nil {
 		return "", err
+	}
+
+	if existing, err := findExistingExternalForDep(consumerTop, depMain); err != nil {
+		return "", err
+	} else if len(existing) > 0 {
+		warnReuseExternal(filepath.Base(depMain), existing)
+		return existing[0], nil
 	}
 
 	baseBranch, err := worktree.ReadBranch(depPath)
@@ -1163,6 +1298,9 @@ func planExternalWorktreePath(consumerTop, depPath string) (externalPath string,
 // agree on naming), then creates the external dir, ensures .gitignore, and adds
 // the worktree. It does NOT add a replace directive or run tidy. Used by
 // runAllDeps (one worktree per repo, with per-module replaces added separately).
+//
+// Policy A: when planExternalWorktreePath reuses an existing external path, this
+// still ensures /external gitignore but does not create a new worktree/branch.
 func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath string, err error) {
 	externalPath, err = planExternalWorktreePath(consumerTop, depPath)
 	if err != nil {
@@ -1175,6 +1313,11 @@ func createExternalWorktreeForRepo(consumerTop, depPath string) (externalPath st
 	}
 	if err := ensureGitignoreExternal(consumerTop); err != nil {
 		return "", err
+	}
+
+	// Reuse path: already on disk as a live linked worktree — no git worktree add.
+	if st, err := os.Stat(externalPath); err == nil && st.IsDir() && worktree.IsLinked(externalPath) {
+		return externalPath, nil
 	}
 
 	depSource, err := worktree.ShowToplevel(depPath)
@@ -1597,6 +1740,11 @@ func runCreate(workDir string, origWd string, targetDir string, taskDesc string,
 // runCreateTargetDir handles wrk <dir> <target-dir>. A relative <target-dir> is
 // resolved against origWd (the process/shell cwd), NOT the repo dir that Run
 // chdir'd into.
+//
+// Policy B (named bring): if source mainRepo already has any live linked
+// worktree (anywhere, not only under target/external), prompt to skip (TTY,
+// default Y) or hard-error (non-TTY). Skip prints the existing path on stdout
+// and does not create. Answering n proceeds with create as today.
 func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, branchBase, pathToken, date, slug string, noCd, forceCd bool, execArgs []string, taskDesc string, ux createUXPlan) error {
 	// Resolve <target-dir> against the shell cwd (origWd), not the repo dir.
 	absTarget := targetDir
@@ -1604,6 +1752,48 @@ func runCreateTargetDir(origWd, targetDir, checkoutRoot, mainRepo, basename, bra
 		absTarget = filepath.Join(origWd, absTarget)
 	}
 	absTarget = filepath.Clean(absTarget)
+
+	// Policy B: any live linked worktree of the source main repo.
+	if existing, err := findLiveLinkedWorktrees(mainRepo); err != nil {
+		return err
+	} else if len(existing) > 0 {
+		primary := existing[0]
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return fmt.Errorf("wrk: %s already exists in %s; refusing non-interactive create (default is skip; re-run in a TTY)", basename, primary)
+		}
+		if len(existing) > 1 {
+			fmt.Fprintf(os.Stderr, "wrk: warning: %s already has %d linked worktrees; reusing candidate %s\n", basename, len(existing), primary)
+			for _, p := range existing[1:] {
+				fmt.Fprintf(os.Stderr, "wrk: warning: also present: %s\n", p)
+			}
+		}
+		// Prompt on stderr; default is skip (Y/empty).
+		fmt.Fprintf(os.Stderr, "%s already exists in %s, skip? [Y/n] ", basename, primary)
+		line, err := readStdinLineForPrompt()
+		if err != nil {
+			return fmt.Errorf("wrk: read skip confirmation: %w", err)
+		}
+		answer := strings.TrimSpace(strings.ToLower(line))
+		switch answer {
+		case "", "y", "yes":
+			absPath, err := filepath.Abs(primary)
+			if err != nil {
+				return fmt.Errorf("resolve worktree path: %w", err)
+			}
+			fmt.Println(absPath)
+			if err := runExecInDir(absPath, execArgs); err != nil {
+				return err
+			}
+			if forceCd {
+				return forceLandInDir(absPath)
+			}
+			return nil
+		case "n", "no":
+			// Fall through to create as today.
+		default:
+			return fmt.Errorf("wrk: invalid input %q (expected y/n)", strings.TrimSpace(line))
+		}
+	}
 
 	info, err := os.Stat(absTarget)
 	if err == nil {

@@ -53,8 +53,8 @@ resp.BashRCMarkerCount, resp.BashRCContent)
 if !strings.Contains(resp.BashProfileContent, "export EDITOR=vim") {
 t.Fatalf("dry-run must preserve unrelated .bash_profile content:\n%s", resp.BashProfileContent)
 }
-if !strings.Contains(resp.BashShContent, "complete -F _wrk wrk") {
-t.Fatalf("bash.sh must still register complete after dry-run:\n%s", resp.BashShContent)
+if !strings.Contains(resp.BashShContent, "complete -o default -F _wrk wrk") {
+t.Fatalf("bash.sh must still register complete -o default after dry-run:\n%s", resp.BashShContent)
 }
 if _, statErr := os.Stat(resp.BashShPath); statErr != nil {
 t.Fatalf("bash.sh must still exist: %v", statErr)

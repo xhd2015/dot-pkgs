@@ -1,7 +1,8 @@
 ## Expected
 
 - Exit code 0.
-- `{WRK_HOME}/integration/bash.sh` exists and registers `complete -F _wrk wrk`.
+- `{WRK_HOME}/integration/bash.sh` exists and registers `complete -o default -F _wrk wrk`
+  with path-like yield (`compopt -o default`).
 - `~/.bash_profile` and `~/.bashrc` each contain exactly one wrk marker block.
 - Both profiles source bash.sh via `$WRK_HOME` resolution in the marker.
 - No `events.jsonl` created.
@@ -32,7 +33,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if _, statErr := os.Stat(resp.BashShPath); statErr != nil {
 		t.Fatalf("expected bash.sh at %s: %v", resp.BashShPath, statErr)
 	}
-	assertContains(t, resp.BashShContent, "complete -F _wrk wrk")
+	assertContains(t, resp.BashShContent, "complete -o default -F _wrk wrk")
+	assertContains(t, resp.BashShContent, "compopt -o default")
 	if resp.BashProfileMarkerCount != 1 {
 		t.Fatalf("expected 1 marker in .bash_profile, got %d:\n%s", resp.BashProfileMarkerCount, resp.BashProfileContent)
 	}

@@ -41,8 +41,11 @@ resp.BashRCMarkerCount, resp.BashRCContent)
 if _, statErr := os.Stat(resp.BashShPath); statErr != nil {
 t.Fatalf("bash.sh missing after idempotent install: %v", statErr)
 }
-if !strings.Contains(resp.BashShContent, "complete -F _wrk wrk") {
-t.Fatalf("bash.sh must register complete after install:\n%s", resp.BashShContent)
+if !strings.Contains(resp.BashShContent, "complete -o default -F _wrk wrk") {
+t.Fatalf("bash.sh must register complete -o default after install:\n%s", resp.BashShContent)
+}
+if !strings.Contains(resp.BashShContent, "compopt -o default") {
+t.Fatalf("bash.sh must path-like yield via compopt -o default:\n%s", resp.BashShContent)
 }
 // Second install must not re-append markers; unrelated profile content preserved.
 if !strings.Contains(resp.BashProfileContent, "export EDITOR=vim") {

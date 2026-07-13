@@ -3,7 +3,10 @@
 **Feature**: wrk --bash-integration prints bash completion script
 
 ```
-wrk --bash-integration -> stdout script with complete -F _wrk and --complete callback
+wrk --bash-integration -> stdout script with:
+  path-like _wrk yield (compopt -o default)
+  complete -o default -F _wrk wrk
+  --complete callback
 ```
 
 ## Steps

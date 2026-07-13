@@ -3,7 +3,10 @@
 **Feature**: print-script contains completion registration and WRK_HOME resolution
 
 ```
-wrk --bash-integration -> script references complete -F _wrk, WRK_HOME, --complete
+wrk --bash-integration -> script references:
+  complete -o default -F _wrk wrk
+  path-like yield via compopt -o default
+  WRK_HOME + --complete callback
 ```
 
 ## Steps

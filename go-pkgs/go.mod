@@ -9,7 +9,7 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/xhd2015/gitops v0.0.24
 	github.com/xhd2015/less-flags v1.0.1
-	github.com/xhd2015/skills v0.0.16
+	github.com/xhd2015/skills v0.0.19
 	github.com/xhd2015/xgo v1.2.0
 	golang.org/x/term v0.43.0
 	golang.org/x/tools v0.45.0

@@ -22,13 +22,16 @@ exclusion with normal wrk commands.
 - **projects.json** — basename completion reads unique sorted `filepath.Base(path)` entries;
   prefix-filtered candidates returned one per stdout line.
 - **--complete callback** — `wrk --bash-integration --complete -- <words...> <cword>`; hidden
-  from main help; drives bash `complete -F _wrk wrk`.
+  from main help; drives bash `complete -o default -F _wrk wrk`.
+- **path-like cur** — current word starting with `/`, `./`, or `../`. Go `Complete` returns no
+  candidates (empty stdout, exit 0) so custom basenames/flags are not invented. Bash `_wrk`
+  yields filename completion via `compopt -o default` and compspec `-o default`.
 
 ## Tree Overview
 
 ```
 bash-integration/
-├── print-script/basic/              # --bash-integration prints script to stdout
+├── print-script/basic/              # script: path-like yield + complete -o default
 ├── install/
 │   ├── fresh/                       # writes bash.sh + dual profile markers
 │   ├── idempotent/                  # pre-seeded state → no duplicate markers
@@ -55,7 +58,13 @@ bash-integration/
 │   ├── where/                       # wrk --where <tab>
 │   ├── status/                      # wrk --status <tab>
 │   ├── add-rm/                      # wrk --add/--rm <tab>
-│   └── empty-projects/              # no basenames; flags still work
+│   ├── empty-projects/              # no basenames; flags still work
+│   └── path-like/                   # path-like cur → empty --complete stdout
+│       ├── after-done/              # wrk --done <path-like>
+│       │   ├── relative-dot/        # ./ex
+│       │   ├── parent-relative/     # ../foo
+│       │   └── absolute/            # /tmp/x
+│       └── general/                 # positional path-like (./ ../ /)
 └── mutual-exclusion/with-list/      # --bash-integration --list errors
 ```
 
