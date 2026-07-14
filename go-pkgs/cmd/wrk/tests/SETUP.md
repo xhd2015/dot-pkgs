@@ -24,13 +24,18 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
+	"time"
 	"unicode"
 
 	"github.com/xhd2015/doctest/assert"
@@ -751,6 +756,187 @@ func createWorktreeWithTask(t *testing.T, req *Request, taskDesc string) (mainRe
 	return mainRepo, wtDir, branch
 }
 
+// freeLocalPort returns an unused TCP port on 127.0.0.1 for --web --port tests.
+func freeLocalPort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("freeLocalPort: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	_ = ln.Close()
+	return port
+}
+
+// lockingWriter guards concurrent writes to a bytes.Buffer (stdout drain).
+type lockingWriter struct {
+	mu *sync.Mutex
+	w  *bytes.Buffer
+}
+
+func (lw *lockingWriter) Write(p []byte) (int, error) {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
+	return lw.w.Write(p)
+}
+
+var listenURLRe = regexp.MustCompile(`https?://127\.0\.0\.1:\d+/?`)
+
+// extractListenURL finds the first localhost listen URL printed by wrk --web.
+func extractListenURL(stdout string) string {
+	return listenURLRe.FindString(stdout)
+}
+
+// runWebProbe starts long-lived wrk --web, waits for the listen URL on stdout,
+// HTTP GETs req.WebPath (default "/"), kills the process, and returns stdout,
+// stderr, and HTTPStatus/HTTPBody. Always kills in a deferred path so the suite
+// never hangs.
+func runWebProbe(t *testing.T, req *Request, bin string, args []string) (*Response, error) {
+	t.Helper()
+
+	cmd := exec.Command(bin, args...)
+	if req.RepoDir != "" {
+		cmd.Dir = req.RepoDir
+	} else {
+		cmd.Dir = req.WorkRoot
+	}
+	cmd.Env = wrkEnv(req)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	var (
+		stdoutMu  sync.Mutex
+		stdoutBuf bytes.Buffer
+		stderrBuf bytes.Buffer
+	)
+	go func() { _, _ = io.Copy(&lockingWriter{mu: &stdoutMu, w: &stdoutBuf}, stdoutPipe) }()
+	go func() { _, _ = io.Copy(&stderrBuf, stderrPipe) }()
+
+	waitCh := make(chan error, 1)
+	go func() { waitCh <- cmd.Wait() }()
+
+	var (
+		waitErr error
+		waited  bool
+		waitMu  sync.Mutex
+		once    sync.Once
+	)
+	markWaited := func(err error) {
+		waitMu.Lock()
+		defer waitMu.Unlock()
+		if waited {
+			return
+		}
+		waited = true
+		waitErr = err
+	}
+	isWaited := func() bool {
+		waitMu.Lock()
+		defer waitMu.Unlock()
+		return waited
+	}
+	// killOnce terminates the process if still running, then reaps Wait at most once.
+	killOnce := func() {
+		once.Do(func() {
+			if !isWaited() && cmd.Process != nil {
+				_ = cmd.Process.Signal(syscall.SIGTERM)
+			}
+			if isWaited() {
+				return
+			}
+			select {
+			case err := <-waitCh:
+				markWaited(err)
+			case <-time.After(2 * time.Second):
+				if cmd.Process != nil {
+					_ = cmd.Process.Kill()
+				}
+				markWaited(<-waitCh)
+			}
+		})
+	}
+	defer killOnce()
+
+	// Poll stdout for listen URL (timeout ~10s) or early process exit.
+	var listenURL string
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && listenURL == "" {
+		if isWaited() {
+			break
+		}
+		select {
+		case err := <-waitCh:
+			markWaited(err)
+		default:
+		}
+		if isWaited() {
+			break
+		}
+		stdoutMu.Lock()
+		s := stdoutBuf.String()
+		stdoutMu.Unlock()
+		if u := extractListenURL(s); u != "" {
+			listenURL = u
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	out := &Response{}
+	path := req.WebPath
+	if path == "" {
+		path = "/"
+	}
+	if listenURL != "" && !isWaited() {
+		base := strings.TrimRight(listenURL, "/")
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		getURL := base + path
+		client := &http.Client{Timeout: 5 * time.Second}
+		if hr, err := client.Get(getURL); err == nil {
+			body, _ := io.ReadAll(hr.Body)
+			_ = hr.Body.Close()
+			out.HTTPStatus = hr.StatusCode
+			out.HTTPBody = string(body)
+		}
+	}
+
+	// Always stop the server before returning final buffers.
+	killOnce()
+	time.Sleep(50 * time.Millisecond)
+
+	stdoutMu.Lock()
+	out.Stdout = stdoutBuf.String()
+	stdoutMu.Unlock()
+	out.Stderr = stderrBuf.String()
+	waitMu.Lock()
+	if waited {
+		if waitErr != nil {
+			if ee, ok := waitErr.(*exec.ExitError); ok {
+				out.ExitCode = ee.ExitCode()
+			} else {
+				// signalled exit still surfaces as ExitError on most platforms
+				out.ExitCode = -1
+			}
+		} else {
+			out.ExitCode = 0
+		}
+	}
+	waitMu.Unlock()
+	return out, nil
+}
+
 func ensureHelpersUsed() {
 	_ = mkdirAll
 	_ = writeFile
@@ -796,5 +982,9 @@ func ensureHelpersUsed() {
 	_ = prependPATH
 	_ = appendCDEnv
 	_ = prepareFollowupFile
+	_ = freeLocalPort
+	_ = extractListenURL
+	_ = runWebProbe
+	_ = lockingWriter{}
 }
 ```

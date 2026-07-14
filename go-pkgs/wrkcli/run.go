@@ -135,6 +135,10 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	var openInAgent bool
 	var noOpenInAgent bool
 	var noConfig bool
+	var webFlag bool
+	var webDev bool
+	// *int target: nil = --port absent; non-nil = present (0 allowed → auto later).
+	var portFlag *int
 	// *string targets: nil = flag absent; non-nil empty = present but empty.
 	// Cut("--exec") must be registered so tokens after --exec are never re-parsed as flags.
 	remaining, err := lessflags.Bool("--done", &done).
@@ -146,6 +150,9 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		Bool("--fetch", &fetchFlag).
 		Bool("-v,--verbose", &verbose).
 		Bool("--color", &colorFlag).
+		Bool("--web", &webFlag).
+		Bool("--dev", &webDev).
+		Int("--port", &portFlag).
 		String("--add", &addPath).
 		String("--rm", &removePath).
 		Bool("--confirm-from-stdin", &confirmFromStdin).
@@ -194,8 +201,13 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 	addFlagSet := addPath != nil
 	removeFlagSet := removePath != nil
 	whereFlagSet := wherePath != nil
+	portFlagSet := portFlag != nil
 
-	ctx.command = resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, done, list, status, repos, mergeBack, depPath, bringPath, allDeps, cd, mainFlag)
+	if webFlag {
+		ctx.command = "web"
+	} else {
+		ctx.command = resolveCommand(projects, addFlagSet, removeFlagSet, setTaskFlagSet, whereFlagSet, done, list, status, repos, mergeBack, depPath, bringPath, allDeps, cd, mainFlag)
+	}
 	ctx.eventArgs = extractEventArgs(args, remaining)
 
 	setInvocationVerbose(verbose)
@@ -205,7 +217,7 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		worktree.GitVerboseLogger = nil
 	}()
 
-	if fetchFlag && !projects && !status {
+	if fetchFlag && !projects && !status && !webFlag {
 		return fmt.Errorf("wrk: --fetch is only valid with --projects or --status")
 	}
 
@@ -230,6 +242,47 @@ func run(origWd string, args []string, ctx *invocationContext) error {
 		return err
 	}
 	ctx.wrkHome = wrkHome
+
+	// --port / --dev are only valid with --web (reject before other mode work).
+	if portFlagSet && !webFlag {
+		ctx.workDir = origWd
+		if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
+			return err
+		}
+		return fmt.Errorf("wrk: --port is only valid with --web")
+	}
+	if webDev && !webFlag {
+		ctx.workDir = origWd
+		if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
+			return err
+		}
+		return fmt.Errorf("wrk: --dev is only valid with --web")
+	}
+
+	// --web is a standalone long-running mode: local HTTP UI + wrkserver API.
+	if webFlag {
+		otherMode := done || mergeBack || list || status || repos || projects ||
+			addFlagSet || removeFlagSet || whereFlagSet || depPath != "" || allDeps ||
+			dryRun || taskFlagSet || setTaskFlagSet || fetchFlag || noCd || forceCd ||
+			cd || mainFlag || confirmFromStdin || noInModuleReplace ||
+			newWindow || noNewWindow || newTerminal || reuseTerminal || smartTerminal ||
+			noNewTerminal || openInAgent || noOpenInAgent || len(execArgs) > 0
+		ctx.workDir = origWd
+		if err := storage.ResetEventsIfDoctest(wrkHome); err != nil {
+			return err
+		}
+		if otherMode {
+			return fmt.Errorf("wrk: --web is mutually exclusive with other modes")
+		}
+		if len(remaining) > 0 {
+			return fmt.Errorf("wrk: unexpected arguments")
+		}
+		port := 0
+		if portFlagSet {
+			port = *portFlag
+		}
+		return runWeb(WebServeOptions{WrkHome: wrkHome, Port: port, Dev: webDev})
+	}
 
 	// --cd requires exactly one path positional before defaulting workDir to cwd.
 	if cd {
@@ -561,6 +614,9 @@ Flags:
   --no-open-in-agent              disable agent UX for this run
   --no-config                     do not read $WRK_HOME/config.json for this run
   --exec <cmd> [args...]          after success, run command in the mode target directory
+  --web                           start local web UI (React SPA + API on 127.0.0.1)
+  --port PORT                     listen port for --web only (default: free port from 8080)
+  --dev                           with --web: proxy UI to Vite (react/) for HMR
   --help, -h                      show this help and exit
 
 Config management:

@@ -103,6 +103,7 @@ var flagValueArgs = map[string]struct{}{
 	"--add":      {},
 	"--rm":       {},
 	"--where":    {},
+	"--port":     {},
 }
 
 func extractEventArgs(original, positionals []string) []string {

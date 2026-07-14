@@ -25,14 +25,19 @@ func New(opts Options) *Server {
 
 // Register mounts fixed leaves under base (trailing slash optional).
 //
-//	GET  {base}/projects  → ListProjects
-//	POST {base}/worktrees → CreateWorktree
+//	GET  {base}/projects           → ListProjects
+//	POST {base}/worktrees          → CreateWorktree
+//	POST {base}/ops                → CreateOp (mock streaming ops)
+//	GET  {base}/ops/{id}/logs      → StreamOpLogs (SSE)
 //
 // base is host-owned; wrkserver does not hardcode /api/wrk.
 func (s *Server) Register(mux *http.ServeMux, base string) {
 	base = strings.TrimRight(base, "/")
 	mux.HandleFunc(base+"/projects", s.ListProjects)
 	mux.HandleFunc(base+"/worktrees", s.CreateWorktree)
+	mux.HandleFunc(base+"/ops", s.CreateOp)
+	// Go 1.22+ path value for SSE log stream.
+	mux.HandleFunc(base+"/ops/{id}/logs", s.StreamOpLogs)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

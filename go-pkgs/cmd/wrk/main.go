@@ -6,7 +6,19 @@ import (
 	"os"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/wrkcli/web"
 )
+
+func init() {
+	// Register outside wrkcli to avoid import cycle: wrkserver imports wrkcli.
+	wrkcli.RegisterWebServe(func(opts wrkcli.WebServeOptions) error {
+		return web.Serve(web.Options{
+			WrkHome: opts.WrkHome,
+			Port:    opts.Port,
+			Dev:     opts.Dev,
+		})
+	})
+}
 
 func main() {
 	if err := run(); err != nil {

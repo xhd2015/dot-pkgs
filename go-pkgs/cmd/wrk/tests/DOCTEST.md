@@ -11,9 +11,10 @@ worktrees, `wrk --bring` best-effort local dep replacement (always worktree; sof
 when not a module/dependency), `wrk --done` merge-back (including external cascade),
 `wrk --list`, `wrk --status`, project persistence (`wrk --projects`, `wrk --add`,
 `wrk --rm`, auto-record, events.jsonl), `wrk --cd` directory jump (in-place follow-up
-or fallback interactive shell), and `wrk --exec` cut-flag (run a trailing command in
+or fallback interactive shell), `wrk --exec` cut-flag (run a trailing command in
 the mode target directory after successful create / `--cd` / `--dep` / `--bring` /
-`--set-task` / `--done`).
+`--set-task` / `--done`), and `wrk --web [--port PORT]` standalone HTTP workflow page
+(under `wrkcli`).
 
 # DSN (Domain Specific Notion)
 
@@ -82,6 +83,8 @@ the mode target directory after successful create / `--cd` / `--dep` / `--bring`
 - **Request.FakeShellDir / FakeShellLog / FakeShellExit / ShellEnv** — fallback `--cd` harness: prepend fake `bash` on PATH, set `SHELL`, `WRK_FAKE_SHELL_LOG`, and optional non-zero `WRK_FAKE_SHELL_EXIT` so `LoginInteractive` cannot hang.
 - **wrk --exec** — long-only cut flag (no `-e`); less-flags `Cut("--exec", &execArgs)`. On seeing `--exec`: if no tokens after → **error** (requires a command); else copy all subsequent tokens into `execArgs` and **stop parsing** (tokens never treated as wrk flags — e.g. `wrk --exec echo --task` runs `echo --task`). Reject equals form `--exec=value`. Absent `--exec` → no post-mode command. After a **successful** allowed mode, run `exec.Command(execArgs[0], execArgs[1:]...)` with `cmd.Dir` set to the mode target absolute directory; inherit stdin/stdout/stderr; non-zero child exit → `ExitCodeError` (same pattern as `--cd` shell / agent-run). **Allowed modes & `cmd.Dir`**: **create** (native) → newly created worktree; **`--cd`** → resolved jump directory; **`--dep`** → external dep worktree; **`--bring`** → external dep worktree (including after soft SKIP); **`--set-task`** → renamed worktree (post-move); **`--done`** → main repo (`MergeBack` `TargetPath`, never the removed worktree). **`--done`**: exec only after successful done (not aborted / failed confirm). **Reject `--exec` with**: `--list`, `--status`, `--repos`, `--projects`, `--add`, `--rm`, `--where`, `--merge-back`, `--all-deps`, set-config, skill, bash-integration, and other non-allowed modes. Mode path/message lines still print **before** the child command's stdout (create/dep/bring/set-task path; done `worktree removed:…`; in-place `--cd` keeps empty mode stdout so only child output appears). Follow-up shell cd rules unchanged (create home-gate; done/set-task cwd-missing); exec is a child process and does not replace follow-up writes.
 - **Request.Args with `--exec`** — leaves pass `--exec` and command tokens as trailing `req.Args` (or after `SetTaskDesc`/`TargetDir` assembly via `buildWrkCLIArgs`); no separate Request field for exec argv.
+- **wrk --web** — standalone long-running mode: bind `127.0.0.1` only; optional `--port PORT` (when omitted, pick a free port starting at 8080); serve embedded standalone workflow HTML at `GET`/`HEAD` `/` (`Content-Type: text/html`; body includes identifiable markers: `task`, `Main`, `Remote`, `wrk`, and preferably `worktree`/`changes`/`sync`/`rebase`/`agent-run`/`tag`/`push`); mount existing `wrkserver` under `/api/wrk` (e.g. `GET /api/wrk/projects` → JSON `{"projects":[...]}` with array never null). On successful start print exactly one user-facing stdout line `http://127.0.0.1:<port>/` ending with trailing `\n`; block until SIGINT/SIGTERM. **Mutually exclusive** with all other modes/flags that select behavior (`--list`, `--status`, create, `--done`, `--projects`, …) — prefer `wrk: --web is mutually exclusive with other modes`. **No positionals** (`wrk --web some-dir` → `wrk: unexpected arguments`). **`--port` without `--web`** → non-zero, `wrk: --port is only valid with --web`. Help (`wrk -h`) documents `--web` and `--port`. Event `command: "web"` when recorded (optional for long-lived servers). No new on-disk storage; resolves `WRK_HOME` like the CLI. Page + serve helpers live under `go-pkgs/wrkcli/` (not a separate monorepo-root React app for this iteration).
+- **Request.WebProbe / WebPath** — when `WebProbe` is true, root `Run` starts wrk as a long-lived subprocess (isolated `WRK_HOME`), waits up to ~10s for a `http://127.0.0.1:<port>/` listen URL on stdout, HTTP GETs `WebPath` (default `/`), fills `Response.HTTPStatus` + `Response.HTTPBody` (+ `Stdout`/`Stderr`), then SIGTERM (SIGKILL after 2s). Used by `web/serves-page`, `web/mockup-repo-view`, and `web/api-projects-empty`. Error/help leaves leave `WebProbe` false and use normal run-to-completion.
 - **Request.SecondRepo** — projects tests: second main repo path for multi-project list assertions.
 - **Basename fallback** — shared `resolveDirArg` core (`filepath.Abs` → `stat` → optional `projects.json` lookup via `isBasename` / `resolveBasenameFromProjects` / `pickAmbiguousBasename`). When the user-supplied directory argument is a basename (no path separator, not absolute), `stat(filepath.Abs(<dir>))` fails, and `stat(filepath.Join(cwd, <dir>))` also fails: load `projects.json`, collect entries where `filepath.Base(project.path) == <dir>`. **0** → unchanged `wrk: <candidate> does not exist`; **1** → use that project's `path` as the resolved absolute path; **2+** → TTY prints numbered list (candidates sorted lexicographically by absolute path) and prompts `Select [1-N]:`; non-TTY errors listing all candidates. **Skipped** when: `./<dir>` exists in cwd as a **directory** (even non-git — use cwd path, existing git error); or `<dir>` contains a path separator. **Cwd file collision** (new): when `filepath.Join(cwd, <dir>)` exists and is a **regular file** (not a directory), do not proceed to git-repo resolution; instead load `projects.json` and emit guided stderr. **1** registered match → multi-line stderr: `wrk: <abs-cwd-file> exists and is a file`, `wrk: "<basename>" matches registered project(s):`, one indented project path, `wrk: use \`wrk <concrete-saved-path> <reconstructed-args>\` instead` (hint preserves user flags/args such as `-t`, `--status`, `--dep`, spawn target). **2+** matches → same shape listing all project paths (lex order) and hint `wrk: use \`wrk <full-path> <reconstructed-args>\` instead` (literal `<full-path>` placeholder). **0** matches → single line `wrk: <abs-cwd-file> exists and is a file` only (no registry block, no hint). Exit non-zero; stdout empty; no worktree created. Directory blocking behavior is unchanged. **Enabled** for: create-mode first positional `<dir>` (`wrk <dir>`, `wrk <dir> <target-dir>`) via `resolveSourceWorkDir` with `allowBasenameFallback=createMode`; `--dep <dir>` via `runDep` with `allowBasenameFallback=true`; and `wrk <dir> --status` via `resolveSourceWorkDir` with `allowBasenameFallback=status`. **Not enabled** for other modes (`--list`, `--done`, `--all-deps`, `--projects`, `--add`, `--set-task`, `--merge-back`) — positional basename in those modes still skips lookup. `--where` unchanged (no cwd stat).
 - **WRK_BASENAME_CONFIRM** — when set with piped `StdinInput`, bypasses TTY detection for ambiguous-basename prompt tests (same escape hatch pattern as `WRK_SET_TASK_CONFIRM`).
@@ -598,6 +601,16 @@ wrk tests
     │   └── with-where/
     └── events/
         └── command-cd/           # events.jsonl command "cd"
+└── web/                          # wrk --web React SPA (dot-pkgs-react apps/wrkweb)
+    ├── mutual-exclusion/         # --web + other modes
+    │   ├── with-list/            # --web --list → mutually exclusive
+    │   └── with-status/          # --web --status → mutually exclusive
+    ├── port-without-web/         # --port without --web → only valid with --web
+    ├── unexpected-args/          # --web some-dir → unexpected arguments
+    ├── help-mentions-web/        # wrk -h documents --web and --port
+    ├── serves-page/              # WebProbe GET / → SPA shell + markers + listen URL
+    ├── mockup-repo-view/         # WebProbe GET /mockup/repo-view → SPA client-route 200
+    └── api-projects-empty/       # WebProbe GET /api/wrk/projects → {"projects":[]}
 ```
 
 ## Test Case Index
@@ -923,6 +936,14 @@ wrk tests
 | 196 | exec/empty-flag/bare-exec | bare `--exec` → requires command; no wt |
 | 197 | exec/empty-flag/equals-form | `--exec=pwd` → reject equals form |
 | 198 | stderr-newline | unrecognized flag → exit 1; stderr body + trailing `\n` |
+| 199 | web/mutual-exclusion/with-list | `wrk --web --list` → non-zero; mutually exclusive; empty stdout |
+| 200 | web/mutual-exclusion/with-status | `wrk --web --status` → non-zero; mutually exclusive; empty stdout |
+| 201 | web/port-without-web | `wrk --port 18080` → non-zero; `--port is only valid with --web` |
+| 202 | web/unexpected-args | `wrk --web some-dir` → non-zero; unexpected arguments |
+| 203 | web/help-mentions-web | `wrk -h` → exit 0; help mentions `--web` and `--port` |
+| 204 | web/serves-page | `wrk --web --port <free>`; GET `/` → 200 HTML markers; stdout listen URL + `\n` |
+| 205 | web/api-projects-empty | same server; GET `/api/wrk/projects` empty WRK_HOME → 200 `{"projects":[]}` |
+| 206 | web/mockup-repo-view | same server; GET `/mockup/repo-view` → 200 SPA shell (client route fallback) |
 
 ## How to Run
 
@@ -1139,7 +1160,16 @@ doctest test ./tests/set-config/write/full-on
 doctest test ./tests/create-ux/bare/empty-config
 doctest test ./tests/create-ux/pipeline/flags/full-pipeline
 doctest test ./tests/create-ux/errors/new-window-no-terminal
+
+# Run --web leaves (expect RED until wrk --web + wrkcli page serve is implemented)
+doctest vet ./tests/web
+doctest test ./tests/web
+doctest test ./tests/web/mutual-exclusion/with-list
+doctest test ./tests/web/serves-page
+doctest test ./tests/web/mockup-repo-view
+doctest test ./tests/web/api-projects-empty
 ```
+
 
 
 ```go
@@ -1196,12 +1226,18 @@ type Request struct {
 	PathPrepend    string   // bin dir prepended to PATH (fake agent-run / tools)
 	ExtraEnv       []string // additional KEY=VAL env entries for wrk (UX mocks, etc.)
 	InterceptorLog string   // optional path for fake argv logs (create-ux uses WorkRoot helpers)
+
+	// --web long-running server probe (web/ leaves)
+	WebProbe bool   // when true: start wrk, wait for listen URL, GET WebPath, kill process
+	WebPath  string // HTTP path to probe (default "/"); only used when WebProbe
 }
 
 type Response struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
+	Stdout     string
+	Stderr     string
+	ExitCode   int
+	HTTPStatus int    // set when WebProbe; status of GET WebPath
+	HTTPBody   string // set when WebProbe; response body of GET WebPath
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -1214,6 +1250,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	if req.UseScriptTTY {
 		return execScriptTTYWrk(t, req, bin, args)
+	}
+
+	if req.WebProbe {
+		return runWebProbe(t, req, bin, args)
 	}
 
 	cmd := exec.Command(bin, args...)
