@@ -7,7 +7,6 @@
 .commandcode
 
 node_modules
-# Vite/build outputs (keep go-pkgs/wrkcli/web/dist tracked for //go:embed)
 react/dist
 react/dist-ssr
 **/dist-ssr

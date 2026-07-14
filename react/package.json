@@ -3,6 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "exports": {
+    "./routePrefix": "./src/routePrefix.ts",
+    "./api/client": "./src/api/client.ts",
+    "./api/ops": "./src/api/ops.ts",
+    "./index.css": "./src/index.css"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
