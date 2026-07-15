@@ -15,12 +15,16 @@ empty scans exit 0 with empty stdout.
 - **Caller** — supplies CLI argv (`[]string`) with flags only (no config file).
 - **RunCLI** — parses flags via `less-flags`, validates `--root` is present,
   maps flags to `Options` (full-path `--ignore-dir`, basename `--ignore-dir-basename`,
-  `--verbose` for permission-skip warnings), invokes `Scan`.
-- **Scan** — filesystem walk and optional git enrichment (same as library tests).
+  `--verbose` for permission-skip warnings, cache control flags below), invokes `Scan`.
+- **Scan** — filesystem walk, optional git enrichment, optional mirror cache
+  (same as library tests).
 - **Stdout formatter** — lines mode: `{path}\t{RepoType}` plus optional
   `\torigin:{owner}/{repo}@{host}` when `--list-remotes` and origin exists;
   JSON mode: marshaled `[]Repo` with `RepoType` as `"main"`/`"worktree"`.
 - **Stderr** — usage/help text, validation errors, scan failures.
+- **Cache control** — CLI maps `--no-cache`, `--refresh`, `--cache-dir PATH` onto
+  `Options.NoCache`, `Options.Refresh`, `Options.CacheRoot`. When cache is on and
+  `--cache-dir` is omitted, product default is `$HOME/.cache/git-repo-scan`.
 
 ### Behaviors
 
@@ -30,6 +34,16 @@ empty scans exit 0 with empty stdout.
 - Missing `--root` — error on stderr mentioning roots required, non-zero exit.
 - Unknown flag — parse error on stderr, non-zero exit.
 - Valid scan — map flags to `Options`, run `Scan`, format stdout.
+
+**Cache flags (P5)**
+
+- `--no-cache` — `NoCache=true`: full live walk; no mirror read/write under
+  `--cache-dir` (or default).
+- `--refresh` — `Refresh=true`: force cold full walk + rewrite even when warm-
+  eligible (finds brand-new repos warm would miss).
+- `--cache-dir PATH` — `CacheRoot=PATH`: cold/warm mirror under that root.
+- Default cache root when cache enabled and `--cache-dir` empty:
+  `$HOME/.cache/git-repo-scan`.
 
 **Output**
 
@@ -43,11 +57,11 @@ empty scans exit 0 with empty stdout.
 ```
 cli
 ├── help/                         [argv contains -h or --help]
-│   └── show/
+│   └── show/                     # documents discovery + cache flags
 ├── errors/                       [invalid argv — no scan]
 │   ├── no-roots/               [no --root flag]
 │   └── unknown-flag/           [unrecognized flag]
-├── flags/                        [valid scan, default lines output]
+├── flags/                        [valid scan, default lines; no cache flags]
 │   ├── single-root/
 │   ├── multiple-roots/
 │   ├── max-depth/
@@ -58,6 +72,10 @@ cli
 │   ├── verbose-quiet-default/         [no -v, silent skip]
 │   ├── verbose-remote-skip/           [-v + CloudStorage skip warning]
 │   └── verbose-quiet-remote/          [no -v, silent CloudStorage skip]
+├── cache/                        [P5 — --no-cache / --refresh / --cache-dir]
+│   ├── no-cache/               # --no-cache + --cache-dir → discover, no mirror write
+│   ├── cache-dir/              # --cache-dir cold scan writes under given dir
+│   └── refresh/                # warm seed then --refresh finds brand-new
 ├── output/                       [format selection]
 │   ├── lines-default/          [--json absent, multi-repo fixture]
 │   ├── json/                   [--json, multi-repo fixture]
@@ -71,7 +89,7 @@ cli
 
 | Leaf | Branch | Description |
 |------|--------|-------------|
-| `help/show` | Help | `--help` prints usage with all flags |
+| `help/show` | Help | `--help` prints usage with all flags (incl. cache) |
 | `errors/no-roots` | Errors | No `--root` → stderr mentions roots |
 | `errors/unknown-flag` | Errors | Unknown flag → parse error |
 | `flags/single-root` | Flags | One `--root`, one repo discovered |
@@ -84,6 +102,9 @@ cli
 | `flags/verbose-quiet-default` | Flags | Default: no stderr on permission skip |
 | `flags/verbose-remote-skip` | Flags | `-v` warns on CloudStorage skip |
 | `flags/verbose-quiet-remote` | Flags | Default: no stderr on CloudStorage skip |
+| `cache/no-cache` | Cache | `--no-cache` discovers repos; no `entry.json` under `--cache-dir` |
+| `cache/cache-dir` | Cache | `--cache-dir` cold scan writes mirror under given path |
+| `cache/refresh` | Cache | after warm seed, `--refresh` lists brand-new repo |
 | `output/lines-default` | Output | Tab-separated lines, path-sorted |
 | `output/json` | Output | JSON array with string RepoType |
 | `output/json-empty` | Output | Empty workspace → `[]` |

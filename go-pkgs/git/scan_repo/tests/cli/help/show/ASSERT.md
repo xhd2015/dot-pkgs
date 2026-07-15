@@ -3,7 +3,7 @@
 - Exit code 0.
 - Stdout contains usage text documenting `--root`, `--max-depth`, `--ignore-dir`,
   `--ignore-dir-basename`, `-v` / `--verbose`, `--list-remotes`, `--list-worktrees`,
-  and `--json`.
+  `--json`, and cache control flags `--no-cache`, `--refresh`, `--cache-dir`.
 - Stderr is empty.
 
 ## Side Effects
@@ -33,6 +33,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	for _, flag := range []string{
 		"--root", "--max-depth", "--ignore-dir", "--ignore-dir-basename",
 		"-v", "--verbose", "--list-remotes", "--list-worktrees", "--json",
+		"--no-cache", "--refresh", "--cache-dir",
 	} {
 		if !strings.Contains(resp.Stdout, flag) {
 			t.Fatalf("help should mention %q, got:\n%s", flag, resp.Stdout)

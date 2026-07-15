@@ -25,6 +25,9 @@ Options:
   --list-remotes           List git remotes and append origin info to lines output
   --list-worktrees         Enrich main repos with git worktree metadata
   --json                   Output JSON array instead of tab-separated lines
+  --no-cache               Disable mirror cache read and write
+  --refresh                Force full rescan and rewrite cache (skip warm)
+  --cache-dir PATH         Mirror cache root (default: $HOME/.cache/git-repo-scan)
   -h, --help               Show this help message
 `
 
@@ -41,6 +44,9 @@ func RunCLI(args []string) error {
 	var listRemotes bool
 	var listWorktrees bool
 	var jsonOut bool
+	var noCache bool
+	var refresh bool
+	var cacheDir string
 
 	remain, err := lessflags.StringSlice("--root", &roots).
 		StringSlice("--ignore-dir", &ignoreDirs).
@@ -50,6 +56,9 @@ func RunCLI(args []string) error {
 		Bool("--list-remotes", &listRemotes).
 		Bool("--list-worktrees", &listWorktrees).
 		Bool("--json", &jsonOut).
+		Bool("--no-cache", &noCache).
+		Bool("--refresh", &refresh).
+		String("--cache-dir", &cacheDir).
 		Help("-h,--help", cliHelp).
 		HelpNoExit().
 		Parse(args)
@@ -91,6 +100,9 @@ func RunCLI(args []string) error {
 		Verbose:            verbose,
 		ListRemotes:        listRemotes,
 		ListWorktrees:      listWorktrees,
+		NoCache:            noCache,
+		Refresh:            refresh,
+		CacheRoot:          cacheDir,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
