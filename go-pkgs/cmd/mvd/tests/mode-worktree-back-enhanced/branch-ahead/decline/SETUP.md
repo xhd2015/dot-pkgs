@@ -1,16 +1,18 @@
 # Scenario
 
-HEAD is ancestor of the worktree branch. User declines by typing 'n'.
-Operation is aborted, no changes.
+**Feature**: user declines ahead merge via `--confirm` + stdin `n`
 
+```
+# branch ahead; --confirm re-enables Y/n; --confirm-from-stdin for non-TTY pipe
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit on wt → [feature branch ahead of main]
-mvd --back wt → prompt [Y/n] → 'n' → abort
+mvd --back --confirm --confirm-from-stdin wt (n) → abort, no changes
+```
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch (branch is now ahead of HEAD).
-- Run --back with TTY stdin and 'n' as input.
+- Run `--back --confirm --confirm-from-stdin` with `n` input (decline).
 
 ```go
 import (
@@ -37,8 +39,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, wtDir, "add", "feature-work")
 	runGit(t, wtDir, "commit", "-m", "feature work ahead")
 
-	// Run --back with PTY (TTY) and 'n' input (decline).
-	req.Args = []string{"--back", "--confirm-from-stdin", wtDir}
+	// --confirm forces interactive plan prompt; --confirm-from-stdin for pipe.
+	req.Args = []string{"--back", "--confirm", "--confirm-from-stdin", wtDir}
 	req.StdinInput = "n\n"
 	return nil
 }

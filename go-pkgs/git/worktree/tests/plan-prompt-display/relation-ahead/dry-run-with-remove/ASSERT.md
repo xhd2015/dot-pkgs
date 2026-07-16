@@ -1,5 +1,7 @@
 ## Expected
 
+- `printDryRun` stdout does **not** start with a leading blank line (`"\n"`).
+- First line is exactly `  # <target>: fast forward` (indented planned-command comment).
 - Stdout lists three command groups with the same `#` comments and Short paths as the confirm prompt body.
 - No `Proceed?` line and no `branch ... is ahead` question line.
 
@@ -26,12 +28,20 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	shortMain := shortPath(t, mainRepo)
 	shortFeature := shortPath(t, featureWT)
 
+	if strings.HasPrefix(resp.Output, "\n") {
+		t.Fatal(`printDryRun output must not start with leading "\n"`)
+	}
+	wantFirst := "  # " + targetBranch + ": fast forward"
+	firstLine, _, _ := strings.Cut(resp.Output, "\n")
+	if firstLine != wantFirst {
+		t.Fatalf("first line = %q, want %q", firstLine, wantFirst)
+	}
+
 	if strings.Contains(resp.Output, "Proceed?") {
 		t.Fatal("dry-run listing must not include confirmation prompt")
 	}
-	tmpl := `
-<contains>
-  # ` + targetBranch + `: fast forward
+	// Template must not begin with a raw-string newline (that would expect want:"" line 1).
+	tmpl := "<contains>\n" + `  # ` + targetBranch + `: fast forward
   git -C ` + shortMain + ` merge --ff-only feature
   # worktree: remove
   git -C ` + shortMain + ` worktree remove ` + shortFeature + `

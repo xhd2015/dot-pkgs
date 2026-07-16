@@ -1,14 +1,18 @@
 # Scenario
 
-Piped stdin without --confirm-from-stdin must be rejected (no accidental merge).
+**Feature**: piped stdin without confirm flags still auto-yes merges (CASE B)
 
+```
+# branch ahead; piped stdin without --confirm / --confirm-from-stdin → auto-yes
 mvd -w repo wt → [(repo), (wt w:wt)]
 commit on wt → [feature branch ahead of main]
-mvd --back wt (piped stdin, no flag) → error
+mvd --back wt (piped stdin, no flags) → exit 0; ff-merge + remove
+```
 
 ## Steps
 - Create a git repo, create a worktree, commit ahead of main.
-- Run --back with piped stdin but WITHOUT --confirm-from-stdin.
+- Run `--back` with piped stdin but WITHOUT `--confirm` or `--confirm-from-stdin`.
+- Default auto-yes must merge successfully (no accidental-merge guard requiring flags).
 
 ```go
 import (
@@ -34,6 +38,7 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, wtDir, "add", "feature-work")
 	runGit(t, wtDir, "commit", "-m", "feature work ahead")
 
+	// Piped stdin without confirm flags: default auto-yes.
 	req.Args = []string{"--back", wtDir}
 	req.StdinInput = "\n"
 	return nil

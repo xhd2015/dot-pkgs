@@ -1,15 +1,13 @@
 ## Expected
-- Non-zero exit code.
-- Output indicates that interactive confirmation is required but stdin is not a TTY.
-- Output does NOT say "not merged" (the new TTY check replaces the old merge check).
-- Worktree directory still exists.
-- Feature branch still exists.
-- Main repo does NOT have the feature change.
-- Main repo still has its own change (main-work).
-- History unchanged.
+- Exit code 0 (default auto-yes; non-TTY no longer hard-requires confirm).
+- Output contains `worktree removed:`.
+- Output does **not** contain `Proceed?`.
+- Worktree directory no longer exists.
+- Main repo has both the feature-work and main-work files (rebase + ff merge succeeded).
+- History is nil.
 
 ## Exit Code
-- Non-zero
+- 0
 
 ```go
 import (
@@ -21,26 +19,21 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		assertErrIsNil(t, err)
 		return
 	}
-	if resp.ExitCode == 0 {
-		t.Fatalf("expected non-zero exit, got 0\noutput: %s", resp.Output)
+	if resp.ExitCode != 0 {
+		t.Fatalf("exit code %d: %s", resp.ExitCode, resp.Output)
 	}
-
-	// Should not be the old "not merged" error — the new TTY check replaces it.
-	assertNotContains(t, resp.Output, "not merged")
 
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 
-	// Worktree still exists
-	assertFileExists(t, wtDir)
+	assertNotContains(t, resp.Output, "Proceed?")
+	assertContains(t, resp.Output, "worktree removed:")
+	assertFileNotExists(t, wtDir)
 
-	// Main does NOT have the feature change
-	assertFileNotExists(t, filepath.Join(mainRepo, "feature-work"))
-
-	// Main still has its own change
+	// Both files should exist in main after rebase + ff merge
+	assertFileExists(t, filepath.Join(mainRepo, "feature-work"))
 	assertFileExists(t, filepath.Join(mainRepo, "main-work"))
 
-	// History still has the worktree entry
-	assertHistoryWorktreeEntry(t, req.ConfigHome, mainRepo, 1, mainRepo, "feature")
+	assertHistoryNil(t, req.ConfigHome)
 }
 ```

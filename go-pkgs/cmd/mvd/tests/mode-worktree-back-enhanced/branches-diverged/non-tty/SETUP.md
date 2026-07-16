@@ -1,18 +1,20 @@
 # Scenario
 
-Branches have diverged (neither is ancestor of the other), but stdin is not a TTY.
-The prompt cannot be shown → error.
+**Feature**: non-TTY diverged `--back` auto-yes succeeds (no confirm flags)
 
+```
+# branches diverged; stdin not a TTY; default auto-yes rebase+merge
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit on wt → [feature ahead]
 commit on main → [main also ahead → diverged]
-mvd --back wt (non-TTY) → error
+mvd --back wt (non-TTY) → exit 0; rebase + ff-merge + remove
+```
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch.
 - Commit a different change on main (creating divergence).
-- Run --back WITHOUT PTY (stdin is not a TTY). No input is piped.
+- Run `--back` WITHOUT PTY and without confirm flags (stdin is not a TTY).
 
 ```go
 import (
@@ -44,7 +46,7 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, mainRepo, "add", "main-work")
 	runGit(t, mainRepo, "commit", "-m", "main work")
 
-	// Run --back normally (no PTY, stdin is /dev/null → not a TTY).
+	// Bare --back on non-TTY: default auto-yes (no flags, no stdin).
 	req.Args = []string{"--back", wtDir}
 	// UseScript is false, StdinInput is empty → default non-TTY behavior
 	return nil

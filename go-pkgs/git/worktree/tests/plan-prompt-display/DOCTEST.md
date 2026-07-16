@@ -48,9 +48,12 @@ absolute paths — covered by mvd integration tests).
 
 - **Confirm prompt** — `FormatPlanPrompt`: question line uses `TargetLabel`;
   each planned command preceded by a comment line; command lines use shortened
-  paths.
+  paths. Output must **not** start with a leading blank line (`\n`); the first
+  line is the relation question.
 - **Dry-run listing** — same comment + shortened command lines as the prompt
-  body, without the question or `Proceed?` trailer.
+  body, without the question or `Proceed?` trailer. Output must **not** start
+  with a leading blank line (`\n`); the first line is the first indented
+  `#` command comment.
 
 **Target label**
 
@@ -84,12 +87,12 @@ plan-prompt-display
 
 | Leaf | Sink | Description |
 |------|------|-------------|
-| `relation-ahead/confirm-prompt-with-remove` | Prompt | Ahead + Remove: comments, Short paths, dynamic target in question |
-| `relation-ahead/dry-run-with-remove` | Dry-run | Same command display as prompt body, no Proceed line |
+| `relation-ahead/confirm-prompt-with-remove` | Prompt | Ahead + Remove: no leading `\n`, first line question; comments, Short paths, dynamic target |
+| `relation-ahead/dry-run-with-remove` | Dry-run | No leading `\n`, first line `# <target>: fast forward`; command body, no Proceed |
 | `relation-ahead/merge-uses-branch` | Dry-run | Attached worktree uses branch name in merge, not commit hash |
 | `relation-detached-head/dry-run` | Dry-run | Detached HEAD uses commit SHA; not falsely already-included |
-| `relation-diverged/confirm-prompt-with-remove` | Prompt | Rebase comment `# <branch>: rebase onto <target>` + full command set |
-| `relation-diverged/dry-run-with-remove` | Dry-run | Diverged command list formatting |
+| `relation-diverged/confirm-prompt-with-remove` | Prompt | No leading `\n`; rebase comment `# <branch>: rebase onto <target>` + full command set |
+| `relation-diverged/dry-run-with-remove` | Dry-run | No leading `\n`; diverged command list formatting |
 | `relation-included/dry-run-remove-only` | Dry-run | Only `# worktree: remove` and `# worktree branch: drop` |
 | `target-label/explicit-master` | Prompt | `merge into master?` and `# master: fast forward` |
 | `target-label/separate-target-checkout` | Prompt | Question uses target worktree branch, not main default |

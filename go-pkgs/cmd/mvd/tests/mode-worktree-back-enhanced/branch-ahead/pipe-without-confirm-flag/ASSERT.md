@@ -1,10 +1,13 @@
 ## Expected
-- Non-zero exit code.
-- Output mentions `--confirm-from-stdin`.
-- Worktree still exists; feature commit not merged into main.
+- Exit code 0 (default auto-yes; pipe without confirm flags no longer errors).
+- Output contains `worktree removed:`.
+- Output does **not** contain `Proceed?`.
+- Worktree directory no longer exists.
+- Main repo has the feature commit (fast-forward merged).
+- History is nil (entry fully removed).
 
 ## Exit Code
-- Non-zero
+- 0
 
 ```go
 import (
@@ -16,16 +19,17 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		assertErrIsNil(t, err)
 		return
 	}
-	if resp.ExitCode == 0 {
-		t.Fatalf("expected non-zero exit, got 0\noutput: %s", resp.Output)
+	if resp.ExitCode != 0 {
+		t.Fatalf("exit code %d: %s", resp.ExitCode, resp.Output)
 	}
-
-	assertContains(t, resp.Output, "--confirm-from-stdin")
 
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 
-	assertFileExists(t, wtDir)
-	assertFileNotExists(t, filepath.Join(mainRepo, "feature-work"))
+	assertNotContains(t, resp.Output, "Proceed?")
+	assertContains(t, resp.Output, "worktree removed:")
+	assertFileNotExists(t, wtDir)
+	assertFileExists(t, filepath.Join(mainRepo, "feature-work"))
+	assertHistoryNil(t, req.ConfigHome)
 }
 ```

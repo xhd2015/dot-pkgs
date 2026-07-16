@@ -3,18 +3,19 @@
 **Feature**: diverged-branch confirmation prompt lists concrete git commands before [Y/n]
 
 ```
-# branches diverged: user declines after seeing planned commands
+# branches diverged: --confirm shows FormatPlanPrompt; user declines
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit on wt → [feature ahead]
 commit on main → [main also ahead → diverged]
-mvd --back wt --confirm-from-stdin → FormatPlanPrompt → 'n' → abort
+mvd --back --confirm --confirm-from-stdin wt → FormatPlanPrompt → 'n' → abort
 ```
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch.
 - Commit a different change on main (creating divergence).
-- Run --back with `--confirm-from-stdin` and `n` input (decline).
+- Run `--back --confirm --confirm-from-stdin` with `n` input (decline).
+- Assert FormatPlanPrompt content (requires `--confirm` so prompts are not auto-yes'd).
 
 ```go
 import (
@@ -44,7 +45,7 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, mainRepo, "add", "main-work")
 	runGit(t, mainRepo, "commit", "-m", "main work")
 
-	req.Args = []string{"--back", "--confirm-from-stdin", wtDir}
+	req.Args = []string{"--back", "--confirm", "--confirm-from-stdin", wtDir}
 	req.StdinInput = "n\n"
 	return nil
 }

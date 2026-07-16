@@ -3,16 +3,17 @@
 **Feature**: ahead-branch confirmation prompt lists concrete git commands before [Y/n]
 
 ```
-# branch ahead of main: user declines after seeing planned commands
+# branch ahead of main: --confirm shows FormatPlanPrompt; user declines
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit on wt → [feature branch ahead of main]
-mvd --back wt --confirm-from-stdin → FormatPlanPrompt → 'n' → abort
+mvd --back --confirm --confirm-from-stdin wt → FormatPlanPrompt → 'n' → abort
 ```
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch (branch is now ahead of main HEAD).
-- Run --back with `--confirm-from-stdin` and `n` input (decline).
+- Run `--back --confirm --confirm-from-stdin` with `n` input (decline).
+- Assert FormatPlanPrompt content (requires `--confirm` so prompts are not auto-yes'd).
 
 ```go
 import (
@@ -38,7 +39,7 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, wtDir, "add", "feature-work")
 	runGit(t, wtDir, "commit", "-m", "feature work ahead")
 
-	req.Args = []string{"--back", "--confirm-from-stdin", wtDir}
+	req.Args = []string{"--back", "--confirm", "--confirm-from-stdin", wtDir}
 	req.StdinInput = "n\n"
 	return nil
 }

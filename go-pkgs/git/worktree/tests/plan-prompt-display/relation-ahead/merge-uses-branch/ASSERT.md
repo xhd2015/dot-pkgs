@@ -1,6 +1,7 @@
 ## Expected
 
 - Dry-run merge command references branch name `feature`, not a raw commit hash.
+- Output does **not** start with a leading blank line (`"\n"`).
 
 ## Errors
 
@@ -26,9 +27,12 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	targetBranch := readDefaultBranch(t, mainRepo)
 	shortMain := shortPath(t, mainRepo)
 
-	tmpl := `
-<contains>
-  # ` + targetBranch + `: fast forward
+	if strings.HasPrefix(resp.Output, "\n") {
+		t.Fatal(`printDryRun output must not start with leading "\n"`)
+	}
+
+	// Template must not begin with a raw-string newline (that would expect want:"" line 1).
+	tmpl := "<contains>\n" + `  # ` + targetBranch + `: fast forward
   git -C ` + shortMain + ` merge --ff-only feature
 </contains>`
 	assert.Output(t, resp.Output, tmpl)

@@ -1,18 +1,20 @@
 # Scenario
 
-Branches have diverged with conflicting changes to the same file.
-Rebase hits a conflict → abort rebase, report error.
+**Feature**: diverged conflict under default auto-yes aborts rebase and errors
 
+```
+# diverged with conflicting edits; auto-yes proceeds into rebase → CONFLICT
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit conflicting change on wt
 commit different conflicting change on main → [diverged + conflict]
 mvd --back wt → rebase → CONFLICT → abort rebase, error
+```
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Modify README.md in the worktree and commit.
 - Modify README.md differently on main and commit.
-- Run --back with TTY stdin and Enter (confirm rebase). The rebase should conflict on README.md.
+- Run bare `--back` (default auto-yes). The rebase should conflict on README.md.
 
 ```go
 import (
@@ -44,9 +46,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, mainRepo, "add", "README.md")
 	runGit(t, mainRepo, "commit", "-m", "main change to README")
 
-	// Run --back with TTY and Enter (confirm rebase). Rebase will conflict on README.md.
-	req.Args = []string{"--back", "--confirm-from-stdin", wtDir}
-	req.StdinInput = "\n"
+	// Bare --back: default auto-yes proceeds into rebase which will conflict.
+	req.Args = []string{"--back", wtDir}
 	return nil
 }
 ```

@@ -29,7 +29,7 @@ mvd tests
 ├── mode-alias-storage/    # aliases stored inside history.json
 ├── mode-dry-run/          # --dry-run flag (skips modifications, prints intent)
 ├── mode-safety/           # overlapping paths between moves and worktrees
-└── mode-worktree-back-enhanced/  # enhanced --back for worktrees (CASE B: ff-merge prompt, CASE C: rebase)
+└── mode-worktree-back-enhanced/  # enhanced --back for worktrees (CASE B/C; default auto-yes; --confirm restores prompts)
 ```
 
 ## Test Case Index
@@ -55,7 +55,7 @@ mvd tests
 | mode-worktree | worktree-spawn-from-worktree-dry-run | --dry-run -w with linked worktree SRC prints intent, skips creation |
 | mode-worktree | worktree-non-git-src | Error when SRC is not a git repo |
 | mode-worktree | worktree-back-dirty | Error when worktree has uncommitted changes |
-| mode-worktree | worktree-back-unmerged | Error when worktree branch is unmerged |
+| mode-worktree | worktree-back-unmerged | Ahead (unmerged) non-TTY `--back` auto-yes succeeds (ff-merge + remove) |
 | mode-worktree | worktree-back-success | Successful worktree back after merge |
 | mode-worktree | worktree-branch-collision | Branch name collision generates date-suffixed name |
 | mode-worktree | worktree-move-by-basename | Worktree creation using basename |
@@ -151,18 +151,18 @@ mvd tests
 | mode-safety | back-long-chain-worktree-middle | Long chain; --back skips WT entry for prev |
 | mode-worktree-back-enhanced | dirty-worktree | Dirty worktree → error (existing behavior unchanged) |
 | mode-worktree-back-enhanced | branch-merged | Branch already merged → success (existing behavior unchanged) |
-| mode-worktree-back-enhanced | branch-ahead/pipe-without-confirm-flag | Piped stdin without --confirm-from-stdin → error (no accidental merge) |
-| mode-worktree-back-enhanced | branch-ahead/confirm-default | HEAD ancestor of branch, user presses Enter → ff merge + remove |
-| mode-worktree-back-enhanced | branch-ahead/decline | HEAD ancestor of branch, user types 'n' → abort, no changes |
-| mode-worktree-back-enhanced | branch-ahead/prompt-shows-commands | HEAD ancestor of branch, decline after prompt lists git -C merge/remove/delete commands |
-| mode-worktree-back-enhanced | branch-ahead/non-tty | HEAD ancestor of branch, stdin not a TTY → error |
-| mode-worktree-back-enhanced | branches-diverged/rebase-success | Neither ancestor, confirm (Enter) → rebase+ff merge+remove |
-| mode-worktree-back-enhanced | branches-diverged/rebase-conflict | Neither ancestor, confirm (Enter) → rebase conflicts → abort rebase, error |
-| mode-worktree-back-enhanced | branches-diverged/decline | Neither ancestor, decline ('n') → abort, no changes |
-| mode-worktree-back-enhanced | branches-diverged/prompt-shows-commands | Neither ancestor, decline after prompt lists git -C rebase/merge/remove/delete commands |
-| mode-worktree-back-enhanced | branches-diverged/non-tty | Neither ancestor, no TTY → error |
-| mode-worktree-back-enhanced | back-at/diverged-rebase-splice | cmdWorktreeBackAt: diverged, confirm (Enter) → rebase succeeds → splice chain |
-| mode-worktree-back-enhanced | back-at/ahead-confirm-splice | cmdWorktreeBackAt: branch ahead, confirm → splice chain |
+| mode-worktree-back-enhanced | branch-ahead/pipe-without-confirm-flag | Piped stdin without confirm flags → auto-yes ff-merge + remove |
+| mode-worktree-back-enhanced | branch-ahead/confirm-default | Bare `--back` auto-yes: HEAD ancestor → ff merge + remove (no Proceed?) |
+| mode-worktree-back-enhanced | branch-ahead/decline | `--confirm` + `--confirm-from-stdin` + `n` → abort, no changes |
+| mode-worktree-back-enhanced | branch-ahead/prompt-shows-commands | `--confirm` + decline: FormatPlanPrompt lists git -C merge/remove/delete commands |
+| mode-worktree-back-enhanced | branch-ahead/non-tty | HEAD ancestor, non-TTY bare `--back` → auto-yes success (no Proceed?) |
+| mode-worktree-back-enhanced | branches-diverged/rebase-success | Bare `--back` auto-yes: neither ancestor → rebase+ff merge+remove |
+| mode-worktree-back-enhanced | branches-diverged/rebase-conflict | Bare `--back` auto-yes → rebase conflicts → abort rebase, error |
+| mode-worktree-back-enhanced | branches-diverged/decline | `--confirm` + `--confirm-from-stdin` + `n` → abort, no changes |
+| mode-worktree-back-enhanced | branches-diverged/prompt-shows-commands | `--confirm` + decline: FormatPlanPrompt lists git -C rebase/merge/remove/delete commands |
+| mode-worktree-back-enhanced | branches-diverged/non-tty | Neither ancestor, non-TTY bare `--back` → auto-yes rebase+merge success |
+| mode-worktree-back-enhanced | back-at/diverged-rebase-splice | cmdWorktreeBackAt: diverged bare auto-yes → rebase succeeds → splice chain |
+| mode-worktree-back-enhanced | back-at/ahead-confirm-splice | cmdWorktreeBackAt: branch ahead bare auto-yes → splice chain |
 
 ## How to Run
 

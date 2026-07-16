@@ -1,7 +1,7 @@
 ## Expected
 - Exit code 0.
-- Output contains "worktree removed:" indicating the worktree was successfully removed.
-- Output contains the prompt confirming the merge (e.g., contains feature branch name).
+- Output contains `worktree removed:` indicating the worktree was successfully removed.
+- Output does **not** contain `Proceed?` (default auto-yes is silent for plan confirm).
 - Worktree directory no longer exists.
 - Main repo has the feature commit (fast-forward merged).
 - History is nil (entry fully removed).
@@ -26,6 +26,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 
+	assertNotContains(t, resp.Output, "Proceed?")
 	assertContains(t, resp.Output, "worktree removed:")
 	assertFileNotExists(t, wtDir)
 	assertFileExists(t, filepath.Join(mainRepo, "feature-work"))

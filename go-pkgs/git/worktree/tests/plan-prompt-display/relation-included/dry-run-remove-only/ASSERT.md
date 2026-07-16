@@ -2,6 +2,7 @@
 
 - No `merge --ff-only` or `rebase` lines.
 - `# worktree: remove` and `# worktree branch: drop` with shortened paths.
+- Output does **not** start with a leading blank line (`"\n"`).
 
 ```go
 import (
@@ -21,13 +22,16 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	shortMain := shortPath(t, mainRepo)
 	shortFeature := shortPath(t, featureWT)
 
+	if strings.HasPrefix(resp.Output, "\n") {
+		t.Fatal(`printDryRun output must not start with leading "\n"`)
+	}
+
 	if strings.Contains(resp.Output, "merge --ff-only") || strings.Contains(resp.Output, " rebase") {
 		t.Fatal("included relation must not list merge or rebase commands")
 	}
 
-	tmpl := `
-<contains>
-  # worktree: remove
+	// Template must not begin with a raw-string newline (that would expect want:"" line 1).
+	tmpl := "<contains>\n" + `  # worktree: remove
   git -C ` + shortMain + ` worktree remove ` + shortFeature + `
   # worktree branch: drop
   git -C ` + shortMain + ` branch -D feature

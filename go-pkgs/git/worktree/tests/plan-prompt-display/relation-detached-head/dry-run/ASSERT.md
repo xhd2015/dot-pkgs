@@ -2,6 +2,7 @@
 
 - Dry-run lists a fast-forward merge using the detached worktree commit SHA.
 - Must not treat detached ahead commit as already-included (no empty command list).
+- Output does **not** start with a leading blank line (`"\n"`).
 
 ## Errors
 
@@ -28,11 +29,15 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	shortFeature := shortPath(t, featureWT)
 	commit := revParseHEAD(t, featureWT)
 
+	if strings.HasPrefix(resp.Output, "\n") {
+		t.Fatal(`printDryRun output must not start with leading "\n"`)
+	}
+
 	if strings.Contains(strings.ToLower(resp.Output), "already included") {
 		t.Fatalf("detached ahead commit must not be reported as already included, got:\n%s", resp.Output)
 	}
-	tmpl := fmt.Sprintf(`
-<contains>
+	// Template must not begin with a raw-string newline (that would expect want:"" line 1).
+	tmpl := fmt.Sprintf(`<contains>
   # %s: fast forward
   git -C %s merge --ff-only %s
   # worktree: remove

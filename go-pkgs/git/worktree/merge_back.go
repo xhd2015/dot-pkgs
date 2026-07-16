@@ -557,7 +557,6 @@ func WritePlannedCommandsDisplay(b *strings.Builder, plan MergeBackPlan) {
 
 func printDryRun(result *MergeBackResult, plan MergeBackPlan) (*MergeBackResult, error) {
 	var b strings.Builder
-	b.WriteByte('\n')
 	WritePlannedCommandsDisplay(&b, plan)
 	fmt.Print(strings.TrimSuffix(b.String(), "\n"))
 	result.Action = "dry-run"

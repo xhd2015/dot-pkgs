@@ -1,10 +1,12 @@
 # Scenario
 
-cmdWorktreeBackAt: branches diverged, rebase succeeds. The worktree entry is in the middle of the chain.
-After rebase + ff merge, the worktree is removed and later entries are preserved.
+**Feature**: cmdWorktreeBackAt diverged splice under default auto-yes
 
+```
+# chain [repo, mid, wt(feature), later]; bare --back wt auto-yes rebase+merge + splice
 Chain: [repo, mid, wt(feature), later]
-mvd --back wt → rebase feature onto main(mid) → success → ff merge + remove wt → chain becomes [repo, mid, later]
+mvd --back wt → auto-yes rebase onto main → ff merge + remove wt → [repo, mid, later]
+```
 
 ## Steps
 - Create a git repo at work/repo.
@@ -13,7 +15,7 @@ mvd --back wt → rebase feature onto main(mid) → success → ff merge + remov
 - Move mid to work/later (creates a later entry after the worktree).
 - Commit work on the feature branch (wt).
 - Commit a different change on mid (diverging from feature).
-- Run --back on the worktree path (wt).
+- Run bare `--back` on the worktree path (wt) (default auto-yes).
 
 ```go
 import (
@@ -68,9 +70,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, later, "add", "main-work")
 	runGit(t, later, "commit", "-m", "main work")
 
-	// Step 6: --back on the worktree with TTY and Enter (confirm rebase).
-	req.Args = []string{"--back", "--confirm-from-stdin", wt}
-	req.StdinInput = "\n"
+	// Step 6: bare --back on the worktree (default auto-yes).
+	req.Args = []string{"--back", wt}
 	return nil
 }
 ```

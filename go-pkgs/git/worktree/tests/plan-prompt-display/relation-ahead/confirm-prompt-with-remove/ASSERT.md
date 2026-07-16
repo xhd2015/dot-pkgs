@@ -1,10 +1,13 @@
 ## Expected
 
-- `FormatPlanPrompt` output includes relation question with **actual** default branch at main (from `readDefaultBranch`), not a hardcoded wrong name.
+- `FormatPlanPrompt` output does **not** start with a leading blank line (`"\n"`).
+- First line is exactly `branch feature is ahead, merge into <default-branch>?`.
+- Relation question uses **actual** default branch at main (from `readDefaultBranch`), not a hardcoded wrong name.
 - Comment `# <target>: fast forward` before merge line.
 - Comments `# worktree: remove` and `# worktree branch: drop` before cleanup commands.
 - `git -C` uses shortened main repo path; `worktree remove` uses shortened feature path.
 - Contains `merge --ff-only feature`, `Proceed? [Y/n]:`.
+
 ## Expected Output
 
 ```
@@ -17,6 +20,8 @@ branch feature is ahead, merge into <default-branch>?
   git -C <short-main> branch -D feature
 Proceed? [Y/n]:
 ```
+
+(No leading `\n` before the question line.)
 
 ## Exit Code
 
@@ -41,13 +46,21 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	shortMain := shortPath(t, mainRepo)
 	shortFeature := shortPath(t, featureWT)
 
+	if strings.HasPrefix(resp.Output, "\n") {
+		t.Fatal(`FormatPlanPrompt output must not start with leading "\n"`)
+	}
+	wantFirst := "branch feature is ahead, merge into " + targetBranch + "?"
+	firstLine, _, _ := strings.Cut(resp.Output, "\n")
+	if firstLine != wantFirst {
+		t.Fatalf("first line = %q, want %q", firstLine, wantFirst)
+	}
+
 	if strings.Contains(resp.Output, "merge into main?") && targetBranch == "master" {
 		t.Fatal("must not hardcode main when checkout is master")
 	}
 
-	tmpl := `
-<contains>
-branch feature is ahead, merge into ` + targetBranch + `?
+	// Template must not begin with a raw-string newline (that would expect want:"" line 1).
+	tmpl := "<contains>\n" + `branch feature is ahead, merge into ` + targetBranch + `?
   # ` + targetBranch + `: fast forward
   git -C ` + shortMain + ` merge --ff-only feature
   # worktree: remove

@@ -50,9 +50,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	shortMain := displayGitPath(mainRepo)
 	shortWt := displayGitPath(wtDir)
 
-	tmpl := `
-<contains>
-branch feature has diverged, rebase and merge into ` + target + `?
+	// Avoid leading "" from raw-string newline after `: ` — FormatPlanPrompt has no leading \n (P1).
+	tmpl := "<contains>\n" + `branch feature has diverged, rebase and merge into ` + target + `?
   # feature: rebase onto ` + target + `
   git -C ` + shortWt + ` rebase
   # ` + target + `: fast forward

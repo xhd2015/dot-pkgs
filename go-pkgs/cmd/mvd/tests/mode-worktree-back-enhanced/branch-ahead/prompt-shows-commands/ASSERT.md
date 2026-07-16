@@ -52,9 +52,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	shortMain := displayGitPath(mainRepo)
 	shortWt := displayGitPath(wtDir)
 
-	tmpl := `
-<contains>
-branch feature is ahead, merge into ` + target + `?
+	// Avoid leading "" from raw-string newline after `: ` — FormatPlanPrompt has no leading \n (P1).
+	tmpl := "<contains>\n" + `branch feature is ahead, merge into ` + target + `?
   # ` + target + `: fast forward
   git -C ` + shortMain + ` merge --ff-only feature
   # worktree: remove

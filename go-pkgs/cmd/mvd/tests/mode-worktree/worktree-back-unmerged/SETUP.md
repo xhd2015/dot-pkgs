@@ -1,16 +1,18 @@
 # Scenario
 
-HEAD is ancestor of the worktree branch, but stdin is not a TTY.
-The prompt cannot be shown → error.
+**Feature**: non-TTY unmerged (ahead) `--back` auto-yes succeeds
 
+```
+# HEAD ancestor of worktree branch; non-TTY bare --back → auto-yes ff-merge
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit on wt → [feature branch ahead of main]
-mvd --back wt (non-TTY) → error
+mvd --back wt (non-TTY) → exit 0; ff-merge + remove
+```
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch (branch is now ahead of HEAD).
-- Run --back normally (no PTY, stdin is /dev/null → not a TTY).
+- Run `--back` normally (no PTY, stdin is /dev/null → not a TTY; no confirm flags).
 
 ```go
 import (

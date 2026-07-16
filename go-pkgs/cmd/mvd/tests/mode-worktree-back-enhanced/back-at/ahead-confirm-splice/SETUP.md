@@ -1,10 +1,12 @@
 # Scenario
 
-cmdWorktreeBackAt: HEAD is ancestor of the worktree branch. User confirms (Enter).
-Fast-forward merge, remove worktree, splice chain preserving later entries.
+**Feature**: cmdWorktreeBackAt ahead splice under default auto-yes
 
+```
+# chain [repo, mid, wt(feature), later]; bare --back wt auto-yes ff-merge + splice
 Chain: [repo, mid, wt(feature), later]
-mvd --back wt → prompt [Y/n] → Enter (default Y) → ff merge + remove wt → chain becomes [repo, mid, later]
+mvd --back wt → auto-yes → ff merge + remove wt → chain becomes [repo, mid, later]
+```
 
 ## Steps
 - Create a git repo at work/repo.
@@ -12,7 +14,7 @@ mvd --back wt → prompt [Y/n] → Enter (default Y) → ff merge + remove wt �
 - Create a worktree from mid at work/wt.
 - Move mid to work/later (creates a later entry after the worktree).
 - Commit work on the feature branch (wt) — branch is ahead of main HEAD.
-- Run --back on the worktree path (wt) with TTY input (Enter = default Y).
+- Run bare `--back` on the worktree path (wt) (default auto-yes).
 
 ```go
 import (
@@ -62,9 +64,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, wt, "add", "feature-work")
 	runGit(t, wt, "commit", "-m", "feature work ahead")
 
-	// Step 5: --back on the worktree with TTY input (Enter = default Y).
-	req.Args = []string{"--back", "--confirm-from-stdin", wt}
-	req.StdinInput = "\n"
+	// Step 5: bare --back on the worktree (default auto-yes).
+	req.Args = []string{"--back", wt}
 	return nil
 }
 ```

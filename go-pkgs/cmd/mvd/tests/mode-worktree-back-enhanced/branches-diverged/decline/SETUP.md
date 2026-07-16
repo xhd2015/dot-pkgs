@@ -1,18 +1,20 @@
 # Scenario
 
-Branches have diverged (neither is ancestor of the other). User declines by typing 'n'.
-Operation is aborted, no changes.
+**Feature**: user declines diverged rebase via `--confirm` + stdin `n`
 
+```
+# branches diverged; --confirm re-enables Y/n; --confirm-from-stdin for pipe
 mvd -w repo wt → [(repo), (wt w:wt, branch: feature)]
 commit on wt → [feature ahead]
 commit on main → [main also ahead → diverged]
-mvd --back wt → prompt [Y/n] → 'n' → abort
+mvd --back --confirm --confirm-from-stdin wt (n) → abort, no changes
+```
 
 ## Steps
 - Create a git repo, create a worktree from it.
 - Commit work on the feature branch.
 - Commit a different change on main (creating divergence).
-- Run --back with TTY stdin and 'n' as input.
+- Run `--back --confirm --confirm-from-stdin` with `n` input (decline).
 
 ```go
 import (
@@ -44,8 +46,8 @@ func Setup(t *testing.T, req *Request) error {
 	runGit(t, mainRepo, "add", "main-work")
 	runGit(t, mainRepo, "commit", "-m", "main work")
 
-	// Run --back with PTY (TTY) and 'n' input (decline).
-	req.Args = []string{"--back", "--confirm-from-stdin", wtDir}
+	// --confirm forces interactive plan prompt; --confirm-from-stdin for pipe.
+	req.Args = []string{"--back", "--confirm", "--confirm-from-stdin", wtDir}
 	req.StdinInput = "n\n"
 	return nil
 }

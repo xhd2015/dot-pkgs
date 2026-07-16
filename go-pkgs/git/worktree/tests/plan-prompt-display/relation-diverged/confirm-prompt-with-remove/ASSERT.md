@@ -1,6 +1,7 @@
 ## Expected
 
-- Question: `branch feature has diverged, rebase and merge into <target>?`
+- `FormatPlanPrompt` output does **not** start with a leading blank line (`"\n"`).
+- First line is exactly `branch feature has diverged, rebase and merge into <target>?`.
 - Comment `# feature: rebase onto <target>` before rebase command at feature worktree.
 - Merge, remove, and drop comments match CASE B pattern at main repo paths (shortened).
 
@@ -23,9 +24,17 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	shortMain := shortPath(t, mainRepo)
 	shortFeature := shortPath(t, featureWT)
 
-	tmpl := `
-<contains>
-branch feature has diverged, rebase and merge into ` + targetBranch + `?
+	if strings.HasPrefix(resp.Output, "\n") {
+		t.Fatal(`FormatPlanPrompt output must not start with leading "\n"`)
+	}
+	wantFirst := "branch feature has diverged, rebase and merge into " + targetBranch + "?"
+	firstLine, _, _ := strings.Cut(resp.Output, "\n")
+	if firstLine != wantFirst {
+		t.Fatalf("first line = %q, want %q", firstLine, wantFirst)
+	}
+
+	// Template must not begin with a raw-string newline (that would expect want:"" line 1).
+	tmpl := "<contains>\n" + `branch feature has diverged, rebase and merge into ` + targetBranch + `?
   # feature: rebase onto ` + targetBranch + `
   git -C ` + shortFeature + ` rebase
   # ` + targetBranch + `: fast forward
