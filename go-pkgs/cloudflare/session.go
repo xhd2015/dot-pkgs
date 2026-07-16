@@ -4,114 +4,21 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 // StartSession finds/creates a named tunnel, routes DNS, writes config, and starts cloudflared.
+// It is a thin wrapper around Attach so shared tunnel names are multi-host-safe
+// (managed registry + partial Stop via Detach).
 func StartSession(opts SessionOptions) (*Session, error) {
-	if strings.TrimSpace(opts.Domain) == "" {
-		return nil, fmt.Errorf("domain is required")
-	}
-	localURL := opts.LocalURL
-	if localURL == "" {
-		localURL = "http://127.0.0.1:6321"
-	}
-	logw := opts.Log
-	if logw == nil {
-		logw = io.Discard
-	}
-	runner := opts.Runner
-
-	workDir := opts.WorkDir
-	ownWorkDir := false
-	if workDir == "" {
-		dir, err := os.MkdirTemp("", "spl-seatalk-local-bot-*")
-		if err != nil {
-			return nil, fmt.Errorf("create workdir: %w", err)
-		}
-		workDir = dir
-		ownWorkDir = true
-	} else if err := os.MkdirAll(workDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create workdir: %w", err)
-	}
-
-	name, tunnelID, credFile, err := ensureTunnelForSession(runner, opts.TunnelName)
-	if err != nil {
-		if ownWorkDir {
-			_ = os.RemoveAll(workDir)
-		}
-		return nil, err
-	}
-
-	if err := RouteDNS(runner, name, opts.Domain); err != nil {
-		if ownWorkDir {
-			_ = os.RemoveAll(workDir)
-		}
-		return nil, err
-	}
-
-	configPath := filepath.Join(workDir, "config.yml")
-	cfg := &Config{
-		Tunnel:          tunnelID,
-		CredentialsFile: credFile,
-		Ingress: []IngressRule{
-			{Hostname: opts.Domain, Service: localURL},
-			{Service: "http_status:404"},
-		},
-	}
-	if err := WriteConfig(configPath, cfg); err != nil {
-		if ownWorkDir {
-			_ = os.RemoveAll(workDir)
-		}
-		return nil, err
-	}
-
-	sess := &Session{
-		TunnelName: name,
+	return Attach(AttachOptions{
 		Domain:     opts.Domain,
-		WorkDir:    workDir,
-		ConfigPath: configPath,
-		TunnelID:   tunnelID,
-		CredFile:   credFile,
-		ownWorkDir: ownWorkDir,
-		runner:     runner,
-		dnsDeleter: opts.DNSDeleter,
-		log:        logw,
-		publicURL:  "https://" + opts.Domain,
-	}
-
-	// Start cloudflared: injectable runner (tests) or real process.
-	if runner != nil {
-		// Fake runners return immediately for `tunnel ... run`.
-		if _, err := runner.Exec("cloudflared", "tunnel", "--config", configPath, "run", name); err != nil {
-			// Some fakes may only match args containing "run"; try alternate order used by cloudflared docs.
-			if _, err2 := runner.Exec("cloudflared", "tunnel", "run", "--config", configPath, name); err2 != nil {
-				_ = sess.cleanupPartial()
-				return nil, fmt.Errorf("start cloudflared via runner: %v / %v", err, err2)
-			}
-		}
-		sess.runnerMode = true
-	} else {
-		logPath := filepath.Join(workDir, "cloudflared.log")
-		logFile, lerr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-		if lerr != nil {
-			_ = sess.cleanupPartial()
-			return nil, lerr
-		}
-		proc, perr := StartProcess(configPath, name, logFile)
-		if perr != nil {
-			_ = logFile.Close()
-			_ = sess.cleanupPartial()
-			return nil, perr
-		}
-		sess.proc = proc
-		// log file lives for process lifetime; process inherits fd — close our handle is OK after start
-		_ = logFile.Close()
-	}
-
-	fmt.Fprintf(logw, "cloudflare session started: tunnel=%s domain=%s url=%s\n", name, opts.Domain, sess.publicURL)
-	return sess, nil
+		LocalURL:   opts.LocalURL,
+		TunnelName: opts.TunnelName,
+		ConfigDir:  opts.ConfigDir,
+		Log:        opts.Log,
+		Runner:     opts.Runner,
+		DNSDeleter: opts.DNSDeleter,
+	})
 }
 
 // PublicBaseURL returns https://<domain> (no path).
@@ -122,11 +29,30 @@ func (s *Session) PublicBaseURL() string {
 	return s.publicURL
 }
 
-// Stop stops cloudflared, removes the session workdir, and best-effort deletes DNS.
+// Stop releases the session.
+// Managed Attach sessions detach one hostname via Detach (siblings stay up;
+// connector stops only when Hosts is empty). Legacy StartSession sessions still
+// kill the process, remove WorkDir, and best-effort delete DNS.
 func (s *Session) Stop() error {
 	if s == nil {
 		return nil
 	}
+
+	// Managed attach path: partial detach from shared registry.
+	if s.managed {
+		err := Detach(DetachOptions{
+			Domain:     s.Domain,
+			TunnelName: s.TunnelName,
+			ConfigDir:  s.configDir,
+			Log:        s.log,
+			Runner:     s.runner,
+			DNSDeleter: s.dnsDeleter,
+		})
+		// Session no longer owns a live process after managed detach/restart.
+		s.proc = nil
+		return err
+	}
+
 	var firstErr error
 
 	if s.proc != nil {

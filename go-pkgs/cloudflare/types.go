@@ -42,13 +42,16 @@ type SessionOptions struct {
 	Domain     string // required public hostname
 	LocalURL   string // e.g. http://127.0.0.1:6321
 	TunnelName string // empty → DefaultTunnelName
-	WorkDir    string // empty → temp dir
+	WorkDir    string // legacy exclusive temp path; unused when StartSession wraps Attach
+	ConfigDir  string // empty → DefaultConfigDir for managed path via Attach
 	Log        io.Writer
 	Runner     CommandRunner
 	DNSDeleter DNSDeleter
 }
 
 // Session is a running named-tunnel session.
+// Sessions from Attach are managed: Stop detaches one host via Detach rather
+// than wiping a single-host WorkDir.
 type Session struct {
 	TunnelName  string
 	Domain      string
@@ -63,6 +66,9 @@ type Session struct {
 	log         io.Writer
 	publicURL   string
 	runnerMode  bool // process was "started" via Runner.Exec rather than real OS process
+	// managed attach identity (Stop → Detach)
+	managed   bool
+	configDir string
 }
 
 // StatusInfo reports cloudflared install / auth state.
