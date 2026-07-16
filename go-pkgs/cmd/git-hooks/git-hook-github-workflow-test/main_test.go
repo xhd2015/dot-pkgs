@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 )
 
 func TestParseArgs(t *testing.T) {
-	cfg, err := parseArgs([]string{"--fix", "--origin-domain=github.com", "--exclude-origin-domain", "git.example.com"})
+	cfg, err := parseArgs([]string{"--fix", "--origin-domain=github.com", "--exclude-origin-domain", "git.example.com"}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +26,7 @@ func TestParseArgs(t *testing.T) {
 }
 
 func TestParseArgsUnknownFlag(t *testing.T) {
-	_, err := parseArgs([]string{"--unknown"})
+	_, err := parseArgs([]string{"--unknown"}, io.Discard)
 	if err == nil {
 		t.Fatal("expected unknown flag error")
 	}
