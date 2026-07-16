@@ -7,8 +7,8 @@ Nested doc tests for `Options.Refresh`. When true, `Scan` skips the warm path an
 performs a cold full walk (and mirror rewrite when cache is enabled), finding
 brand-new repos that warm soft incompleteness would omit.
 
-This tree is nested (own `DOCTEST.md`) so the parent library tree does not
-reference `Options.Refresh` until the field exists — P1–P4 leaves keep building.
+This tree is nested (own `DOCTEST.md`) so force-refresh Run stays isolated; the
+parent library tree also passes `Refresh` for P7 orphan-gc cold-rescan leaves.
 
 ## DSN (Domain Specific Notion)
 

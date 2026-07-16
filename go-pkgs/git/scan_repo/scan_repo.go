@@ -59,9 +59,14 @@ type Options struct {
 	IgnoreDirs         []string
 	IgnoreDirBasenames []string
 	Verbose            bool
-	ListRemotes        bool
-	ListWorktrees      bool
-	Stderr             io.Writer
+	// Debug, when true, writes greppable phase-level "scan:" lines to Stderr
+	// (default os.Stderr): cache root, per-root mode=warm|cold + reason,
+	// warm serve candidates/live/duration, refresh summary, root total.
+	// Orthogonal to Verbose (permission/remote skip warnings).
+	Debug         bool
+	ListRemotes   bool
+	ListWorktrees bool
+	Stderr        io.Writer
 	// OnRepo is invoked immediately when a repository is discovered during the walk.
 	OnRepo func(Repo) error
 
@@ -86,6 +91,16 @@ type Options struct {
 	// Now, if non-nil, is the clock for age/budget decisions; nil means time.Now.
 	// Tests prefer stamped refreshed_at + YoungAge/Budget over real sleeps.
 	Now func() time.Time
+}
+
+// debugf writes a greppable "scan: …" line to opts.Stderr when Debug is on.
+// No-op when Debug is false (must not emit the "scan:" substring).
+func debugf(opts Options, format string, args ...interface{}) {
+	if !opts.Debug {
+		return
+	}
+	w := stderrWriter(opts.Stderr)
+	fmt.Fprintf(w, "scan: "+format+"\n", args...)
 }
 
 // defaultCacheRoot is the product cache store when cache is enabled and
@@ -128,6 +143,22 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 	// NoCache=true disables all mirror I/O. When cache is on, empty CacheRoot
 	// resolves to the product default ($HOME/.cache/git-repo-scan).
 	cacheRoot := resolveCacheRoot(opts)
+	// Never walk into the mirror store itself (e.g. bare scan of $HOME with
+	// cache under ~/.cache/git-repo-scan would otherwise nest mirrors forever).
+	if cacheRoot != "" {
+		if ignore.fullPaths == nil {
+			ignore.fullPaths = make(map[string]struct{})
+		}
+		ignore.fullPaths[filepath.Clean(cacheRoot)] = struct{}{}
+	}
+
+	if opts.Debug {
+		if cacheRoot == "" {
+			debugf(opts, "cacheRoot=<none>")
+		} else {
+			debugf(opts, "cacheRoot=%s", cacheRoot)
+		}
+	}
 
 	var result Result
 	for _, root := range opts.Roots {
@@ -148,7 +179,13 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 
 		// Warm path: complete root cache → serve is_repo marks + liveness, no full re-walk.
 		// NoCache leaves cacheRoot empty. Refresh forces cold full walk + rewrite.
-		useWarm := cacheRoot != "" && !opts.Refresh && rootWarmEligible(cacheRoot, absRoot)
+		useWarm, modeReason := rootCacheMode(cacheRoot, absRoot, opts)
+		rootStart := time.Now()
+		if useWarm {
+			debugf(opts, "root=%s mode=warm reason=%s", absRoot, modeReason)
+		} else {
+			debugf(opts, "root=%s mode=cold reason=%s", absRoot, modeReason)
+		}
 
 		if opts.OnRepo != nil {
 			var walkErr error
@@ -168,7 +205,10 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 			if useWarm {
 				// Collect served first so budgeted refresh can dedupe against them.
 				var served []Repo
-				served, walkErr = warmServeRoot(ctx, absRoot, cacheRoot, nil)
+				var serveStats warmServeStats
+				served, serveStats, walkErr = warmServeRoot(ctx, absRoot, cacheRoot, nil)
+				debugf(opts, "serve root=%s candidates=%d live=%d duration=%s",
+					absRoot, serveStats.candidates, serveStats.live, serveStats.duration)
 				if walkErr == nil {
 					for _, repo := range served {
 						if err := handleOnRepo(repo); err != nil {
@@ -179,11 +219,15 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 				}
 				if walkErr == nil {
 					// New units merge via handleOnRepo; existing seeds path dedupe.
-					_, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, served, handleOnRepo)
+					var refreshStats warmRefreshStats
+					_, refreshStats, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, served, handleOnRepo)
+					debugf(opts, "refresh root=%s budget=%s eligible=%d refreshed=%d duration=%s",
+						absRoot, refreshStats.budget, refreshStats.eligible, refreshStats.refreshed, refreshStats.duration)
 				}
 			} else {
 				_, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, handleOnRepo, cacheRoot)
 			}
+			debugf(opts, "root=%s total duration=%s", absRoot, time.Since(rootStart))
 			if walkErr != nil {
 				if walkErr == ctx.Err() {
 					return Result{}, walkErr
@@ -199,13 +243,20 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 		var found []Repo
 		var walkErr error
 		if useWarm {
-			found, walkErr = warmServeRoot(ctx, absRoot, cacheRoot, nil)
+			var serveStats warmServeStats
+			found, serveStats, walkErr = warmServeRoot(ctx, absRoot, cacheRoot, nil)
+			debugf(opts, "serve root=%s candidates=%d live=%d duration=%s",
+				absRoot, serveStats.candidates, serveStats.live, serveStats.duration)
 			if walkErr == nil {
-				found, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, found, nil)
+				var refreshStats warmRefreshStats
+				found, refreshStats, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, found, nil)
+				debugf(opts, "refresh root=%s budget=%s eligible=%d refreshed=%d duration=%s",
+					absRoot, refreshStats.budget, refreshStats.eligible, refreshStats.refreshed, refreshStats.duration)
 			}
 		} else {
 			found, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot)
 		}
+		debugf(opts, "root=%s total duration=%s", absRoot, time.Since(rootStart))
 		if walkErr != nil {
 			if walkErr == ctx.Err() {
 				return Result{}, walkErr

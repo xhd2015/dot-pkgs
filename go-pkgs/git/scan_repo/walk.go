@@ -115,7 +115,9 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		// Return partial discoveries so warm budget soft-stop can merge them.
+		// Callers that treat ctx cancel as hard still see the error.
+		return repos, err
 	}
 	return repos, nil
 }

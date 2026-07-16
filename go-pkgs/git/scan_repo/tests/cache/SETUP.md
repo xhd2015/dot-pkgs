@@ -27,6 +27,9 @@ cold seed + plant brand-new + Refresh=true
 # orphan mirror GC (P7) — orphan-gc/; parent rewalk prunes dead children
 cold seed + delete real child + cold Refresh or unit rewalk
   -> mirror entry for orphan path removed (Load ok=false)
+
+# debug timing/mode (nested debug/ DOCTEST — Options.Debug + stderr capture)
+Debug=true cold/warm → scan: mode= + serve timing; Debug=false → zero scan:
 ```
 
 ## Preconditions
@@ -42,6 +45,7 @@ cold seed + delete real child + cold Refresh or unit rewalk
   is also used by P7 `orphan-gc/cold-rescan`.
 - P7 orphan-gc leaves leave `CacheOp` empty under `orphan-gc/`; cold seed then
   delete a real child, then rewalk parent (Refresh or unit budget).
+- Nested `debug/` keeps its own DOCTEST.md for `Options.Debug` (not inherited).
 - Parse / Find paths are not exercised (`ParseURL` empty).
 
 

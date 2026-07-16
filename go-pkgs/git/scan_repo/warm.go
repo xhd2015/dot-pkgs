@@ -12,6 +12,13 @@ import (
 const (
 	defaultWarmRefreshBudget = time.Second
 	defaultYoungAge          = 60 * time.Second
+	// minBudgetForMidUnitCap is the smallest remaining budget for which a unit
+	// rewalk gets a child-context deadline. Below this, a unit may still start
+	// when remaining > 0 (between-unit gate) but runs under the parent context
+	// so a single small unit can finish under a tiny positive budget used by
+	// tests (e.g. 1µs oldest-first). Larger budgets (e.g. 100ms) always cap
+	// mid-walk via child deadline + soft partial merge.
+	minBudgetForMidUnitCap = time.Millisecond
 )
 
 // rootWarmEligible reports whether a scan root has a complete mirror entry
@@ -19,48 +26,79 @@ const (
 // Empty options_hash is treated as a match (P3); non-empty is also accepted
 // until option-hash invalidation is implemented.
 func rootWarmEligible(cacheRoot, absRoot string) bool {
-	if cacheRoot == "" {
-		return false
+	ok, _ := rootCacheMode(cacheRoot, absRoot, Options{})
+	return ok
+}
+
+// rootCacheMode decides warm vs cold for a scan root and returns a greppable
+// reason token for Debug logs (missing_root_entry, scan_complete_false,
+// no_cache, refresh, ok).
+func rootCacheMode(cacheRoot, absRoot string, opts Options) (warm bool, reason string) {
+	if opts.NoCache || cacheRoot == "" {
+		return false, "no_cache"
+	}
+	if opts.Refresh {
+		return false, "refresh"
 	}
 	entry, ok, err := LoadCacheEntry(cacheRoot, absRoot)
 	if err != nil || !ok {
-		return false
+		return false, "missing_root_entry"
 	}
-	return entry.ScanComplete
+	if !entry.ScanComplete {
+		return false, "scan_complete_false"
+	}
+	return true, "ok"
+}
+
+// warmServeStats is phase-level serve timing for Debug logs.
+type warmServeStats struct {
+	candidates int
+	live       int
+	duration   time.Duration
 }
 
 // warmServeRoot serves repos from mirror is_repo marks under absRoot, with
 // liveness checks against the real filesystem. It does not WalkDir the live tree.
-func warmServeRoot(ctx context.Context, absRoot, cacheRoot string, onRepo func(Repo) error) ([]Repo, error) {
+func warmServeRoot(ctx context.Context, absRoot, cacheRoot string, onRepo func(Repo) error) ([]Repo, warmServeStats, error) {
+	start := time.Now()
+	var stats warmServeStats
+
 	candidates, err := listCachedRepoPaths(cacheRoot, absRoot)
 	if err != nil {
-		return nil, err
+		stats.duration = time.Since(start)
+		return nil, stats, err
 	}
+	stats.candidates = len(candidates)
 
 	var repos []Repo
 	for _, path := range candidates {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			stats.duration = time.Since(start)
+			return nil, stats, ctx.Err()
 		default:
 		}
 
 		repo, live, err := liveRepoFromCache(cacheRoot, path)
 		if err != nil {
-			return nil, err
+			stats.duration = time.Since(start)
+			return nil, stats, err
 		}
 		if !live {
 			continue
 		}
+		stats.live++
 		if onRepo != nil {
 			if err := onRepo(repo); err != nil {
-				return nil, err
+				stats.duration = time.Since(start)
+				return nil, stats, err
 			}
 		} else {
 			repos = append(repos, repo)
 		}
 	}
-	return repos, nil
+	stats.duration = time.Since(start)
+	return repos, stats, nil
 }
 
 // listCachedRepoPaths walks the mirror tree under absRoot and returns real
@@ -166,25 +204,45 @@ func clearRepoMark(cacheRoot, path string) error {
 	return SaveCacheEntry(cacheRoot, path, entry)
 }
 
+// warmRefreshStats is phase-level refresh timing for Debug logs.
+type warmRefreshStats struct {
+	budget    time.Duration
+	eligible  int
+	refreshed int
+	duration  time.Duration
+}
+
 // warmBudgetRefresh rewalks oldest eligible direct-child units under absRoot
 // until WarmRefreshBudget wall time is exhausted, merging newly found repos
 // into existing. Negative budget means no refresh work. Zero budget uses the
 // product default (1s). Cold paths never call this.
 //
+// Budget is enforced mid-unit: each unit rewalk uses a child context whose
+// deadline is the remaining budget (parent ctx is not cancelled). On child
+// deadline/cancel while the parent is still live, the unit stop is soft —
+// partial discoveries merge into existing and remaining units are skipped.
+//
 // Units without a parseable mirror refreshed_at are not eligible (so brand-new
 // root-level dirs planted after cold seed stay soft-incomplete under default
 // YoungAge, matching P3 warm serve-only behavior).
-func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheRoot string, ignore ignoreConfig, existing []Repo, onRepo func(Repo) error) ([]Repo, error) {
+func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheRoot string, ignore ignoreConfig, existing []Repo, onRepo func(Repo) error) ([]Repo, warmRefreshStats, error) {
+	start := time.Now()
+	var stats warmRefreshStats
+
 	budget, ok := resolveWarmRefreshBudget(opts.WarmRefreshBudget)
 	if !ok {
-		return existing, nil
+		stats.budget = 0
+		stats.duration = time.Since(start)
+		return existing, stats, nil
 	}
+	stats.budget = budget
 	youngAge := resolveYoungAge(opts.YoungAge)
 	now := resolveNow(opts)
 
 	units, err := listRefreshUnits(cacheRoot, absRoot)
 	if err != nil {
-		return existing, err
+		stats.duration = time.Since(start)
+		return existing, stats, err
 	}
 	// No direct-child units: optionally rewalk root once (design fallback).
 	if len(units) == 0 {
@@ -192,8 +250,10 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 	}
 
 	candidates := eligibleRefreshUnits(cacheRoot, units, now, youngAge)
+	stats.eligible = len(candidates)
 	if len(candidates) == 0 {
-		return existing, nil
+		stats.duration = time.Since(start)
+		return existing, stats, nil
 	}
 
 	seen := make(map[string]struct{}, len(existing))
@@ -201,21 +261,7 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 		seen[r.Path] = struct{}{}
 	}
 
-	start := time.Now()
-	for _, u := range candidates {
-		if time.Since(start) >= budget {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return existing, ctx.Err()
-		default:
-		}
-
-		found, walkErr := walkRoot(ctx, u.path, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot)
-		if walkErr != nil {
-			return existing, walkErr
-		}
+	mergeFound := func(found []Repo) error {
 		for _, repo := range found {
 			if _, dup := seen[repo.Path]; dup {
 				continue
@@ -223,13 +269,71 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 			seen[repo.Path] = struct{}{}
 			if onRepo != nil {
 				if err := onRepo(repo); err != nil {
-					return existing, err
+					return err
 				}
 			}
 			existing = append(existing, repo)
 		}
+		return nil
 	}
-	return existing, nil
+
+	budgetStart := time.Now()
+	budgetDeadline := budgetStart.Add(budget)
+	for _, u := range candidates {
+		remaining := time.Until(budgetDeadline)
+		if remaining <= 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			stats.duration = time.Since(start)
+			return existing, stats, ctx.Err()
+		default:
+		}
+
+		// Mid-unit cap: child deadline = remaining budget wall (does not cancel
+		// parent). Sub-ms remainings skip the child deadline so between-unit
+		// gating still allows one small unit to finish under a tiny budget.
+		walkCtx := ctx
+		var unitCancel context.CancelFunc
+		var unitCtx context.Context
+		if remaining >= minBudgetForMidUnitCap {
+			unitCtx, unitCancel = context.WithDeadline(ctx, budgetDeadline)
+			walkCtx = unitCtx
+		}
+		found, walkErr := walkRoot(walkCtx, u.path, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot)
+		if unitCancel != nil {
+			unitCancel()
+		}
+
+		if walkErr != nil {
+			// Parent cancel/deadline is a hard failure (SIGINT path).
+			if err := ctx.Err(); err != nil {
+				_ = mergeFound(found)
+				stats.duration = time.Since(start)
+				return existing, stats, err
+			}
+			// Child-only deadline/cancel: soft stop — keep warm serve + partial
+			// merge, do not surface as RootError / Scan hard error.
+			if unitCtx != nil && unitCtx.Err() != nil {
+				if err := mergeFound(found); err != nil {
+					stats.duration = time.Since(start)
+					return existing, stats, err
+				}
+				stats.refreshed++
+				break
+			}
+			stats.duration = time.Since(start)
+			return existing, stats, walkErr
+		}
+		stats.refreshed++
+		if err := mergeFound(found); err != nil {
+			stats.duration = time.Since(start)
+			return existing, stats, err
+		}
+	}
+	stats.duration = time.Since(start)
+	return existing, stats, nil
 }
 
 // resolveWarmRefreshBudget returns (budget, enabled). Negative → disabled.

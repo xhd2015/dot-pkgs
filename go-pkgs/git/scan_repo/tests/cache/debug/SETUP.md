@@ -1,24 +1,30 @@
 # Scenario
 
-**Feature**: `Options.Refresh` force-cold library surface (P5)
+**Feature**: `Options.Debug` emits greppable `scan:` phase timing and warm/cold mode logs
 
 ```
-# cold seed then force refresh
-caller roots + CacheRoot + Refresh
-  -> Scan (cold full walk when Refresh=true)
-  -> Result.Repos includes post-seed brand-new repos
+# debug pipeline (library)
+caller roots + CacheRoot + Debug
+  -> Scan (warm or cold)
+  -> when Debug=true: stderrWriter(opts.Stderr) <- scan: lines
+     (cacheRoot, mode=warm|cold + reason, serve/refresh/total)
+  -> when Debug=false: zero scan: lines
+
+# tests always capture Stderr via bytes.Buffer in Run
 ```
 
 ## Preconditions
 
 - Nested root: does not inherit parent helpers; provides own absPath / fixtures.
-- Explicit temp `CacheRoot` only (never `$HOME/.cache`).
-- `Options.Refresh` is a library field; when true, Scan force-colds even if warm-eligible.
+- Explicit temp `CacheRoot` only (never `$HOME/.cache/git-repo-scan`).
+- `Options.Debug` is a library field; `Run` passes `Debug` and a capture buffer as `Options.Stderr`.
+- Fake `.git` fixtures; no enrichment.
 
 ## Steps
 
 1. Allocate temp `CacheRoot`.
-2. Leaves cold-seed, plant brand-new, set `Refresh=true`.
+2. Default `NoCache=false`, `Debug=false` (on/ overrides true).
+3. Provide `fakeGitRepo` and `coldSeedScan` for warm branch.
 
 ```go
 import (
@@ -53,6 +59,7 @@ func fakeGitRepo(t *testing.T, dir string) {
 }
 
 // coldSeedScan populates a complete root mirror for warm eligibility.
+// Seed runs without Debug so seed logs never pollute the Scan under test.
 func coldSeedScan(t *testing.T, roots []string, cacheRoot string) {
 	t.Helper()
 	if cacheRoot == "" {
@@ -65,6 +72,7 @@ func coldSeedScan(t *testing.T, roots []string, cacheRoot string) {
 		Roots:     roots,
 		CacheRoot: cacheRoot,
 		NoCache:   false,
+		Debug:     false,
 	})
 	if err != nil {
 		t.Fatalf("cold seed Scan: %v", err)
@@ -85,7 +93,7 @@ func coldSeedScan(t *testing.T, roots []string, cacheRoot string) {
 func Setup(t *testing.T, req *Request) error {
 	req.CacheRoot = t.TempDir()
 	req.NoCache = false
-	req.Refresh = false
+	req.Debug = false
 	return nil
 }
 ```

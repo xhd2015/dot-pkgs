@@ -58,6 +58,8 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
   Sort oldest `refreshed_at` first; skip young units. Rewalk unit = cold-like
   live walk of that child subtree + SaveCacheEntry updates + stamp
   `refreshed_at=now` on visited entries. Merge newly found repos into Result.
+  A single unit rewalk must also respect remaining budget (child context
+  deadline so parent SIGINT context stays live; soft partial merge on expiry).
   Cold scans remain unlimited full walk (no budget). Optional `Now` clock for
   deterministic tests (nil → `time.Now`).
 - **Force refresh (P5)** — when `Options.Refresh=true`, Scan skips the warm path
@@ -72,6 +74,12 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
   mirror directory subtree so the cache does not grow forever with dead paths.
   Warm serve liveness alone (P3) may only clear `is_repo`; GC is the stronger
   prune that runs on parent rewrite.
+- **Debug logger** — when `Options.Debug=true`, Scan writes phase-level structured
+  `scan:` lines to `Options.Stderr` (default `os.Stderr`): cache root, per-root
+  `mode=warm|cold` + reason, warm serve candidate/live counts and duration,
+  refresh budget/units summary, root total. When false, zero `scan:` markers
+  (orthogonal to `Verbose` permission/remote skip warnings). Nested
+  `cache/debug/` (own DOCTEST.md) exercises Debug on/off with stderr capture.
 
 ### Behaviors
 
@@ -121,10 +129,25 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
 - Eligible when `now - unit.refreshed_at >= YoungAge` (0 YoungAge → default 60s).
 - Order oldest first; rewalk until `WarmRefreshBudget` exhausted (0 → default 1s;
   negative → zero refresh work / no unit rewalk).
+- Budget bounds **within** a single unit rewalk as well as between units: unit
+  walk uses a **child context with remaining-budget deadline** (or equivalent
+  `ctx.Done` checks already in `walkRoot`); parent Scan / SIGINT context is not
+  cancelled. Mid-unit budget expiry is soft — prefer partial merge of warm-served
+  repos (no hard `Scan` error / no root-level failure for budget alone).
 - Rewalk merges new/changed repos into Result and updates mirror entries.
 - Young units are never selected even if budget remains.
 - Cold path ignores budget (unlimited full walk).
 - Liveness still holds during/after budgeted warm (deleted never emitted).
+
+**Scan (debug phase logs — `Options.Debug`)**
+
+- `Debug=true` → greppable `scan:` phase lines on `Options.Stderr` (default
+  `os.Stderr`): cache root, `mode=warm|cold` + reason, warm serve timing,
+  refresh budget summary, root total. Volume stays phase-level (not one line
+  per visited directory).
+- `Debug=false` → zero `scan:` markers; `Verbose` skip warnings keep their own
+  format and are not required to carry the `scan:` prefix.
+- Exercised by nested `cache/debug/` leaves (`on/cold`, `on/warm`, `off`).
 
 **Scan (orphan mirror GC — P7)**
 
@@ -229,13 +252,18 @@ scan-repo
     │   ├── young-skipped/     # unit within YoungAge → new still omitted
     │   ├── oldest-first/      # two units; tiny budget → only older unit’s new
     │   ├── budget-zero/       # negative WarmRefreshBudget → no refresh; miss new
+    │   ├── budget-caps-unit-walk/ # tiny budget + huge unit → Scan finishes fast; seed kept
     │   ├── liveness-holds/    # budgeted warm still omits deleted + clears mark
     │   └── cold-still-full/   # empty cache ignores budget; full discover
     ├── force-refresh/         [P5 nested DOCTEST.md — Options.Refresh=true]
     │   └── finds-new/         # force cold finds brand-new warm would miss
-    └── orphan-gc/             [P7 — parent rewalk prunes dead child mirror]
-        ├── cold-rescan/       # Refresh=true cold rewalk; gone entry removed
-        └── unit-refresh/      # budgeted unit rewalk; orphan under unit removed
+    ├── orphan-gc/             [P7 — parent rewalk prunes dead child mirror]
+    │   ├── cold-rescan/       # Refresh=true cold rewalk; gone entry removed
+    │   └── unit-refresh/      # budgeted unit rewalk; orphan under unit removed
+    └── debug/                 [nested DOCTEST.md — Options.Debug scan: timing/mode]
+        ├── on/cold/           # Debug=true empty cache → mode=cold + scan:
+        ├── on/warm/           # Debug=true after seed → mode=warm + serve timing
+        └── off/               # Debug=false → zero scan: markers
 ```
 
 ## Test Index
@@ -294,11 +322,15 @@ scan-repo
 | `cache/warm-refresh/young-skipped` | WarmRefresh | Unit within YoungAge; large budget still omits new under unit |
 | `cache/warm-refresh/oldest-first` | WarmRefresh | Two aged units; tiny budget refreshes oldest only → its new found |
 | `cache/warm-refresh/budget-zero` | WarmRefresh | Negative WarmRefreshBudget → no unit rewalk; new omitted |
+| `cache/warm-refresh/budget-caps-unit-walk` | WarmRefresh | Tiny budget + huge eligible unit → Scan wall << unbounded rewalk; known seed still served |
 | `cache/warm-refresh/liveness-holds` | WarmRefresh | Budgeted warm still omits deleted repo; cache mark cleared |
 | `cache/warm-refresh/cold-still-full` | WarmRefresh | No prior cache; budget options set; cold full walk finds all |
 | `cache/force-refresh/finds-new` | ForceRefresh (nested) | P5 `Options.Refresh=true` force cold finds brand-new |
 | `cache/orphan-gc/cold-rescan` | OrphanGC | P7 cold `Refresh` rewalk removes orphan `gone` mirror entry |
 | `cache/orphan-gc/unit-refresh` | OrphanGC | P7 budgeted unit rewalk removes orphan under unit parent |
+| `cache/debug/on/cold` | Debug (nested) | `Debug=true` empty cache → stderr `scan:` + `mode=cold` |
+| `cache/debug/on/warm` | Debug (nested) | `Debug=true` after cold seed → `mode=warm` + serve timing |
+| `cache/debug/off` | Debug (nested) | `Debug=false` → zero `scan:` markers on stderr |
 
 ## How to Run
 
@@ -309,6 +341,9 @@ doctest test -v ./go-pkgs/git/scan_repo/tests/cache/
 # P5 nested Options.Refresh tree (own DOCTEST.md):
 doctest vet ./go-pkgs/git/scan_repo/tests/cache/force-refresh/
 doctest test -v ./go-pkgs/git/scan_repo/tests/cache/force-refresh/
+# Options.Debug scan: timing/mode logs (own DOCTEST.md; green with library Debug):
+doctest vet ./go-pkgs/git/scan_repo/tests/cache/debug/
+doctest test -v ./go-pkgs/git/scan_repo/tests/cache/debug/
 
 ```
 
@@ -374,6 +409,10 @@ type Response struct {
 	MirrorPath string
 	Entry      scan_repo.CacheEntry
 	EntryOK    bool
+
+	// Elapsed is wall time of the primary operation in Run (Scan path only).
+	// Used by budget-caps leaves to prove WarmRefreshBudget bounds mid-unit work.
+	Elapsed time.Duration
 }
 
 func Run(t *testing.T, req *Request) (*Response, error) {
@@ -434,6 +473,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		}
 		return &Response{Found: found}, nil
 	}
+	scanStart := time.Now()
 	result, err := scan_repo.Scan(context.Background(), scan_repo.Options{
 		Roots:              req.Roots,
 		MaxDepth:           req.MaxDepth,
@@ -449,9 +489,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		YoungAge:           req.YoungAge,
 		Now:                req.Now,
 	})
+	elapsed := time.Since(scanStart)
 	if err != nil {
-		return nil, err
+		return &Response{Elapsed: elapsed}, err
 	}
-	return &Response{Repos: result.Repos, RootErrors: result.RootErrors}, nil
+	return &Response{Repos: result.Repos, RootErrors: result.RootErrors, Elapsed: elapsed}, nil
 }
 ```

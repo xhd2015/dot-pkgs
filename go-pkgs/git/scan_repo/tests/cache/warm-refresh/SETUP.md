@@ -10,6 +10,7 @@ NoCache=false + CacheRoot + root scan_complete
   -> candidates: now - refreshed_at >= YoungAge (default 60s when 0)
   -> oldest refreshed_at first; skip young
   -> until WarmRefreshBudget exhausted (0 → default 1s; negative → no work)
+  -> budget also caps mid-unit walkRoot (child ctx deadline; soft partial merge)
   -> rewalk merges new repos into Result + updates mirror
 
 # test control (no real 1s sleeps)
