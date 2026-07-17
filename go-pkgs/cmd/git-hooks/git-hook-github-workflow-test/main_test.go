@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 )
 
 func TestParseArgs(t *testing.T) {
-	cfg, err := parseArgs([]string{"--fix", "--origin-domain=github.com", "--exclude-origin-domain", "git.example.com"})
+	cfg, err := parseArgs([]string{"--fix", "--origin-domain=github.com", "--exclude-origin-domain", "git.example.com"}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +26,7 @@ func TestParseArgs(t *testing.T) {
 }
 
 func TestParseArgsUnknownFlag(t *testing.T) {
-	_, err := parseArgs([]string{"--unknown"})
+	_, err := parseArgs([]string{"--unknown"}, io.Discard)
 	if err == nil {
 		t.Fatal("expected unknown flag error")
 	}
@@ -49,7 +50,7 @@ func TestWorkflowContent(t *testing.T) {
 		"go -C sub-nested-dir test -v ./...",
 		"command -v doctest",
 		"go install github.com/xhd2015/doctest/cmd/doctest@latest",
-		"doctest test -v ./...",
+		"doctest test -v --label-all ./...",
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("expected workflow to contain %q, got:\n%s", want, content)
@@ -57,7 +58,7 @@ func TestWorkflowContent(t *testing.T) {
 	}
 	goTest := strings.Index(content, "go test -v ./...")
 	install := strings.Index(content, "go install github.com/xhd2015/doctest/cmd/doctest@latest")
-	doctest := strings.Index(content, "doctest test -v ./...")
+	doctest := strings.Index(content, "doctest test -v --label-all ./...")
 	if goTest < 0 || install < 0 || doctest < 0 || goTest > install || install > doctest {
 		t.Fatalf("expected go test before doctest install before doctest run, got:\n%s", content)
 	}
@@ -71,7 +72,7 @@ func TestWorkflowContentWithoutGoModules(t *testing.T) {
 	for _, want := range []string{
 		"golang:latest",
 		"no go.mod files found; skipping go test",
-		"doctest test -v ./...",
+		"doctest test -v --label-all ./...",
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("expected workflow to contain %q, got:\n%s", want, content)
