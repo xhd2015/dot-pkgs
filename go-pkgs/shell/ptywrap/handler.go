@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -202,8 +203,12 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 
 	select {
 	case <-s.done:
+		// Shell exited: send a normal close frame so clients see 1000
+		// rather than abnormal closure 1006 from a bare TCP tear-down.
 		s.unregisterConn(conn)
-		conn.Close()
+		msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+		_ = conn.WriteControl(websocket.CloseMessage, msg, time.Now().Add(time.Second))
+		_ = conn.Close()
 	case result := <-wsCloseCh:
 		handleWriterClose(result)
 	}

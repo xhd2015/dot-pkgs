@@ -19,6 +19,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
+	ptyclient "github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap/client"
 )
 
 // Request is the doctest harness request for ptywrap server tests.
@@ -71,6 +72,16 @@ type Response struct {
 
 	// SnapshotCount is how many attach_mode=snapshot reads returned usable bytes.
 	SnapshotCount int
+
+	// CloseCode is the WebSocket close code observed when the server ends the
+	// attach socket after the shell exits (expected 1000 after clean-close fix).
+	// Zero means no close was observed (timeout / harness error path).
+	CloseCode int
+	// AttachErr is the error string from client Attach/Wait after shell exit.
+	// Empty string means nil error (success).
+	AttachErr string
+	// SessionStatus is the REST status of SessionID after the phase (e.g. "exited").
+	SessionStatus string
 }
 
 // Run executes a ptywrap server doctest phase.
@@ -103,6 +114,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runMultiCreateOnConnectOrphan(t, req)
 	case "snapshot-multi-keeps-child":
 		return runSnapshotMultiKeepsChild(t, req)
+	case "shell-exit-ws-close-code":
+		return runShellExitWSCloseCode(t, req)
+	case "shell-exit-attach-wait":
+		return runShellExitAttachWait(t, req)
 	default:
 		return nil, fmt.Errorf("unknown phase %q", req.Phase)
 	}
@@ -514,6 +529,153 @@ func runMultiCreateOnConnectOrphan(t *testing.T, req *Request) (*Response, error
 		}
 	})
 	return resp, nil
+}
+
+// runShellExitWSCloseCode attaches as writer while a short-lived shell is still
+// running, waits for the shell to exit (server-side <-s.done), and records the
+// WebSocket close code the client observes. Correct behavior: 1000 Normal
+// Closure. Buggy behavior: bare conn.Close() → 1006 / unexpected EOF.
+func runShellExitWSCloseCode(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	// Sleep briefly so attach claims writer before exit; then process ends.
+	cmd := req.Command
+	if len(cmd) == 0 {
+		cmd = []string{"sh", "-c", "sleep 1"}
+	}
+	id, err := createSessionREST(t, req.ServerBase, cmd, "", "shell-exit-ws")
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() {
+		_ = deleteSessionREST(req.ServerBase, id)
+	})
+
+	conn := dialWS(t, req.ServerBase, "session_id="+url.QueryEscape(id))
+	defer conn.Close()
+	recv := startWSReader(conn)
+	drainWSHandshake(recv, 500*time.Millisecond)
+
+	code, out, waitErr := waitWSServerClose(recv, 15*time.Second)
+	if waitErr != nil {
+		return nil, waitErr
+	}
+	resp.SessionID = id
+	resp.CloseCode = code
+	resp.WSOutput = out
+
+	// Give list endpoint a moment to reflect exited status.
+	time.Sleep(200 * time.Millisecond)
+	sessions, err := listSessions(t, req.ServerBase)
+	if err != nil {
+		return nil, err
+	}
+	resp.Sessions = sessions
+	resp.SessionListed = sessionInList(sessions, id)
+	resp.SessionCount = len(sessions)
+	resp.SessionStatus = sessionStatus(sessions, id)
+	return resp, nil
+}
+
+// runShellExitAttachWait uses ptywrap/client AttachWithIO(Wait=true) against a
+// short-lived session. After shell exit, Attach must return nil (normalize
+// treats close 1000 as success). Buggy bare close yields
+// "terminal closed: unexpected EOF" / unexpected EOF.
+func runShellExitAttachWait(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	cmd := req.Command
+	if len(cmd) == 0 {
+		cmd = []string{"sh", "-c", "sleep 1"}
+	}
+	id, err := createSessionREST(t, req.ServerBase, cmd, "", "shell-exit-attach")
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() {
+		_ = deleteSessionREST(req.ServerBase, id)
+	})
+
+	c := ptyclient.NewClient(req.ServerBase)
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	defer stdinR.Close()
+	// Keep write end open so stdin does not EOF immediately and race the bridge.
+	t.Cleanup(func() { _ = stdinW.Close() })
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	defer stdoutW.Close()
+	// Drain stdout so the pipe does not block the bridge.
+	go io.Copy(io.Discard, stdoutR)
+
+	opts := ptyclient.ConnectOptions{
+		SessionID:    id,
+		Wait:         true,
+		SkipTTYCheck: true,
+	}
+	_, attachErr := ptyclient.AttachWithIO(c, opts, stdinR, stdoutW, stdoutW)
+	if attachErr != nil {
+		resp.AttachErr = attachErr.Error()
+	}
+	resp.SessionID = id
+
+	sessions, listErr := listSessions(t, req.ServerBase)
+	if listErr != nil {
+		return nil, listErr
+	}
+	resp.Sessions = sessions
+	resp.SessionListed = sessionInList(sessions, id)
+	resp.SessionCount = len(sessions)
+	resp.SessionStatus = sessionStatus(sessions, id)
+	return resp, nil
+}
+
+// waitWSServerClose drains frames until the reader reports an error (typically
+// a server-initiated WebSocket close) and returns the close code.
+func waitWSServerClose(recv <-chan wsFrame, timeout time.Duration) (closeCode int, out string, err error) {
+	deadline := time.After(timeout)
+	var buf strings.Builder
+	for {
+		select {
+		case <-deadline:
+			return 0, buf.String(), fmt.Errorf("timeout waiting for server-initiated WebSocket close")
+		case f, ok := <-recv:
+			if !ok {
+				if buf.Len() > 0 {
+					// Reader ended without an explicit close error; treat as abnormal.
+					return websocket.CloseAbnormalClosure, buf.String(), nil
+				}
+				return 0, "", fmt.Errorf("websocket reader closed before server close")
+			}
+			if f.err != nil {
+				code := websocket.CloseAbnormalClosure
+				if ce, ok := f.err.(*websocket.CloseError); ok {
+					code = ce.Code
+				} else if strings.Contains(f.err.Error(), "unexpected EOF") {
+					code = websocket.CloseAbnormalClosure
+				}
+				return code, buf.String(), nil
+			}
+			if f.mt == websocket.TextMessage && isControlJSON(f.msg) {
+				continue
+			}
+			if f.mt == websocket.BinaryMessage || f.mt == websocket.TextMessage {
+				appendFilteredWS(&buf, f.msg)
+			}
+		}
+	}
+}
+
+func sessionStatus(sessions []ptywrap.SessionInfo, id string) string {
+	for _, s := range sessions {
+		if s.ID == id {
+			return s.Status
+		}
+	}
+	return ""
 }
 
 func findNewSleepPID(t *testing.T, before map[int]struct{}) (int, error) {
