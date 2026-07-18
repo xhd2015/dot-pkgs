@@ -130,6 +130,11 @@ func warmServeFromIndex(ctx context.Context, absRoot, cacheRoot string, opts Opt
 			if _, exists := livePaths[s.Path]; exists {
 				continue
 			}
+			// Sibling ReadDir of parent may see peers outside absRoot
+			// (e.g. Scan(A) when parent holds A+B); only keep under-root.
+			if !pathIsUnderRoot(absRoot, s.Path) {
+				continue
+			}
 			livePaths[s.Path] = struct{}{}
 			entryByPath[s.Path] = RepoIndexEntry{
 				Path:     s.Path,

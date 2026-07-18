@@ -35,7 +35,10 @@ Nested `DOCTEST.md` isolates `Request`/`Response`/`Run` from the parent mirror
   (dir or gitfile); dead repos never appear in `Result.Repos`.
 - **Sibling probe** — for an indexed (or served) repo at `parent/A`, `ReadDir(parent)`
   finds `parent/B` with `.git` even if B was never cold-written to index/mirror;
-  warm Scan includes B without `Refresh`/full re-cold.
+  warm Scan includes B **when B is under absRoot**, without `Refresh`/full re-cold.
+- **Under-root filter** — after warm index serve + sibling merge, every emitted
+  (and save-back under this root) path must satisfy `pathIsUnderRoot(absRoot, path)`.
+  Neighboring checkouts outside the scan root are never returned.
 - **Filesystem** — fake `.git` fixtures; no enrichment, no git CLI.
 
 ### Behaviors
@@ -45,7 +48,10 @@ Nested `DOCTEST.md` isolates `Request`/`Response`/`Run` from the parent mirror
 - **Warm serves index:** second Scan returns the indexed live repos (same as cold
   seed set when FS unchanged); index still loadable after warm.
 - **Sibling discovers new:** after cold has only `parent/A`, plant `parent/B/.git`;
-  warm Scan includes **both** A and B (sibling ReadDir), without `Refresh=true`.
+  warm Scan of **parent** includes **both** A and B (sibling ReadDir), without
+  `Refresh=true`.
+- **Sibling under-root:** warm Scan of **child A** alone never returns neighbor B
+  even if sibling `ReadDir(parent)` sees B (filter with `pathIsUnderRoot`).
 - **Liveness drops dead via Scan:** after cold indexes live + doomed, remove
   `doomed/.git` (or the repo); next Scan omits doomed and keeps live.
 
@@ -57,8 +63,9 @@ index-serve                    [nested — Scan + home/repos.json + sibling]
 │   └── writes-index/          # home/repos.json lists cold-discovered mains
 ├── warm-serve/                [second Scan serves from index]
 │   └── from-index/            # Result matches indexed live repos; IndexOK
-├── sibling/                   [warm discovers uncached sibling]
-│   └── discovers-new/         # plant B after cold A; warm finds A+B
+├── sibling/                   [warm sibling probe under scan root]
+│   ├── discovers-new/         # plant B after cold A; Scan(parent) finds A+B
+│   └── scan-child-root-omits-sibling/  # Scan(A) omits neighbor B (under-root)
 └── liveness/                  [Scan path liveness, not pure ApplyLiveness]
     └── drop-dead-via-scan/    # remove .git of indexed repo → omitted on Scan
 ```
@@ -69,7 +76,8 @@ index-serve                    [nested — Scan + home/repos.json + sibling]
 |------|-------|-------------|
 | `cold-seed/writes-index` | cold | Cold Scan seeds `home/repos.json` with main paths |
 | `warm-serve/from-index` | warm | Warm Scan returns indexed live mains; index still present |
-| `sibling/discovers-new` | warm+sibling | Uncached sibling of indexed repo appears without Refresh |
+| `sibling/discovers-new` | warm+sibling | Uncached sibling under scan root appears without Refresh |
+| `sibling/scan-child-root-omits-sibling` | warm+sibling+under-root | Scan(child A) never returns neighbor B outside A |
 | `liveness/drop-dead-via-scan` | warm+liveness | Dead indexed path omitted from Scan Result |
 
 ## How to Run
