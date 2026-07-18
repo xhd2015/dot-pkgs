@@ -1,8 +1,7 @@
 ## Expected
 
 - Scan succeeds with exactly one discovered main repo (`my-repo`).
-- No `entry.json` files exist under `CacheRoot` (mirror absent or empty).
-- `LoadCacheEntry` for the repo path returns `ok=false`.
+- No `home/repos.json`, no `home/walk.jsonl`, no `mirror/` under CacheRoot.
 
 ## Errors
 
@@ -10,15 +9,13 @@
 
 ## Side Effects
 
-- CacheRoot remains free of mirror entry files despite successful Scan.
+- CacheRoot remains free of durable cache artifacts despite successful Scan.
 
 ```go
 import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
@@ -36,27 +33,18 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("Path = %q, want %q", resp.Repos[0].Path, repoPath)
 	}
 
-	entry, ok, loadErr := scan_repo.LoadCacheEntry(req.CacheRoot, repoPath)
-	if loadErr != nil {
-		t.Fatalf("LoadCacheEntry: %v", loadErr)
-	}
-	if ok {
-		t.Fatalf("expected no cache entry under NoCache, got %+v", entry)
-	}
-
-	// Walk CacheRoot for any entry.json — none allowed when NoCache.
-	var found []string
-	_ = filepath.WalkDir(req.CacheRoot, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for _, rel := range []string{
+		filepath.Join("home", "repos.json"),
+		filepath.Join("home", "walk.jsonl"),
+		filepath.Join("home", "walk.cursor.json"),
+		"mirror",
+	} {
+		p := filepath.Join(req.CacheRoot, rel)
+		if _, err := os.Stat(p); err == nil {
+			t.Fatalf("NoCache=true but found cache artifact %s", p)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat %s: %v", p, err)
 		}
-		if !d.IsDir() && d.Name() == "entry.json" {
-			found = append(found, path)
-		}
-		return nil
-	})
-	if len(found) != 0 {
-		t.Fatalf("NoCache=true but found entry.json files: %v", found)
 	}
 }
 ```

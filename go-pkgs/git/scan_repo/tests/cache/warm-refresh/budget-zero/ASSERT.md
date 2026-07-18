@@ -2,7 +2,8 @@
 
 - Scan succeeds with no RootErrors.
 - Exactly one repo: `unit-a/known-repo` (warm serve still works).
-- `unit-a/new-repo` is **not** listed (no refresh work under negative budget).
+- `unit-a/nested/new-repo` is **not** listed (no unit rewalk under negative budget;
+  path is not a sibling of any indexed repo).
 
 ## Errors
 
@@ -10,7 +11,8 @@
 
 ## Side Effects
 
-- Documents budget gate: negative WarmRefreshBudget equals pure P3 warm serve.
+- Documents budget gate: negative WarmRefreshBudget equals pure P3 warm serve
+  (index + sibling probe only; no nested discovery under aged units).
 
 ```go
 import (
@@ -32,11 +34,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	knownPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "known-repo"))
-	newPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "new-repo"))
+	newPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "nested", "new-repo"))
 
 	for i, r := range resp.Repos {
 		if r.Path == newPath {
-			t.Fatalf("listed new-repo at repos[%d] with WarmRefreshBudget=-1; want omit", i)
+			t.Fatalf("listed nested new-repo at repos[%d] with WarmRefreshBudget=-1; want omit (no unit rewalk)", i)
 		}
 	}
 	if len(resp.Repos) != 1 {

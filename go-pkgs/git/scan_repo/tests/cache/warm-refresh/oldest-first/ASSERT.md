@@ -1,8 +1,9 @@
 ## Expected
 
 - Scan succeeds with no RootErrors.
-- Result includes `a-known`, `b-known`, and `a-new` (oldest unit refreshed).
-- `b-new` is **not** listed (newer unit not reached within tiny budget).
+- Result includes `a-known`, `b-known`, and nested `a-new` (oldest unit refreshed).
+- Nested `b-new` is **not** listed (newer unit not reached within tiny budget;
+  not discoverable by sibling probe alone).
 
 ## Errors
 
@@ -11,6 +12,7 @@
 ## Side Effects
 
 - Proves oldest-first unit selection under a budget that fits one unit only.
+- Nested planting isolates refresh rewalk from intentional sibling probe.
 
 ```go
 import (
@@ -33,8 +35,8 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 
 	aKnown := absPath(t, filepath.Join(req.Roots[0], "unit-a", "a-known"))
 	bKnown := absPath(t, filepath.Join(req.Roots[0], "unit-b", "b-known"))
-	aNew := absPath(t, filepath.Join(req.Roots[0], "unit-a", "a-new"))
-	bNew := absPath(t, filepath.Join(req.Roots[0], "unit-b", "b-new"))
+	aNew := absPath(t, filepath.Join(req.Roots[0], "unit-a", "nested", "a-new"))
+	bNew := absPath(t, filepath.Join(req.Roots[0], "unit-b", "nested", "b-new"))
 
 	got := map[string]bool{}
 	for _, r := range resp.Repos {
@@ -50,7 +52,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("missing b-known %q in Result", bKnown)
 	}
 	if !got[aNew] {
-		t.Fatalf("missing a-new %q; oldest unit-a must be refreshed first", aNew)
+		t.Fatalf("missing a-new %q; oldest unit-a must be refreshed first (nested path needs rewalk)", aNew)
 	}
 	if len(resp.Repos) != 3 {
 		t.Fatalf("expected 3 repos (a-known, a-new, b-known), got %d: %v", len(resp.Repos), pathsOf(resp.Repos))

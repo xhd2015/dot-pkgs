@@ -25,9 +25,9 @@ Options:
   --list-remotes           List git remotes and append origin info to lines output
   --list-worktrees         Enrich main repos with git worktree metadata
   --json                   Output JSON array instead of tab-separated lines
-  --no-cache               Disable mirror cache read and write
+  --no-cache               Disable durable cache read and write (index + walk log)
   --refresh                Force full rescan and rewrite cache (skip warm)
-  --cache-dir PATH         Mirror cache root (default: $HOME/.cache/git-repo-scan)
+  --cache-dir PATH         Cache root for index + walk log (default: $HOME/.cache/git-repo-scan)
   -h, --help               Show this help message
 `
 

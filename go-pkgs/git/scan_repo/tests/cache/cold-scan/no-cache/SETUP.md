@@ -1,22 +1,20 @@
 # Scenario
 
-**Feature**: cold Scan with `NoCache=true` skips all mirror writes
+**Feature**: cold Scan with `NoCache=true` skips all cache writes
 
 ```
-# write-disabled cold path
 NoCache=true + CacheRoot set
-  -> Scan full walk (discovery still runs)
-  -> no entry.json under CacheRoot/mirror
+  -> full live discovery
+  -> no home/repos.json, no walk.jsonl, no mirror/
 ```
 
 ## Preconditions
 
-- `req.NoCache` is true.
-- `CacheRoot` is still set (temp) so a mistaken write would be observable.
+- Leaves set NoCache=true.
 
 ## Steps
 
-1. Set `NoCache=true`.
+1. Force NoCache=true at grouping level.
 
 ```go
 import "testing"

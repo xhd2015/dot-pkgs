@@ -58,7 +58,7 @@ func fakeGitRepo(t *testing.T, dir string) {
 	mkdirAll(t, filepath.Join(gitDir, "objects"))
 }
 
-// coldSeedScan populates a complete root mirror for warm eligibility.
+// coldSeedScan populates home/repos.json for warm eligibility (index-only).
 // Seed runs without Debug so seed logs never pollute the Scan under test.
 func coldSeedScan(t *testing.T, roots []string, cacheRoot string) {
 	t.Helper()
@@ -77,16 +77,12 @@ func coldSeedScan(t *testing.T, roots []string, cacheRoot string) {
 	if err != nil {
 		t.Fatalf("cold seed Scan: %v", err)
 	}
-	rootPath := absPath(t, roots[0])
-	entry, ok, loadErr := scan_repo.LoadCacheEntry(cacheRoot, rootPath)
+	idx, ok, loadErr := scan_repo.LoadRepoIndex(cacheRoot, scan_repo.UniverseHome)
 	if loadErr != nil {
-		t.Fatalf("cold seed LoadCacheEntry(root): %v", loadErr)
+		t.Fatalf("cold seed LoadRepoIndex: %v", loadErr)
 	}
-	if !ok {
-		t.Fatalf("cold seed: expected mirror entry for scan root %s", rootPath)
-	}
-	if !entry.ScanComplete {
-		t.Fatalf("cold seed: root ScanComplete=false, want true for warm eligibility")
+	if !ok || len(idx.Repos) == 0 {
+		t.Fatalf("cold seed: expected non-empty home/repos.json under %s", cacheRoot)
 	}
 }
 

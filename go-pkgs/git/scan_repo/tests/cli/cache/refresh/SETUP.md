@@ -41,14 +41,13 @@ func Setup(t *testing.T, req *Request) error {
 	if err != nil {
 		t.Fatalf("cold seed Scan: %v", err)
 	}
-	// Sanity: root must be warm-eligible after seed.
-	rootPath := absPath(t, root)
-	entry, ok, loadErr := scan_repo.LoadCacheEntry(cacheDir, rootPath)
+	// Sanity: home index must exist for warm (index-only warm eligibility).
+	idx, ok, loadErr := scan_repo.LoadRepoIndex(cacheDir, scan_repo.UniverseHome)
 	if loadErr != nil {
-		t.Fatalf("cold seed LoadCacheEntry(root): %v", loadErr)
+		t.Fatalf("cold seed LoadRepoIndex: %v", loadErr)
 	}
-	if !ok || !entry.ScanComplete {
-		t.Fatalf("cold seed: root not warm-eligible (ok=%v scan_complete=%v)", ok, entry.ScanComplete)
+	if !ok || len(idx.Repos) == 0 {
+		t.Fatalf("cold seed: expected non-empty home/repos.json under %s", cacheDir)
 	}
 
 	brandNew := filepath.Join(root, "brand-new-repo")

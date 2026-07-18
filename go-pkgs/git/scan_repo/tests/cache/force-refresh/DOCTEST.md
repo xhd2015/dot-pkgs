@@ -4,7 +4,7 @@
 0.0.2
 
 Nested doc tests for `Options.Refresh`. When true, `Scan` skips the warm path and
-performs a cold full walk (and mirror rewrite when cache is enabled), finding
+performs a cold full walk (and index rewrite when cache is enabled), finding
 brand-new repos that warm soft incompleteness would omit.
 
 This tree is nested (own `DOCTEST.md`) so force-refresh Run stays isolated; the
@@ -16,7 +16,7 @@ parent library tree also passes `Refresh` for P7 orphan-gc cold-rescan leaves.
 
 - **Caller** — supplies roots, explicit temp `CacheRoot`, and `Refresh=true`.
 - **Cold seeder** — prior `Scan` with `NoCache=false` populates a complete root
-  mirror so the workspace is warm-eligible.
+  index so the workspace is warm-eligible.
 - **Scan** — with `Refresh=true` must full-walk (not warm-serve) even when root
   cache is complete; returns brand-new repos planted after the seed.
 - **Contrast** — same fixture without Refresh is covered by parent
@@ -27,7 +27,7 @@ parent library tree also passes `Refresh` for P7 orphan-gc cold-rescan leaves.
 - `Refresh=true` + warm-eligible cache → cold full walk; Result includes known
   and brand-new mains, path-sorted.
 - `NoCache` remains false (cache still enabled for rewrite); this leaf asserts
-  discovery only, not mirror rewrite details.
+  discovery only, not index rewrite details.
 
 ## Decision Tree
 

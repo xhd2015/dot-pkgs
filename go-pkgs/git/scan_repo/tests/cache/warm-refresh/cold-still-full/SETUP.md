@@ -3,7 +3,7 @@
 **Feature**: cold Scan (empty cache) ignores refresh budget and fully discovers
 
 ```
-# no prior mirror — cold path
+# no prior cache/index — cold path
 workspace/repo-a + workspace/repo-b  (never seeded)
   -> Scan(CacheRoot set, NoCache=false, YoungAge=1ns, WarmRefreshBudget=1µs)
   -> full unlimited walk finds both (budget options must not limit cold)
@@ -11,7 +11,7 @@ workspace/repo-a + workspace/repo-b  (never seeded)
 
 ## Steps
 
-1. Create two main repos under root; **do not** cold-seed (empty mirror).
+1. Create two main repos under root; **do not** cold-seed (empty cache (no index)).
 2. Set tiny budget / YoungAge so a mistaken budget application on cold would fail.
 3. Run Scan — must find both repos.
 

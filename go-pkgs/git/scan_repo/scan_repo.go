@@ -70,27 +70,34 @@ type Options struct {
 	// OnRepo is invoked immediately when a repository is discovered during the walk.
 	OnRepo func(Repo) error
 
-	// CacheRoot is the root of the on-disk mirror cache. Empty means the
-	// product default ($HOME/.cache/git-repo-scan) when cache is enabled.
-	// Tests always pass an explicit temp dir. Write side effects are
-	// controlled with NoCache.
+	// CacheRoot is the root of the on-disk durable cache (repo index + walk log).
+	// Empty means the product default ($HOME/.cache/git-repo-scan) when cache is
+	// enabled. Dense mirror under CacheRoot/mirror is retired and never written.
+	// Tests always pass an explicit temp dir. Write side effects are controlled
+	// with NoCache.
 	CacheRoot string
 	// NoCache, when true, disables cache read and write for this Scan.
 	NoCache bool
 	// Refresh, when true and cache is enabled, forces a cold full walk +
-	// mirror rewrite even when the root is warm-eligible.
+	// index/walk rewrite even when the root is warm-eligible.
 	Refresh bool
 
 	// WarmRefreshBudget bounds wall time spent rewalking refresh units on a
 	// warm scan (P4). 0 means the product default (1s). Negative means no
 	// refresh work. Not applied on cold full walks.
 	WarmRefreshBudget time.Duration
-	// YoungAge is the minimum age (now - refreshed_at) before a refresh unit
+	// YoungAge is the minimum age (now - unit_dir.ModTime) before a refresh unit
 	// is eligible. 0 means the product default (60s).
 	YoungAge time.Duration
 	// Now, if non-nil, is the clock for age/budget decisions; nil means time.Now.
-	// Tests prefer stamped refreshed_at + YoungAge/Budget over real sleeps.
+	// Tests prefer stamped unit ModTime + YoungAge/Budget over real sleeps.
 	Now func() time.Time
+
+	// LastScanEnd is the prior scan completion time used to select the
+	// walk-log consume sync budget (P4). Zero means read home/meta.json
+	// last_scan_end when present; if still unknown, budget treats delta as
+	// ancient (full 1s tier).
+	LastScanEnd time.Time
 }
 
 // debugf writes a greppable "scan: …" line to opts.Stderr when Debug is on.
@@ -140,11 +147,11 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	// NoCache=true disables all mirror I/O. When cache is on, empty CacheRoot
-	// resolves to the product default ($HOME/.cache/git-repo-scan).
+	// NoCache=true disables all durable cache I/O (index + walk log). When cache
+	// is on, empty CacheRoot resolves to the product default.
 	cacheRoot := resolveCacheRoot(opts)
-	// Never walk into the mirror store itself (e.g. bare scan of $HOME with
-	// cache under ~/.cache/git-repo-scan would otherwise nest mirrors forever).
+	// Never walk into the cache store itself (e.g. bare scan of $HOME with
+	// cache under ~/.cache/git-repo-scan).
 	if cacheRoot != "" {
 		if ignore.fullPaths == nil {
 			ignore.fullPaths = make(map[string]struct{})
@@ -177,7 +184,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 			continue
 		}
 
-		// Warm path: complete root cache → serve is_repo marks + liveness, no full re-walk.
+		// Warm path: usable home/repos.json under root → serve index + liveness, no full re-walk.
 		// NoCache leaves cacheRoot empty. Refresh forces cold full walk + rewrite.
 		useWarm, modeReason := rootCacheMode(cacheRoot, absRoot, opts)
 		rootStart := time.Now()
@@ -189,6 +196,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 
 		if opts.OnRepo != nil {
 			var walkErr error
+			var rootCollected []Repo
 			handleOnRepo := func(repo Repo) error {
 				select {
 				case <-ctx.Done():
@@ -199,6 +207,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 				if onErr := opts.OnRepo(repo); onErr != nil {
 					repo.Error = appendRepoError(repo.Error, onErr.Error())
 				}
+				rootCollected = append(rootCollected, repo)
 				result.Repos = append(result.Repos, repo)
 				return nil
 			}
@@ -206,7 +215,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 				// Collect served first so budgeted refresh can dedupe against them.
 				var served []Repo
 				var serveStats warmServeStats
-				served, serveStats, walkErr = warmServeRoot(ctx, absRoot, cacheRoot, nil)
+				served, serveStats, walkErr = warmServeRootOpts(ctx, absRoot, cacheRoot, opts, nil)
 				debugf(opts, "serve root=%s candidates=%d live=%d duration=%s",
 					absRoot, serveStats.candidates, serveStats.live, serveStats.duration)
 				if walkErr == nil {
@@ -224,8 +233,24 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 					debugf(opts, "refresh root=%s budget=%s eligible=%d refreshed=%d duration=%s",
 						absRoot, refreshStats.budget, refreshStats.eligible, refreshStats.refreshed, refreshStats.duration)
 				}
+				// P4: walk-log consume (re-list visits, gone/new, gen_end G+1).
+				if walkErr == nil {
+					_, walkErr = consumeWalkLog(ctx, cacheRoot, opts, absRoot, rootCollected, handleOnRepo)
+				}
 			} else {
-				_, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, handleOnRepo, cacheRoot)
+				_, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, handleOnRepo, cacheRoot, true)
+				// P2: cold walk seeds durable home/repos.json.
+				if walkErr == nil {
+					if seedErr := seedHomeRepoIndex(cacheRoot, absRoot, rootCollected); seedErr != nil {
+						walkErr = seedErr
+					}
+				}
+				// P3: seal cold generation (gen_end gen=1) + walk cursor at EOF.
+				if walkErr == nil {
+					if sealErr := SealColdWalkGenEnd(cacheRoot, 1); sealErr != nil {
+						walkErr = sealErr
+					}
+				}
 			}
 			debugf(opts, "root=%s total duration=%s", absRoot, time.Since(rootStart))
 			if walkErr != nil {
@@ -244,7 +269,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 		var walkErr error
 		if useWarm {
 			var serveStats warmServeStats
-			found, serveStats, walkErr = warmServeRoot(ctx, absRoot, cacheRoot, nil)
+			found, serveStats, walkErr = warmServeRootOpts(ctx, absRoot, cacheRoot, opts, nil)
 			debugf(opts, "serve root=%s candidates=%d live=%d duration=%s",
 				absRoot, serveStats.candidates, serveStats.live, serveStats.duration)
 			if walkErr == nil {
@@ -253,8 +278,24 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 				debugf(opts, "refresh root=%s budget=%s eligible=%d refreshed=%d duration=%s",
 					absRoot, refreshStats.budget, refreshStats.eligible, refreshStats.refreshed, refreshStats.duration)
 			}
+			// P4: walk-log consume (re-list visits, gone/new, gen_end G+1).
+			if walkErr == nil {
+				found, walkErr = consumeWalkLog(ctx, cacheRoot, opts, absRoot, found, nil)
+			}
 		} else {
-			found, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot)
+			found, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot, true)
+			// P2: cold walk seeds durable home/repos.json.
+			if walkErr == nil {
+				if seedErr := seedHomeRepoIndex(cacheRoot, absRoot, found); seedErr != nil {
+					walkErr = seedErr
+				}
+			}
+			// P3: seal cold generation (gen_end gen=1) + walk cursor at EOF.
+			if walkErr == nil {
+				if sealErr := SealColdWalkGenEnd(cacheRoot, 1); sealErr != nil {
+					walkErr = sealErr
+				}
+			}
 		}
 		debugf(opts, "root=%s total duration=%s", absRoot, time.Since(rootStart))
 		if walkErr != nil {

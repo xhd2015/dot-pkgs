@@ -1,9 +1,10 @@
 ## Expected
 
 - Scan succeeds with no RootErrors.
-- Exactly one repo in `resp.Repos`: the previously cached `known-repo`.
+- Exactly one repo in `resp.Repos`: the previously cached `unit-a/known-repo`.
 - `known-repo` is `RepoTypeMain` with Path/GitDir matching the fixture.
-- `brand-new-repo` is **not** listed (warm serves from cache; does not full re-walk).
+- `unit-elsewhere/brand-new-repo` is **not** listed (warm serves from cache +
+  sibling probe of indexed parents only; does not full re-walk other units).
 
 ## Errors
 
@@ -11,8 +12,9 @@
 
 ## Side Effects
 
-- Documents soft incompleteness: uncached repos planted after cold seed are missed
-  until a cold re-scan or later budgeted refresh (P4, out of scope).
+- Documents soft incompleteness: uncached repos under paths that are not
+  siblings of indexed repos (and not rewalked by budgeted refresh) are missed
+  until a cold re-scan or later budgeted unit refresh (P4).
 
 ```go
 import (
@@ -33,14 +35,15 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("expected no RootErrors, got %v", resp.RootErrors)
 	}
 
-	knownPath := absPath(t, filepath.Join(req.Roots[0], "known-repo"))
-	brandNewPath := absPath(t, filepath.Join(req.Roots[0], "brand-new-repo"))
+	knownPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "known-repo"))
+	brandNewPath := absPath(t, filepath.Join(req.Roots[0], "unit-elsewhere", "brand-new-repo"))
 	wantGitDir := absPath(t, filepath.Join(knownPath, ".git"))
 
-	// Brand-new must be omitted — proves Scan did not full re-walk the tree.
+	// Brand-new under a non-sibling unit must be omitted — proves Scan did not
+	// full re-walk; sibling probe only covers parents of indexed repos.
 	for i, r := range resp.Repos {
 		if r.Path == brandNewPath {
-			t.Fatalf("warm Scan listed uncached brand-new-repo at repos[%d]=%q; want omit (no full re-walk)", i, r.Path)
+			t.Fatalf("warm Scan listed uncached brand-new-repo at repos[%d]=%q; want omit (not a sibling of indexed repos; no full re-walk)", i, r.Path)
 		}
 	}
 

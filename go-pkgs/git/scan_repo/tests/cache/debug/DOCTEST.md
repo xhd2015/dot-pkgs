@@ -50,7 +50,7 @@ stay isolated from the parent library tree's Request/Response contract.
 ```
 debug                          [nested — Options.Debug + stderr capture]
 ├── on/                        [Debug=true]
-│   ├── cold/                  # empty CacheRoot mirror → mode=cold + scan:
+│   ├── cold/                  # empty CacheRoot → mode=cold + scan:
 │   └── warm/                  # cold seed then Scan → mode=warm + serve timing
 └── off/                       [Debug=false — leaf]
                                # Scan with cache; zero scan: lines on stderr

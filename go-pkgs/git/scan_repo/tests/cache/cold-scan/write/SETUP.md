@@ -1,12 +1,13 @@
 # Scenario
 
-**Feature**: cold Scan with `NoCache=false` writes mirror entries for visited dirs
+**Feature**: cold Scan with `NoCache=false` seeds durable index (and walk log), not mirror
 
 ```
 # write-enabled cold path
 NoCache=false + CacheRoot set
   -> Scan full walk
-  -> mirror entry.json for repos and intermediate directories
+  -> home/repos.json lists discovered checkouts
+  -> no mirror/ tree
 ```
 
 ## Preconditions

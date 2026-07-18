@@ -2,13 +2,13 @@
 
 - Exit code 0; stderr empty.
 - Stdout is exactly one line: `{abs my-repo}\tmain`.
-- After scan, `LoadCacheEntry(--cache-dir, my-repo)` returns `ok=true` with
-  `is_repo=true`, `repo_type=main`, non-empty `refreshed_at`, `scan_complete=true`.
+- After scan, `home/repos.json` under `--cache-dir` lists the main repo.
+- Path `--cache-dir/mirror` does not exist.
 
 ## Side Effects
 
-- Cold scan with `--cache-dir` populates the mirror under the caller-provided path
-  (not the product default under `$HOME`).
+- Cold scan with `--cache-dir` seeds durable index under the caller-provided path
+  (not the product default under `$HOME`). Dense mirror is retired.
 
 ## Exit Code
 
@@ -16,10 +16,10 @@
 
 ```go
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
@@ -45,39 +45,35 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	repoPath := absPath(t, filepath.Join(roots[0], "my-repo"))
-	wantGitDir := absPath(t, filepath.Join(repoPath, ".git"))
 	wantLine := repoPath + "\tmain"
 	got := strings.TrimSuffix(resp.Stdout, "\n")
 	if got != wantLine {
 		t.Fatalf("stdout = %q, want %q", got, wantLine)
 	}
 
-	entry, ok, loadErr := scan_repo.LoadCacheEntry(cacheDir, repoPath)
+	idx, ok, loadErr := scan_repo.LoadRepoIndex(cacheDir, scan_repo.UniverseHome)
 	if loadErr != nil {
-		t.Fatalf("LoadCacheEntry: %v", loadErr)
+		t.Fatalf("LoadRepoIndex: %v", loadErr)
 	}
 	if !ok {
-		t.Fatalf("expected cache entry for %s under --cache-dir %s", repoPath, cacheDir)
+		t.Fatalf("expected home/repos.json under --cache-dir %s", cacheDir)
 	}
-	if !entry.IsRepo {
-		t.Fatal("IsRepo = false, want true")
-	}
-	if entry.RepoType != string(scan_repo.RepoTypeMain) {
-		t.Fatalf("RepoType = %q, want main", entry.RepoType)
-	}
-	if entry.GitDir != wantGitDir {
-		t.Fatalf("GitDir = %q, want %q", entry.GitDir, wantGitDir)
-	}
-	if !entry.ScanComplete {
-		t.Fatal("ScanComplete = false, want true")
-	}
-	if entry.RefreshedAt == "" {
-		t.Fatal("RefreshedAt empty, want non-empty RFC3339")
-	}
-	if _, parseErr := time.Parse(time.RFC3339, entry.RefreshedAt); parseErr != nil {
-		if _, parseErr2 := time.Parse(time.RFC3339Nano, entry.RefreshedAt); parseErr2 != nil {
-			t.Fatalf("RefreshedAt %q not RFC3339: %v", entry.RefreshedAt, parseErr)
+	found := false
+	for _, e := range idx.Repos {
+		if e.Path == repoPath && e.RepoType == string(scan_repo.RepoTypeMain) {
+			found = true
+			break
 		}
+	}
+	if !found {
+		t.Fatalf("index missing main %s; entries=%v", repoPath, idx.Repos)
+	}
+
+	mirrorDir := filepath.Join(cacheDir, "mirror")
+	if _, err := os.Stat(mirrorDir); err == nil {
+		t.Fatalf("CLI cold scan created mirror at %s; dense mirror is retired", mirrorDir)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat mirror: %v", err)
 	}
 }
 ```

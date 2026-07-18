@@ -1,53 +1,51 @@
 # Scenario
 
-**Feature**: per-directory mirror cache — pure store (P1), cold write (P2), warm serve (P3), budgeted refresh (P4), force refresh (P5), orphan GC (P7)
+**Feature**: durable repo index + walk JSONL + budgets (dense mirror retired)
 
 ```
-# pure cache store — CacheOp set, no Scan walk
-caller CacheRoot + realPath + CacheOp
-  -> MirrorEntryPath | SaveCacheEntry | LoadCacheEntry
-  -> <CacheRoot>/mirror/<abs-without-leading-slash>/entry.json
-
 # cold Scan write — CacheOp empty, Roots set, CacheRoot temp
 caller roots + CacheRoot + NoCache -> Scan
-  -> Result.Repos + optional mirror entry.json side effects
+  -> Result.Repos + home/repos.json + walk.jsonl/gen_end
+  -> no <CacheRoot>/mirror
 
 # warm Scan — CacheOp empty; Setup cold-seeds then mutates FS
-caller roots + CacheRoot + NoCache=false (complete root cache)
-  -> Scan serves cached live repos + liveness; NoCache bypasses warm
+caller roots + CacheRoot + NoCache=false (usable index)
+  -> Scan serves index + live repos + liveness + optional sibling probe
+  -> NoCache bypasses warm; walk-log consume under adaptive budget
 
-# warm budgeted refresh (P4) — warm-refresh/; stamp refreshed_at + YoungAge/Budget
+# warm budgeted unit refresh — warm-refresh/; unit dir ModTime + YoungAge/Budget
 caller warm path + WarmRefreshBudget + YoungAge (+ optional Now)
   -> rewalk oldest eligible direct-child units until budget exhausted
 
-# force refresh (P5) — nested force-refresh/ DOCTEST (own Run with Options.Refresh)
+# force refresh — nested force-refresh/ DOCTEST (own Run with Options.Refresh)
 cold seed + plant brand-new + Refresh=true
-  -> cold full walk finds brand-new despite warm-eligible cache
+  -> cold full walk finds brand-new despite warm-eligible index
 
-# orphan mirror GC (P7) — orphan-gc/; parent rewalk prunes dead children
-cold seed + delete real child + cold Refresh or unit rewalk
-  -> mirror entry for orphan path removed (Load ok=false)
+# no-mirror/ — RED until product stops writing mirror/
+cold/warm Scan with CacheRoot -> mirror path absent
 
 # debug timing/mode (nested debug/ DOCTEST — Options.Debug + stderr capture)
 Debug=true cold/warm → scan: mode= + serve timing; Debug=false → zero scan:
+
+# nested trees (own DOCTEST.md each)
+repo-index/   → Load/SaveRepoIndex + ApplyLiveness (home|root)
+index-serve/  → Scan seeds/serves home/repos.json + sibling + liveness
+walk-log/     → walk.jsonl cold seal gen_end + consume + adaptive budget
 ```
 
 ## Preconditions
 
 - Every leaf uses an explicit temp `CacheRoot` from `t.TempDir()`.
-- P1 leaves set `CacheOp` (mirror-path / load / save-load / overwrite).
-- P2 cold-scan leaves leave `CacheOp` empty and set `Roots` under `cold-scan/`.
-- P3 warm leaves leave `CacheOp` empty under `warm/`; cold seed in Setup shares
+- Cold-scan / warm / warm-refresh / no-mirror leave `CacheOp` empty and set `Roots`.
+- Warm leaves leave `CacheOp` empty under `warm/`; cold seed in Setup shares
   the same `CacheRoot` as the Scan under test.
-- P4 warm-refresh leaves leave `CacheOp` empty under `warm-refresh/`; stamp
-  unit `refreshed_at` and set YoungAge / WarmRefreshBudget (no real 1s sleeps).
-- P5 nested `force-refresh/` keeps its own DOCTEST.md; parent `Request.Refresh`
-  is also used by P7 `orphan-gc/cold-rescan`.
-- P7 orphan-gc leaves leave `CacheOp` empty under `orphan-gc/`; cold seed then
-  delete a real child, then rewalk parent (Refresh or unit budget).
-- Nested `debug/` keeps its own DOCTEST.md for `Options.Debug` (not inherited).
+- Warm-refresh leaves leave `CacheOp` empty under `warm-refresh/`; stamp
+  unit ModTime and set YoungAge / WarmRefreshBudget (no real 1s sleeps).
+- Nested `force-refresh/` keeps its own DOCTEST.md.
+- Nested `debug/`, `repo-index/`, `index-serve/`, `walk-log/` each keep their
+  own DOCTEST.md (inheritance firewall).
 - Parse / Find paths are not exercised (`ParseURL` empty).
-
+- Pure mirror store (`MirrorEntryPath` / `SaveCacheEntry` / `LoadCacheEntry`) is retired.
 
 ## Steps
 

@@ -13,8 +13,8 @@
 
 ## Side Effects
 
-- Discovery fields match non-cache scan; mirror write may or may not yet exist
-  (this leaf only locks discovery shape — not cache contents).
+- Discovery fields match non-cache scan; index/walk writes are orthogonal to
+  Result.Repos shape (this leaf only locks discovery shape).
 
 ```go
 import (

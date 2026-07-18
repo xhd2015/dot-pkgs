@@ -2,7 +2,6 @@ package scan_repo
 
 import (
 	"context"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,18 +20,16 @@ const (
 	minBudgetForMidUnitCap = time.Millisecond
 )
 
-// rootWarmEligible reports whether a scan root has a complete mirror entry
-// that can be served without a full live WalkDir.
-// Empty options_hash is treated as a match (P3); non-empty is also accepted
-// until option-hash invalidation is implemented.
+// rootWarmEligible reports whether a scan root can be served warm from the
+// durable repo index (entries under the root).
 func rootWarmEligible(cacheRoot, absRoot string) bool {
 	ok, _ := rootCacheMode(cacheRoot, absRoot, Options{})
 	return ok
 }
 
 // rootCacheMode decides warm vs cold for a scan root and returns a greppable
-// reason token for Debug logs (missing_root_entry, scan_complete_false,
-// no_cache, refresh, ok).
+// reason token for Debug logs (missing_root_entry, no_cache, refresh, ok).
+// Warm eligibility is index-only: usable home/repos.json with entries under absRoot.
 func rootCacheMode(cacheRoot, absRoot string, opts Options) (warm bool, reason string) {
 	if opts.NoCache || cacheRoot == "" {
 		return false, "no_cache"
@@ -40,14 +37,16 @@ func rootCacheMode(cacheRoot, absRoot string, opts Options) (warm bool, reason s
 	if opts.Refresh {
 		return false, "refresh"
 	}
-	entry, ok, err := LoadCacheEntry(cacheRoot, absRoot)
+	idx, ok, err := LoadRepoIndex(cacheRoot, UniverseHome)
 	if err != nil || !ok {
 		return false, "missing_root_entry"
 	}
-	if !entry.ScanComplete {
-		return false, "scan_complete_false"
+	for _, e := range idx.Repos {
+		if pathIsUnderRoot(absRoot, e.Path) {
+			return true, "ok"
+		}
 	}
-	return true, "ok"
+	return false, "missing_root_entry"
 }
 
 // warmServeStats is phase-level serve timing for Debug logs.
@@ -57,151 +56,43 @@ type warmServeStats struct {
 	duration   time.Duration
 }
 
-// warmServeRoot serves repos from mirror is_repo marks under absRoot, with
-// liveness checks against the real filesystem. It does not WalkDir the live tree.
+// warmServeRoot serves repos from the durable home universe index when present
+// (LoadRepoIndex + ApplyLiveness + sibling ReadDir). Index-only; no mirror fallback.
 func warmServeRoot(ctx context.Context, absRoot, cacheRoot string, onRepo func(Repo) error) ([]Repo, warmServeStats, error) {
+	return warmServeRootOpts(ctx, absRoot, cacheRoot, Options{}, onRepo)
+}
+
+// warmServeRootOpts is warmServeRoot with Options for budget-aware sibling probe.
+func warmServeRootOpts(ctx context.Context, absRoot, cacheRoot string, opts Options, onRepo func(Repo) error) ([]Repo, warmServeStats, error) {
 	start := time.Now()
 	var stats warmServeStats
 
-	candidates, err := listCachedRepoPaths(cacheRoot, absRoot)
+	if cacheRoot == "" {
+		stats.duration = time.Since(start)
+		return nil, stats, nil
+	}
+
+	idx, ok, err := LoadRepoIndex(cacheRoot, UniverseHome)
 	if err != nil {
 		stats.duration = time.Since(start)
 		return nil, stats, err
 	}
-	stats.candidates = len(candidates)
-
-	var repos []Repo
-	for _, path := range candidates {
-		select {
-		case <-ctx.Done():
-			stats.duration = time.Since(start)
-			return nil, stats, ctx.Err()
-		default:
-		}
-
-		repo, live, err := liveRepoFromCache(cacheRoot, path)
-		if err != nil {
-			stats.duration = time.Since(start)
-			return nil, stats, err
-		}
-		if !live {
-			continue
-		}
-		stats.live++
-		if onRepo != nil {
-			if err := onRepo(repo); err != nil {
-				stats.duration = time.Since(start)
-				return nil, stats, err
-			}
-		} else {
-			repos = append(repos, repo)
-		}
-	}
-	stats.duration = time.Since(start)
-	return repos, stats, nil
-}
-
-// listCachedRepoPaths walks the mirror tree under absRoot and returns real
-// paths whose cache entries have is_repo=true.
-func listCachedRepoPaths(cacheRoot, absRoot string) ([]string, error) {
-	entryPath, err := MirrorEntryPath(cacheRoot, absRoot)
-	if err != nil {
-		return nil, err
-	}
-	mirrorDir := filepath.Dir(entryPath)
-	mirrorRoot := filepath.Join(cacheRoot, "mirror")
-
-	var paths []string
-	err = filepath.WalkDir(mirrorDir, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if os.IsNotExist(walkErr) {
-				return nil
-			}
-			return walkErr
-		}
-		if d.IsDir() || d.Name() != "entry.json" {
-			return nil
-		}
-		rel, relErr := filepath.Rel(mirrorRoot, filepath.Dir(p))
-		if relErr != nil {
-			return relErr
-		}
-		// Reconstruct absolute real path from mirror relative segments.
-		realPath := filepath.Clean(string(filepath.Separator) + rel)
-
-		entry, ok, loadErr := LoadCacheEntry(cacheRoot, realPath)
-		if loadErr != nil {
-			return loadErr
-		}
-		if ok && entry.IsRepo {
-			paths = append(paths, realPath)
-		}
-		return nil
-	})
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return paths, nil
-}
-
-// liveRepoFromCache verifies path/.git still exists. If gone, clears the
-// is_repo mark and returns live=false. If present, builds a Repo from the live
-// .git (dir or gitlink).
-func liveRepoFromCache(cacheRoot, path string) (Repo, bool, error) {
-	gitPath := filepath.Join(path, ".git")
-	info, statErr := os.Stat(gitPath)
-	if statErr != nil || !(info.IsDir() || info.Mode().IsRegular()) {
-		if err := clearRepoMark(cacheRoot, path); err != nil {
-			return Repo{}, false, err
-		}
-		return Repo{}, false, nil
-	}
-
-	gitDir, repoType, resolveErr := resolveGitDir(path, gitPath, info)
-	if resolveErr != nil {
-		// Still a checkout of sorts; surface like cold walk.
-		return Repo{
-			Path:  path,
-			Name:  filepath.Base(path),
-			Error: resolveErr.Error(),
-		}, true, nil
-	}
-	// parseGitLink failure yields empty gitDir with nil error; treat as non-repo.
-	if gitDir == "" && repoType == "" {
-		if err := clearRepoMark(cacheRoot, path); err != nil {
-			return Repo{}, false, err
-		}
-		return Repo{}, false, nil
-	}
-
-	return Repo{
-		Path:     path,
-		Name:     filepath.Base(path),
-		GitDir:   gitDir,
-		RepoType: repoType,
-	}, true, nil
-}
-
-// clearRepoMark sets is_repo=false on the mirror entry (or is a no-op if missing).
-func clearRepoMark(cacheRoot, path string) error {
-	entry, ok, err := LoadCacheEntry(cacheRoot, path)
-	if err != nil {
-		return err
-	}
 	if !ok {
-		return nil
+		stats.duration = time.Since(start)
+		return nil, stats, nil
 	}
-	if !entry.IsRepo {
-		return nil
+
+	nUnder := 0
+	for _, e := range idx.Repos {
+		if pathIsUnderRoot(absRoot, e.Path) {
+			nUnder++
+		}
 	}
-	entry.IsRepo = false
-	entry.RepoType = ""
-	entry.GitDir = ""
-	entry.RefreshedAt = time.Now().UTC().Format(time.RFC3339)
-	return SaveCacheEntry(cacheRoot, path, entry)
+	if nUnder == 0 {
+		stats.duration = time.Since(start)
+		return nil, stats, nil
+	}
+	return warmServeFromIndex(ctx, absRoot, cacheRoot, opts, idx, onRepo)
 }
 
 // warmRefreshStats is phase-level refresh timing for Debug logs.
@@ -222,9 +113,8 @@ type warmRefreshStats struct {
 // deadline/cancel while the parent is still live, the unit stop is soft —
 // partial discoveries merge into existing and remaining units are skipped.
 //
-// Units without a parseable mirror refreshed_at are not eligible (so brand-new
-// root-level dirs planted after cold seed stay soft-incomplete under default
-// YoungAge, matching P3 warm serve-only behavior).
+// Unit age is live directory ModTime (not mirror refreshed_at). Brand-new
+// root-level dirs planted after cold seed stay young under default YoungAge.
 func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheRoot string, ignore ignoreConfig, existing []Repo, onRepo func(Repo) error) ([]Repo, warmRefreshStats, error) {
 	start := time.Now()
 	var stats warmRefreshStats
@@ -239,7 +129,7 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 	youngAge := resolveYoungAge(opts.YoungAge)
 	now := resolveNow(opts)
 
-	units, err := listRefreshUnits(cacheRoot, absRoot)
+	units, err := listRefreshUnits(absRoot)
 	if err != nil {
 		stats.duration = time.Since(start)
 		return existing, stats, err
@@ -249,7 +139,7 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 		units = []string{absRoot}
 	}
 
-	candidates := eligibleRefreshUnits(cacheRoot, units, now, youngAge)
+	candidates := eligibleRefreshUnits(units, now, youngAge)
 	stats.eligible = len(candidates)
 	if len(candidates) == 0 {
 		stats.duration = time.Since(start)
@@ -301,7 +191,8 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 			unitCtx, unitCancel = context.WithDeadline(ctx, budgetDeadline)
 			walkCtx = unitCtx
 		}
-		found, walkErr := walkRoot(walkCtx, u.path, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot)
+		// Warm unit refresh: live rewalk only; no mirror, no cold walk.jsonl visits.
+		found, walkErr := walkRoot(walkCtx, u.path, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot, false)
 		if unitCancel != nil {
 			unitCancel()
 		}
@@ -332,6 +223,15 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 			return existing, stats, err
 		}
 	}
+
+	// Persist merged discoveries into durable index (no mirror).
+	if cacheRoot != "" && stats.refreshed > 0 {
+		if seedErr := seedHomeRepoIndex(cacheRoot, absRoot, existing); seedErr != nil {
+			stats.duration = time.Since(start)
+			return existing, stats, seedErr
+		}
+	}
+
 	stats.duration = time.Since(start)
 	return existing, stats, nil
 }
@@ -362,9 +262,8 @@ func resolveNow(opts Options) time.Time {
 	return time.Now()
 }
 
-// listRefreshUnits returns direct child directories of absRoot from the live
-// filesystem unioned with children recorded on the root mirror entry.
-func listRefreshUnits(cacheRoot, absRoot string) ([]string, error) {
+// listRefreshUnits returns direct child directories of absRoot from the live filesystem.
+func listRefreshUnits(absRoot string) ([]string, error) {
 	seen := make(map[string]struct{})
 	var units []string
 	add := func(p string) {
@@ -392,19 +291,6 @@ func listRefreshUnits(cacheRoot, absRoot string) ([]string, error) {
 			add(filepath.Join(absRoot, e.Name()))
 		}
 	}
-
-	if cacheRoot != "" {
-		if entry, ok, loadErr := LoadCacheEntry(cacheRoot, absRoot); loadErr != nil {
-			return nil, loadErr
-		} else if ok {
-			for _, name := range entry.Children {
-				if name == "" || name == "." || name == ".." {
-					continue
-				}
-				add(filepath.Join(absRoot, name))
-			}
-		}
-	}
 	return units, nil
 }
 
@@ -413,19 +299,16 @@ type refreshUnit struct {
 	at   time.Time
 }
 
-// eligibleRefreshUnits keeps units with parseable refreshed_at at least youngAge
+// eligibleRefreshUnits keeps units whose directory ModTime is at least youngAge
 // old, sorted oldest-first (then path for stability).
-func eligibleRefreshUnits(cacheRoot string, units []string, now time.Time, youngAge time.Duration) []refreshUnit {
+func eligibleRefreshUnits(units []string, now time.Time, youngAge time.Duration) []refreshUnit {
 	var out []refreshUnit
 	for _, u := range units {
-		entry, ok, err := LoadCacheEntry(cacheRoot, u)
-		if err != nil || !ok {
+		info, err := os.Stat(u)
+		if err != nil || !info.IsDir() {
 			continue
 		}
-		at, err := time.Parse(time.RFC3339, entry.RefreshedAt)
-		if err != nil {
-			continue
-		}
+		at := info.ModTime()
 		if now.Sub(at) < youngAge {
 			continue
 		}

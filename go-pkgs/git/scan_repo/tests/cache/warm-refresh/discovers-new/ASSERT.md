@@ -3,7 +3,8 @@
 - Scan succeeds with no RootErrors.
 - Exactly two repos, path-sorted: `known-repo` then `new-repo` under `unit-a`.
 - Both are `RepoTypeMain` with correct Path/GitDir.
-- Mirror has `is_repo=true` for `new-repo` after budgeted refresh.
+- Index has an entry for `new-repo` after budgeted refresh.
+- No `mirror/` under CacheRoot.
 
 ## Errors
 
@@ -11,10 +12,11 @@
 
 ## Side Effects
 
-- Refresh rewalk of aged unit writes the new repo into the mirror cache.
+- Refresh rewalk of aged unit merges new repo into Result and home/repos.json.
 
 ```go
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -33,14 +35,13 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	knownPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "known-repo"))
-	newPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "new-repo"))
+	newPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "nested", "new-repo"))
 	wantKnownGit := absPath(t, filepath.Join(knownPath, ".git"))
 	wantNewGit := absPath(t, filepath.Join(newPath, ".git"))
 
 	if len(resp.Repos) != 2 {
 		t.Fatalf("expected 2 repos (known + refreshed new), got %d: %v", len(resp.Repos), pathsOf(resp.Repos))
 	}
-	// path-sorted: known-repo before new-repo
 	if resp.Repos[0].Path != knownPath {
 		t.Fatalf("repos[0].Path = %q, want %q", resp.Repos[0].Path, knownPath)
 	}
@@ -54,15 +55,29 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("new-repo shape: type=%v gitDir=%q", resp.Repos[1].RepoType, resp.Repos[1].GitDir)
 	}
 
-	entry, ok, loadErr := scan_repo.LoadCacheEntry(req.CacheRoot, newPath)
+	idx, ok, loadErr := scan_repo.LoadRepoIndex(req.CacheRoot, scan_repo.UniverseHome)
 	if loadErr != nil {
-		t.Fatalf("LoadCacheEntry(new-repo): %v", loadErr)
+		t.Fatalf("LoadRepoIndex: %v", loadErr)
 	}
 	if !ok {
-		t.Fatalf("expected mirror entry for new-repo after refresh: %s", newPath)
+		t.Fatal("expected home/repos.json after refresh")
 	}
-	if !entry.IsRepo {
-		t.Fatalf("new-repo cache IsRepo=false, want true after refresh")
+	foundNew := false
+	for _, e := range idx.Repos {
+		if e.Path == newPath {
+			foundNew = true
+			break
+		}
+	}
+	if !foundNew {
+		t.Fatalf("index missing new-repo after refresh: %s", newPath)
+	}
+
+	mirrorDir := filepath.Join(req.CacheRoot, "mirror")
+	if _, err := os.Stat(mirrorDir); err == nil {
+		t.Fatalf("mirror path exists at %s; dense mirror is retired", mirrorDir)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat mirror: %v", err)
 	}
 }
 

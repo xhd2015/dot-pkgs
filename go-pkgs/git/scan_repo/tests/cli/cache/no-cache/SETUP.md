@@ -1,19 +1,17 @@
 # Scenario
 
-**Feature**: `--no-cache` discovers repos but writes no mirror under `--cache-dir`
+**Feature**: `--no-cache` discovers repos but writes no durable cache under `--cache-dir`
 
 ```
-workspace/my-repo/.git
-  -> RunCLI --root workspace --cache-dir C --no-cache
-  -> stdout lists my-repo
-  -> C has no entry.json (mirror absent or empty of entries)
+workspace + --no-cache + --cache-dir C
+  -> discovers repos on stdout
+  -> C has no home/repos.json, no walk.jsonl, no mirror/
 ```
 
 ## Steps
 
-1. Create workspace with one fake main repo `my-repo/`.
-2. Allocate temp `cacheDir`.
-3. Set `req.Args` to `["--root", workspace, "--cache-dir", cacheDir, "--no-cache"]`.
+1. Create workspace with one main repo.
+2. Args: `--root`, `--cache-dir`, `--no-cache`.
 
 ```go
 import (
@@ -26,7 +24,6 @@ func Setup(t *testing.T, req *Request) error {
 	repoDir := filepath.Join(root, "my-repo")
 	mkdirAll(t, repoDir)
 	fakeGitRepo(t, repoDir)
-
 	cacheDir := t.TempDir()
 	req.Args = []string{
 		"--root", root,

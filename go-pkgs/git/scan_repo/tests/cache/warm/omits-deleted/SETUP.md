@@ -1,23 +1,20 @@
 # Scenario
 
-**Feature**: warm Scan never emits deleted repos; clears stale `is_repo` cache marks
+**Feature**: warm Scan omits deleted repos and drops them from the durable index
 
 ```
-# liveness after cold seed
-workspace/still-here + workspace/gone-repo  --cold seed--> both is_repo in mirror
-then remove gone-repo/ entirely (no path, no .git)
-  -> Scan(NoCache=false, same CacheRoot)
-  -> Result includes still-here only
-  -> gone-repo not listed
-  -> cache for gone-repo: entry absent OR is_repo=false
+workspace/still-here + workspace/gone-repo  --cold seed--> both in home/repos.json
+delete gone-repo/
+  -> Scan(NoCache=false)
+  -> Result has still-here only
+  -> index no longer lists gone-repo (liveness drop)
 ```
 
 ## Steps
 
-1. Create workspace with two main repos: `still-here/` and `gone-repo/`.
-2. Cold-seed Scan into `req.CacheRoot`.
-3. Remove `gone-repo/` entirely (directory gone — stale mirror `is_repo` remains until liveness).
-4. Set `req.Roots`; `NoCache=false`.
+1. Create `still-here` and `gone-repo` mains; cold-seed.
+2. Remove `gone-repo/` entirely; stash abs path on `req.RealPath`.
+3. Keep NoCache=false for warm.
 
 ```go
 import (
@@ -28,21 +25,21 @@ import (
 
 func Setup(t *testing.T, req *Request) error {
 	root := t.TempDir()
-	stillHere := filepath.Join(root, "still-here")
-	goneRepo := filepath.Join(root, "gone-repo")
-	for _, dir := range []string{stillHere, goneRepo} {
-		mkdirAll(t, dir)
-		fakeGitRepo(t, dir)
-	}
+	still := filepath.Join(root, "still-here")
+	gone := filepath.Join(root, "gone-repo")
+	mkdirAll(t, still)
+	mkdirAll(t, gone)
+	fakeGitRepo(t, still)
+	fakeGitRepo(t, gone)
 
 	req.Roots = []string{root}
 	req.NoCache = false
+	req.WarmRefreshBudget = -1
 	coldSeedScan(t, req.Roots, req.CacheRoot)
 
-	// Stash absolute path for Assert (mirror key after real dir is gone).
-	req.RealPath = absPath(t, goneRepo)
-
-	if err := os.RemoveAll(goneRepo); err != nil {
+	goneAbs := absPath(t, gone)
+	req.RealPath = goneAbs
+	if err := os.RemoveAll(gone); err != nil {
 		t.Fatalf("remove gone-repo: %v", err)
 	}
 	return nil

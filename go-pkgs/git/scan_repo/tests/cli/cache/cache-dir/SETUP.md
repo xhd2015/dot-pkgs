@@ -1,19 +1,19 @@
 # Scenario
 
-**Feature**: `--cache-dir` cold scan writes mirror entries under the given path
+**Feature**: `--cache-dir` cold scan seeds durable index under the given path (no mirror)
 
 ```
 workspace/my-repo/.git
   -> RunCLI --root workspace --cache-dir C
   -> stdout lists my-repo
-  -> LoadCacheEntry(C, my-repo) ok with is_repo main
+  -> home/repos.json under C; no C/mirror
 ```
 
 ## Steps
 
 1. Create workspace with one fake main repo `my-repo/`.
 2. Allocate empty temp `cacheDir`.
-3. Set `req.Args` to `["--root", workspace, "--cache-dir", cacheDir]` (cache on, no `--no-cache`).
+3. Set `req.Args` to `["--root", workspace, "--cache-dir", cacheDir]`.
 
 ```go
 import (

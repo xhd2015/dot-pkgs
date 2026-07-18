@@ -17,7 +17,7 @@ plant unit-a/pad/d00000..dN (many empty non-repo dirs; full rewalk >> budget)
 1. Create `unit-a/known-repo`; cold-seed so root is warm-eligible and known is cached.
 2. Stamp `unit-a` `refreshed_at` two hours ago so it is eligible under `YoungAge=1s`.
 3. Plant a large pad of empty directories under `unit-a/pad/` **after** seed so the
-   unit rewalk must visit thousands of uncached dirs (each may write mirror
+   unit rewalk must visit thousands of uncached dirs (each may touch many dirs
    entries — intentionally slow if unbounded).
 4. Set `WarmRefreshBudget=100ms` so a correct mid-unit cap finishes near budget;
    an unbounded single `walkRoot` of this unit takes many seconds.
@@ -50,7 +50,7 @@ func Setup(t *testing.T, req *Request) error {
 	req.WarmRefreshBudget = 100 * time.Millisecond
 	coldSeedScan(t, req.Roots, req.CacheRoot)
 
-	stampRefreshedAt(t, req.CacheRoot, absPath(t, unitA), time.Now().Add(-2*time.Hour))
+	stampUnitModTime(t, unitA, time.Now().Add(-2*time.Hour))
 
 	// Huge uncached subtree under the only eligible unit. Planted after seed so
 	// warm serve still has known-repo while refresh rewalk pays the pad cost.

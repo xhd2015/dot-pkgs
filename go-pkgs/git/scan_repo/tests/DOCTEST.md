@@ -7,15 +7,21 @@ Doc tests for `github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo`. `Scan` walks
 filesystem roots to discover git checkouts (`.git` directory or gitlink file).
 `ParseRemoteOwnerRepo` parses remote URLs into host, owner, and repo name.
 Optional enrichment lists remotes and worktrees via git subprocesses.
-Per-directory mirror cache stores `CacheEntry` under a temp or default cache root
-via `MirrorEntryPath` / `SaveCacheEntry` / `LoadCacheEntry` (P1 pure store).
-Cold `Scan` with `CacheRoot` set and `NoCache=false` populates mirror entries as a
-side effect (P2). Warm `Scan` (P3) serves from a complete root cache without a full
-re-walk, with liveness checks so deleted repos are never emitted. Warm budgeted
-refresh (P4) spends up to `WarmRefreshBudget` rewalking oldest eligible units so
-new repos eventually appear. `Options.Refresh` (P5) forces a cold full walk +
-rewrite even when warm-eligible. Orphan mirror GC (P7) removes dead child mirror
-subtrees when a parent directory is rewalked (cold force or unit refresh).
+
+**Dense mirror cache is retired.** v2 durable state is only:
+- **repo index** — `home|root/repos.json`
+- **walk log** — `home/walk.jsonl` + cursor + meta
+
+Cold `Scan` with `CacheRoot` set and `NoCache=false` seeds the index and walk log
+only — it must **not** create `<CacheRoot>/mirror`. Warm `Scan` serves from the
+repo index without a full re-walk, with liveness so deleted repos are never
+emitted; warm may also **sibling-probe** (`ReadDir` of indexed parents) for
+uncached checkouts. Warm budgeted unit refresh spends up to `WarmRefreshBudget`
+rewalking oldest eligible units (unit age from live directory ModTime). Separately,
+cold Scan appends **walk JSONL** and a cursor; later Scans **consume** under an
+adaptive sync budget. `Options.Refresh` forces a cold full walk + rewrite even
+when warm-eligible. Nested trees: `cache/repo-index/`, `cache/index-serve/`,
+`cache/walk-log/`, `cache/no-mirror/`.
 
 ## DSN (Domain Specific Notion)
 
@@ -23,7 +29,7 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
 
 - **Caller** — supplies one or more filesystem roots and scan options.
 - **Scan** — validates roots, walks each tree, discovers repos, optionally enriches;
-  when cache is enabled, writes mirror `CacheEntry` files for visited directories.
+  when cache is enabled, seeds durable index + walk log (no dense mirror).
 - **Walk** — `filepath.WalkDir` from each root; applies ignore config (full paths
   and basenames); on permission errors skips the directory (`SkipDir`) instead of
   aborting; after recording a repo continues into its working tree to discover
@@ -36,44 +42,51 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
 - **Enricher** — when `ListRemotes` or `ListWorktrees` is set, runs `git -C`
   subprocesses per discovered entry; worktrees attach only to main rows.
 - **ParseRemoteOwnerRepo** — pure URL parser; no filesystem or git access.
-- **Cache store** — maps a real directory path to a mirror file under
-  `<CacheRoot>/mirror/<abs-without-leading-slash>/entry.json`; loads and saves
-  `CacheEntry` JSON with atomic rename on write. Tests always pass an explicit
-  temp `CacheRoot` (never the product default under `$HOME/.cache/git-repo-scan`).
+- **Dense mirror (retired)** — historical `<CacheRoot>/mirror/.../entry.json`
+  is **not** written or read by Scan. Leaves under `cache/no-mirror/` assert the
+  path is absent after cold/warm Scans. Tests always pass an explicit temp
+  `CacheRoot` (never the product default under `$HOME/.cache/git-repo-scan`).
+- **Repo index store** — durable per-universe index at
+  `<CacheRoot>/home/repos.json` and `<CacheRoot>/root/repos.json` (schema v1:
+  `version`, `universe`, `base`, `updated_at`, `repos[]` with path/type/git_dir/
+  depth/seen_at). `LoadRepoIndex` / `SaveRepoIndex` / `ApplyLiveness`. Nested
+  `cache/repo-index/` (own DOCTEST.md) exercises pure I/O; Scan seeds/serves via
+  `cache/index-serve/`.
 - **Cold-scan writer** — during a full walk with `NoCache=false` and `CacheRoot`
-  set, marks each visited directory in the mirror: repos get `is_repo` /
-  `repo_type` / `git_dir`; intermediates get `children` and `scan_complete`.
-- **Warm-scan server** — when `NoCache=false`, `CacheRoot` set, and the scan root
-  has a usable mirror entry (`scan_complete=true` from a prior cold scan; empty
-  `options_hash` treats as match), discovers repos from cached `is_repo` paths
-  instead of a full live WalkDir. Verifies each candidate still has a real
-  `path/.git` (dir or gitlink); if gone, omits from `Result.Repos` and clears
-  the cache mark (`is_repo=false` or remove entry). Missing/incomplete root cache
-  falls back to cold full walk + write (P2).
-- **Warm budgeted refresher (P4)** — after warm serve, spends up to
+  set, **seeds** the universe `repos.json` and appends **walk log** visits. Does
+  **not** write dense mirror entries.
+- **Warm-scan / index server** — when `NoCache=false`, `CacheRoot` set, and a
+  usable universe `repos.json` has entries under the root, discovers repos from
+  the **repo index** instead of a full live WalkDir. Verifies each candidate
+  still has a real `path/.git` (dir or gitlink); if gone, omits from
+  `Result.Repos` and drops from index. **Sibling probe**: `ReadDir` on a parent
+  of an indexed repo can discover a new sibling checkout without full cold
+  re-walk. Missing index falls back to cold full walk + write.
+- **Walk log store** — append-only JSONL at `<CacheRoot>/home/walk.jsonl` with
+  durable cursor `<CacheRoot>/home/walk.cursor.json` and meta
+  `home/meta.json` (`last_scan_end`). Events: `visit`, `gone`, `gen_end` (and
+  optional repo ops). Nested `cache/walk-log/` (own DOCTEST.md).
+- **Walk-log consumer (adaptive budget)** — on warm path, re-lists visit dirs
+  from the cursor under `WalkConsumeSyncBudget(Now − last_scan_end)`:
+  delta **&lt; 10s** → **0** sync re-list; **10s ≤ delta &lt; 60s** → **500ms**;
+  **delta ≥ 60s** → **1s**. When generation `gen_end` G is fully consumed, seal
+  `gen_end` **G+1** and advance the cursor to the new EOF.
+- **Warm budgeted refresher** — after warm serve, spends up to
   `WarmRefreshBudget` (default **1s** when Options field is 0; **negative** =
   no refresh work) rewalking **refresh units** under the root. A refresh unit
-  is each **direct child directory** of the scan root (mirror entry and/or on
-  disk). Candidates: `now - refreshed_at >= YoungAge` (default **60s** when 0).
-  Sort oldest `refreshed_at` first; skip young units. Rewalk unit = cold-like
-  live walk of that child subtree + SaveCacheEntry updates + stamp
-  `refreshed_at=now` on visited entries. Merge newly found repos into Result.
-  A single unit rewalk must also respect remaining budget (child context
-  deadline so parent SIGINT context stays live; soft partial merge on expiry).
-  Cold scans remain unlimited full walk (no budget). Optional `Now` clock for
-  deterministic tests (nil → `time.Now`).
-- **Force refresh (P5)** — when `Options.Refresh=true`, Scan skips the warm path
-  and performs a cold full walk + mirror rewrite under `CacheRoot` (unless
+  is each **direct child directory** of the scan root on disk. Candidates:
+  `now - unit_dir.ModTime >= YoungAge` (default **60s** when 0). Sort oldest
+  first; skip young units. Rewalk unit = cold-like live walk of that child
+  subtree + index update. Merge newly found repos into Result. A single unit
+  rewalk must also respect remaining budget (child context deadline; soft
+  partial merge on expiry). Cold scans remain unlimited full walk (no budget).
+  Optional `Now` clock for deterministic tests (nil → `time.Now`). Orthogonal
+  to walk-log consume budget.
+- **Force refresh** — when `Options.Refresh=true`, Scan skips the warm path
+  and performs a cold full walk + index/walk rewrite under `CacheRoot` (unless
   `NoCache`). Unlike budgeted warm refresh, force refresh is unlimited and finds
   brand-new repos warm would miss. Empty `CacheRoot` with cache enabled resolves
   to the product default `$HOME/.cache/git-repo-scan`.
-- **Orphan mirror GC (P7)** — when a parent directory is rewalked (cold full walk
-  / `Refresh=true`, or budgeted unit rewalk), basenames that existed in the prior
-  mirror `children` (or as mirror subdirs) but no longer exist on the live
-  filesystem are pruned from the mirror: remove that child's `entry.json` /
-  mirror directory subtree so the cache does not grow forever with dead paths.
-  Warm serve liveness alone (P3) may only clear `is_repo`; GC is the stronger
-  prune that runs on parent rewrite.
 - **Debug logger** — when `Options.Debug=true`, Scan writes phase-level structured
   `scan:` lines to `Options.Stderr` (default `os.Stderr`): cache root, per-root
   `mode=warm|cold` + reason, warm serve candidate/live counts and duration,
@@ -96,48 +109,60 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
 - Respect `MaxDepth` relative to each root (0 = unlimited).
 - Option A: every checkout with `.git` is its own row; no dedup by `GitDir`.
 
-**Scan (cold cache write — P2)**
+**Scan (cold cache write)**
 
-- `NoCache=true` — full walk; **no** mirror files written under `CacheRoot`.
-- `NoCache=false` and `CacheRoot` set — full cold walk; write `entry.json` for
-  visited directories (repos and intermediate dirs); `Result.Repos` unchanged
-  vs discovery-only Scan (sort, types, paths).
-- Repo directory entry: `is_repo=true`, `repo_type` `"main"`|`"worktree"`,
-  `git_dir` absolute (same as `Repo.GitDir`), `refreshed_at` non-empty RFC3339,
-  `scan_complete=true`, `version=1`.
-- Non-repo intermediate: `is_repo=false`, `children` = immediate child directory
-  basenames considered, `scan_complete=true`, `refreshed_at` set.
+- `NoCache=true` — full walk; **no** `repos.json` seed, **no** walk log, **no**
+  `mirror/` under `CacheRoot`.
+- `NoCache=false` and `CacheRoot` set — full cold walk; seed universe
+  `repos.json`; append walk visits and seal `gen_end` gen=1 with cursor at EOF;
+  `Result.Repos` unchanged vs discovery-only Scan (sort, types, paths).
+- **Must not** create `<CacheRoot>/mirror` (dense mirror retired).
+- Index repo rows: path, `repo_type` `"main"`|`"worktree"`, `git_dir` absolute,
+  `seen_at` non-empty RFC3339, schema `version=1`.
 
-**Scan (warm serve + liveness — P3)**
+**Scan (warm serve + index + liveness + sibling)**
 
-- Warm-eligible when `NoCache=false`, `CacheRoot` set, and root mirror entry
-  exists with `scan_complete=true` (empty `options_hash` = match).
-- Serve candidate repos from cache (`is_repo` entries under root), **not** full
-  live WalkDir of the whole tree.
+- Warm-eligible when `NoCache=false`, `CacheRoot` set, and a usable universe
+  `repos.json` has entries under the scan root.
+- Serve candidate repos from the **repo index**, **not** full live WalkDir of
+  the whole tree (no mirror `is_repo` marks).
 - Liveness: require real `path/.git` still present; else omit from results and
-  clear cache mark for that path.
-- Soft incompleteness without refresh: brand-new repos under young units or
-  with zero refresh budget may be omitted (P3 leaves; P4 budgeted refresh).
+  drop dead index entries.
+- Sibling: after cold indexes `parent/A`, planting `parent/B/.git` is found on
+  warm Scan via parent `ReadDir` without `Refresh=true`.
+- Soft incompleteness without refresh/consume: brand-new repos outside sibling
+  reach under young units or with zero budgets may be omitted.
 - `NoCache=true` always full live walk (finds brand-new; no warm read).
 - `Refresh=true` always full cold walk + rewrite (finds brand-new; rewrites
-  mirror when cache enabled) even when warm-eligible.
-- Incomplete/missing root cache → cold walk + write (P2 behavior).
+  index/walk when cache enabled) even when warm-eligible.
+- Missing index → cold walk + write.
 
-**Scan (warm budgeted refresh — P4)**
+**Scan (walk log cold seal + adaptive consume)**
 
-- After warm serve on an eligible root, select refresh units (direct children).
-- Eligible when `now - unit.refreshed_at >= YoungAge` (0 YoungAge → default 60s).
+- Cold success with cache: `home/walk.jsonl` has visit lines; ends with
+  `{"op":"gen_end","gen":1}`; `home/walk.cursor.json` offset = sealed EOF.
+- Warm consume: from cursor, re-list prior visits under adaptive
+  `WalkConsumeSyncBudget`; may append `gone` / new visits; when `gen_end` G is
+  consumed, append `gen_end` G+1 and advance cursor to new EOF.
+- Budget tiers (exported `WalkConsumeSyncBudget`): &lt;10s → 0; 10–60s → 500ms;
+  ≥60s → 1s. Tests inject `Options.LastScanEnd` + `Options.Now` (or meta).
+- Consume path often disables unit warm-refresh (`WarmRefreshBudget=-1`) in
+  leaves so observations isolate walk-log work.
+
+**Scan (warm budgeted unit refresh)**
+
+- After warm serve on an eligible root, select refresh units (direct children on disk).
+- Eligible when `now - unit_dir.ModTime >= YoungAge` (0 YoungAge → default 60s).
 - Order oldest first; rewalk until `WarmRefreshBudget` exhausted (0 → default 1s;
   negative → zero refresh work / no unit rewalk).
 - Budget bounds **within** a single unit rewalk as well as between units: unit
-  walk uses a **child context with remaining-budget deadline** (or equivalent
-  `ctx.Done` checks already in `walkRoot`); parent Scan / SIGINT context is not
-  cancelled. Mid-unit budget expiry is soft — prefer partial merge of warm-served
-  repos (no hard `Scan` error / no root-level failure for budget alone).
-- Rewalk merges new/changed repos into Result and updates mirror entries.
+  walk uses a **child context with remaining-budget deadline**; parent Scan /
+  SIGINT context is not cancelled. Mid-unit budget expiry is soft.
+- Rewalk merges new/changed repos into Result and updates `home/repos.json`.
 - Young units are never selected even if budget remains.
 - Cold path ignores budget (unlimited full walk).
 - Liveness still holds during/after budgeted warm (deleted never emitted).
+- Dense mirror is not written during rewalk.
 
 **Scan (debug phase logs — `Options.Debug`)**
 
@@ -149,15 +174,10 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
   format and are not required to carry the `scan:` prefix.
 - Exercised by nested `cache/debug/` leaves (`on/cold`, `on/warm`, `off`).
 
-**Scan (orphan mirror GC — P7)**
+**Repo index pure I/O (nested `cache/repo-index/`)**
 
-- On parent rewalk (cold / `Refresh=true` / unit refresh rewalk), drop mirror
-  subtrees for child basenames that no longer exist on disk.
-- Acceptable prune: remove `entry.json` (and preferably the mirror directory) for
-  the orphan path; parent `children` must not list the dead basename.
-- Surviving siblings keep their mirror entries and still appear in `Result`.
-- Distinct from P3 liveness: warm-only may leave `is_repo=false` without full
-  remove; GC requires entry absent after parent rewrite.
+- Save/Load round-trip under universe `home` and `root`; load missing → empty,
+  not error; `ApplyLiveness` drops dead `.git` paths.
 
 **Enrichment**
 
@@ -171,15 +191,12 @@ subtrees when a parent directory is rewalked (cold force or unit refresh).
 - Parse GitHub HTTPS, SSH, and SCP-style URLs into owner and repo.
 - Return `ok=false` for unparseable input.
 
-**Cache store (P1)**
+**Cache store (index + walk helpers; mirror retired)**
 
-- `MirrorEntryPath(cacheRoot, realPath)` — Abs+Clean `realPath`, strip the
-  leading path separator, return
-  `filepath.Join(cacheRoot, "mirror", <rel-segments>..., "entry.json")`.
-- `SaveCacheEntry` — create intermediate mirror dirs; write via temp file then
-  rename to `entry.json` (atomic last-writer-wins).
-- `LoadCacheEntry` — missing file → `(zero, false, nil)`; corrupt JSON → error;
-  valid JSON → `(entry, true, nil)` with field round-trip fidelity.
+- Dense mirror APIs (`MirrorEntryPath` / `SaveCacheEntry` / `LoadCacheEntry`) are
+  **not** part of the Scan contract and must not be used by product Scan paths.
+- `SaveRepoIndex` / `LoadRepoIndex` — atomic `home|root/repos.json`.
+- `WalkLogAppend` / `WalkConsumeSyncBudget` / seal + cursor helpers — walk JSONL.
 
 ## Decision Tree
 
@@ -223,47 +240,57 @@ scan-repo
 ├── find-github/               [FindLocalMainByGitHub]
 │   ├── basename-mismatch/     clone dir name != github repo name
 │   └── skips-worktree/        returns main, not linked worktree
-└── cache/                     [explicit temp CacheRoot; P1–P7]
-    ├── mirror-path/           [CacheOp=mirror-path]
-    │   ├── absolute/          # abs path → mirror/<no-leading-slash>/entry.json
-    │   ├── nested/            # multi-segment → nested mirror path segments
-    │   └── relative/          # relative Abs-normalized same as abs form
-    ├── load/                  [CacheOp=load]
-    │   ├── missing/           # no file → ok=false, err=nil
-    │   └── corrupt/           # invalid JSON → error
-    ├── save/                  [CacheOp=save-load|overwrite]
-    │   ├── round-trip/        # Save then Load; all fields preserved
-    │   └── overwrite/         # Save A then B; Load returns B; valid JSON on disk
+└── cache/                     [explicit temp CacheRoot; index + walk; mirror retired]
+    ├── no-mirror/             [RED until product stops writing mirror/]
+    │   ├── cold-scan-no-mirror-dir/  # cold Scan → no CacheRoot/mirror
+    │   └── warm-no-mirror-growth/    # after seed + warm → still no mirror/
     ├── cold-scan/             [CacheOp empty — Scan with CacheRoot side effects]
-    │   ├── write/             [NoCache=false — cold walk writes mirror]
-    │   │   ├── main-repo-entry/       # main checkout → is_repo entry
-    │   │   ├── intermediate-dirs/     # root/parents → scan_complete + children
-    │   │   ├── sibling-repos/         # two mains in cache + Result len 2
-    │   │   ├── worktree-entry/        # gitlink → repo_type worktree in cache
+    │   ├── write/             [NoCache=false — cold walk seeds index/walk]
+    │   │   ├── main-repo-in-index/    # main checkout in home/repos.json
+    │   │   ├── sibling-repos-in-index/# two mains in index + Result len 2
+    │   │   ├── worktree-in-index/     # gitlink → repo_type worktree in index
     │   │   └── discovery-unchanged/   # Result.Repos same as discovery-only
-    │   └── no-cache/          [NoCache=true — no mirror write]
-    │       └── skips-write/   # Scan OK; no entry.json under CacheRoot/mirror
-    ├── warm/                  [CacheOp empty — second Scan after cold seed; no aging]
+    │   └── no-cache/          [NoCache=true — no durable cache write]
+    │       └── skips-write/   # Scan OK; no home/repos.json, walk, or mirror
+    ├── warm/                  [second Scan after cold seed; soft-omit; index serve]
     │   ├── serves-cached-omits-new/  # warm: known-repo only; brand-new omitted
-    │   ├── omits-deleted/            # warm: gone-repo omitted; cache mark cleared
+    │   ├── omits-deleted/            # warm: gone-repo omitted; index drop
     │   └── no-cache-finds-new/       # NoCache=true finds brand-new after same seed
-    ├── warm-refresh/          [P4 — budgeted unit refresh on warm; stamped times]
-    │   ├── discovers-new/     # aged unit + budget → plant under unit found + cached
+    ├── warm-refresh/          [P4 — budgeted unit refresh; unit ModTime stamps]
+    │   ├── discovers-new/     # aged unit + budget → plant under unit found + indexed
     │   ├── young-skipped/     # unit within YoungAge → new still omitted
     │   ├── oldest-first/      # two units; tiny budget → only older unit’s new
     │   ├── budget-zero/       # negative WarmRefreshBudget → no refresh; miss new
     │   ├── budget-caps-unit-walk/ # tiny budget + huge unit → Scan finishes fast; seed kept
-    │   ├── liveness-holds/    # budgeted warm still omits deleted + clears mark
+    │   ├── liveness-holds/    # budgeted warm still omits deleted + index drop
     │   └── cold-still-full/   # empty cache ignores budget; full discover
     ├── force-refresh/         [P5 nested DOCTEST.md — Options.Refresh=true]
     │   └── finds-new/         # force cold finds brand-new warm would miss
-    ├── orphan-gc/             [P7 — parent rewalk prunes dead child mirror]
-    │   ├── cold-rescan/       # Refresh=true cold rewalk; gone entry removed
-    │   └── unit-refresh/      # budgeted unit rewalk; orphan under unit removed
-    └── debug/                 [nested DOCTEST.md — Options.Debug scan: timing/mode]
-        ├── on/cold/           # Debug=true empty cache → mode=cold + scan:
-        ├── on/warm/           # Debug=true after seed → mode=warm + serve timing
-        └── off/               # Debug=false → zero scan: markers
+    ├── debug/                 [nested DOCTEST.md — Options.Debug scan: timing/mode]
+    │   ├── on/cold/           # Debug=true empty cache → mode=cold + scan:
+    │   ├── on/warm/           # Debug=true after seed → mode=warm + serve timing
+    │   └── off/               # Debug=false → zero scan: markers
+    ├── repo-index/            [nested — Load/SaveRepoIndex + ApplyLiveness]
+    │   ├── save-load/home/    # universe=home → CacheRoot/home/repos.json
+    │   ├── save-load/root/    # universe=root → CacheRoot/root/repos.json
+    │   ├── load/missing/      # no repos.json → empty / ok=false
+    │   └── liveness/drop-dead/ # ApplyLiveness drops missing-.git
+    ├── index-serve/           [nested — Scan seeds/serves home/repos.json + sibling]
+    │   ├── cold-seed/writes-index/       # cold writes home/repos.json mains
+    │   ├── warm-serve/from-index/        # warm Result from index + IndexOK
+    │   ├── sibling/discovers-new/        # uncached sibling via ReadDir
+    │   └── liveness/drop-dead-via-scan/  # dead indexed path omitted on Scan
+    └── walk-log/              [nested — walk.jsonl + gen_end + adaptive budget]
+        ├── cold/complete/     # visits + gen_end gen=1 + cursor at EOF
+        ├── no-cache/skips-write/  # NoCache → no walk artifacts under home/
+        └── consume/           # second Scan consume from cursor
+            ├── seal-gen-end-2/       # process gen_end 1 → seal gen_end 2
+            ├── cursor-advance/       # cursor > cold EOF; equals new size
+            ├── gone/                 # deleted visit path → gone event
+            └── budget/               # WalkConsumeSyncBudget tiers
+                ├── delta-lt-10s/     # 0 sync; no consume discover
+                ├── delta-10s-to-60s/ # 500ms
+                └── delta-ge-60s/     # 1s
 ```
 
 ## Test Index
@@ -302,35 +329,43 @@ scan-repo
 | `enrich-worktrees/flags-false-skips-git` | Enrich | ListWorktrees=false, fake repo OK |
 | `find-github/basename-mismatch` | Find | `myproject-clone` + origin `xhd2015/myproject` |
 | `find-github/skips-worktree` | Find | linked worktree skipped; main path returned |
-| `cache/mirror-path/absolute` | Cache | Abs path maps under `mirror/` without leading-slash segment |
-| `cache/mirror-path/nested` | Cache | Multi-segment real path → nested mirror path segments |
-| `cache/mirror-path/relative` | Cache | Relative real path Abs-normalized same entry as abs form |
-| `cache/load/missing` | Cache | Load missing → ok=false, no error |
-| `cache/load/corrupt` | Cache | Load invalid JSON → error |
-| `cache/save/round-trip` | Cache | Save then Load preserves all CacheEntry fields |
-| `cache/save/overwrite` | Cache | Sequential Saves; Load returns last writer; file is valid JSON |
-| `cache/cold-scan/write/main-repo-entry` | Cold | Scan writes main repo mirror entry (`is_repo`, `git_dir`, …) |
-| `cache/cold-scan/write/intermediate-dirs` | Cold | Scan writes non-repo root/parent entries with `children` |
-| `cache/cold-scan/write/sibling-repos` | Cold | Two mains → two cache entries; `Result.Repos` len 2 sorted |
-| `cache/cold-scan/write/worktree-entry` | Cold | Gitlink checkout marked `repo_type=worktree` in cache |
+| `cache/no-mirror/cold-scan-no-mirror-dir` | NoMirror (RED) | Cold Scan must not create `<CacheRoot>/mirror` |
+| `cache/no-mirror/warm-no-mirror-growth` | NoMirror (RED) | Warm path must not leave/create `mirror/` |
+| `cache/cold-scan/write/main-repo-in-index` | Cold | Scan seeds main in `home/repos.json`; no mirror |
+| `cache/cold-scan/write/sibling-repos-in-index` | Cold | Two mains → two index entries; Result len 2 |
+| `cache/cold-scan/write/worktree-in-index` | Cold | Gitlink marked `repo_type=worktree` in index |
 | `cache/cold-scan/write/discovery-unchanged` | Cold | Discovery `Repo` shape unchanged when cache writes enabled |
-| `cache/cold-scan/no-cache/skips-write` | Cold | `NoCache=true` → no `entry.json` under mirror |
+| `cache/cold-scan/no-cache/skips-write` | Cold | `NoCache=true` → no index / walk / mirror |
 | `cache/warm/serves-cached-omits-new` | Warm | After cold seed, warm returns known-repo; omits planted brand-new |
-| `cache/warm/omits-deleted` | Warm | After cold seed + delete dir, warm omits gone-repo; cache mark cleared |
+| `cache/warm/omits-deleted` | Warm | After cold seed + delete dir, warm omits gone-repo; index drop |
 | `cache/warm/no-cache-finds-new` | Warm | `NoCache=true` full live finds brand-new that warm would miss |
-| `cache/warm-refresh/discovers-new` | WarmRefresh | Age unit past YoungAge; enough budget → new under unit in Result + cache |
+| `cache/warm-refresh/discovers-new` | WarmRefresh | Age unit past YoungAge; enough budget → new under unit in Result + index |
 | `cache/warm-refresh/young-skipped` | WarmRefresh | Unit within YoungAge; large budget still omits new under unit |
 | `cache/warm-refresh/oldest-first` | WarmRefresh | Two aged units; tiny budget refreshes oldest only → its new found |
 | `cache/warm-refresh/budget-zero` | WarmRefresh | Negative WarmRefreshBudget → no unit rewalk; new omitted |
 | `cache/warm-refresh/budget-caps-unit-walk` | WarmRefresh | Tiny budget + huge eligible unit → Scan wall << unbounded rewalk; known seed still served |
-| `cache/warm-refresh/liveness-holds` | WarmRefresh | Budgeted warm still omits deleted repo; cache mark cleared |
+| `cache/warm-refresh/liveness-holds` | WarmRefresh | Budgeted warm still omits deleted repo; index drop |
 | `cache/warm-refresh/cold-still-full` | WarmRefresh | No prior cache; budget options set; cold full walk finds all |
 | `cache/force-refresh/finds-new` | ForceRefresh (nested) | P5 `Options.Refresh=true` force cold finds brand-new |
-| `cache/orphan-gc/cold-rescan` | OrphanGC | P7 cold `Refresh` rewalk removes orphan `gone` mirror entry |
-| `cache/orphan-gc/unit-refresh` | OrphanGC | P7 budgeted unit rewalk removes orphan under unit parent |
 | `cache/debug/on/cold` | Debug (nested) | `Debug=true` empty cache → stderr `scan:` + `mode=cold` |
 | `cache/debug/on/warm` | Debug (nested) | `Debug=true` after cold seed → `mode=warm` + serve timing |
 | `cache/debug/off` | Debug (nested) | `Debug=false` → zero `scan:` markers on stderr |
+| `cache/repo-index/save-load/home` | RepoIndex (nested) | Round-trip v1 fields under `home/repos.json` |
+| `cache/repo-index/save-load/root` | RepoIndex (nested) | Round-trip v1 fields under `root/repos.json` |
+| `cache/repo-index/load/missing` | RepoIndex (nested) | Missing file → empty index, not error |
+| `cache/repo-index/liveness/drop-dead` | RepoIndex (nested) | `ApplyLiveness` drops dead; keeps live |
+| `cache/index-serve/cold-seed/writes-index` | IndexServe (nested) | Cold Scan seeds `home/repos.json` mains |
+| `cache/index-serve/warm-serve/from-index` | IndexServe (nested) | Warm serves indexed live mains |
+| `cache/index-serve/sibling/discovers-new` | IndexServe (nested) | Sibling ReadDir finds uncached B |
+| `cache/index-serve/liveness/drop-dead-via-scan` | IndexServe (nested) | Dead indexed path omitted on Scan |
+| `cache/walk-log/cold/complete` | WalkLog (nested) | Cold visits + `gen_end` 1 + cursor EOF |
+| `cache/walk-log/no-cache/skips-write` | WalkLog (nested) | NoCache → no walk.jsonl / cursor |
+| `cache/walk-log/consume/seal-gen-end-2` | WalkLog (nested) | Consume seals `gen_end` 2 |
+| `cache/walk-log/consume/cursor-advance` | WalkLog (nested) | Cursor advances past cold EOF |
+| `cache/walk-log/consume/gone` | WalkLog (nested) | Removed visit → `gone` event |
+| `cache/walk-log/consume/budget/delta-lt-10s` | WalkLog (nested) | Adaptive budget 0; no consume discover |
+| `cache/walk-log/consume/budget/delta-10s-to-60s` | WalkLog (nested) | Budget 500ms tier |
+| `cache/walk-log/consume/budget/delta-ge-60s` | WalkLog (nested) | Budget 1s tier
 
 ## How to Run
 
@@ -338,19 +373,32 @@ scan-repo
 doctest vet ./go-pkgs/git/scan_repo/tests/
 doctest test -v ./go-pkgs/git/scan_repo/tests/
 doctest test -v ./go-pkgs/git/scan_repo/tests/cache/
-# P5 nested Options.Refresh tree (own DOCTEST.md):
+# No-mirror contract (RED until product removes mirror writes):
+doctest test -v ./go-pkgs/git/scan_repo/tests/cache/no-mirror/
+# Nested Options.Refresh tree (own DOCTEST.md):
 doctest vet ./go-pkgs/git/scan_repo/tests/cache/force-refresh/
 doctest test -v ./go-pkgs/git/scan_repo/tests/cache/force-refresh/
-# Options.Debug scan: timing/mode logs (own DOCTEST.md; green with library Debug):
+# Options.Debug scan: timing/mode logs (own DOCTEST.md):
 doctest vet ./go-pkgs/git/scan_repo/tests/cache/debug/
 doctest test -v ./go-pkgs/git/scan_repo/tests/cache/debug/
-
+# Repo index pure I/O (own DOCTEST.md):
+doctest vet ./go-pkgs/git/scan_repo/tests/cache/repo-index/
+doctest test -v ./go-pkgs/git/scan_repo/tests/cache/repo-index/
+# Index seed/serve/sibling/liveness via Scan (own DOCTEST.md):
+doctest vet ./go-pkgs/git/scan_repo/tests/cache/index-serve/
+doctest test -v ./go-pkgs/git/scan_repo/tests/cache/index-serve/
+# Walk JSONL cold + gen_end consume + adaptive budget (own DOCTEST.md):
+doctest vet ./go-pkgs/git/scan_repo/tests/cache/walk-log/
+doctest test -v ./go-pkgs/git/scan_repo/tests/cache/walk-log/
 ```
 
-From monorepo root:
+From monorepo / worktree root:
 
 ```sh
-doctest test -v ./external/dot-pkgs-cli/go-pkgs/git/scan_repo/tests/
+doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/tests/
+doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/tests/cache/repo-index/
+doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/tests/cache/index-serve/
+doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/tests/cache/walk-log/
 ```
 
 ```go
@@ -375,18 +423,15 @@ type Request struct {
 	FindGitHubOwner    string
 	FindGitHubRepo     string
 
-	// Cache store (P1). Non-empty CacheOp dispatches to cache APIs only.
-	// Values: "mirror-path" | "load" | "save" | "save-load" | "overwrite".
-	// Empty CacheOp with Roots set runs Scan (optionally with CacheRoot / NoCache for P2–P7).
-	// Warm / warm-refresh / orphan-gc leaves cold-seed in Setup, then Run performs the second Scan under test.
-	// P5 nested force-refresh/ still has its own DOCTEST.md; parent also passes Refresh for P7 cold-rescan.
+	// CacheOp is reserved/empty for Scan leaves (dense mirror pure-store ops retired).
+	// Empty CacheOp with Roots set runs Scan (optionally with CacheRoot / NoCache).
+	// Warm / warm-refresh leaves cold-seed in Setup, then Run performs the second Scan under test.
+	// P5 nested force-refresh/ still has its own DOCTEST.md.
 	CacheOp   string
 	CacheRoot string
-	NoCache   bool // Scan: when true, do not read or write mirror cache (bypasses warm)
-	Refresh   bool // Scan: force cold full walk + mirror rewrite (P5/P7)
-	RealPath  string
-	Entry     scan_repo.CacheEntry // primary entry for save / save-load / overwrite first write
-	EntryB    scan_repo.CacheEntry // second entry for overwrite
+	NoCache   bool // Scan: when true, do not read or write durable cache (bypasses warm)
+	Refresh   bool // Scan: force cold full walk + index/walk rewrite
+	RealPath  string // leaf scratch (e.g. deleted path abs for liveness asserts)
 
 	// P4 budgeted warm refresh — passed through to scan_repo.Options.
 	// WarmRefreshBudget: 0 → product default 1s; negative → no refresh work.
@@ -405,11 +450,6 @@ type Response struct {
 	Repo       string
 	ParseOK    bool
 
-	// Cache store results
-	MirrorPath string
-	Entry      scan_repo.CacheEntry
-	EntryOK    bool
-
 	// Elapsed is wall time of the primary operation in Run (Scan path only).
 	// Used by budget-caps leaves to prove WarmRefreshBudget bounds mid-unit work.
 	Elapsed time.Duration
@@ -417,48 +457,7 @@ type Response struct {
 
 func Run(t *testing.T, req *Request) (*Response, error) {
 	if req.CacheOp != "" {
-		switch req.CacheOp {
-		case "mirror-path":
-			p, err := scan_repo.MirrorEntryPath(req.CacheRoot, req.RealPath)
-			if err != nil {
-				return nil, err
-			}
-			return &Response{MirrorPath: p}, nil
-		case "load":
-			entry, ok, err := scan_repo.LoadCacheEntry(req.CacheRoot, req.RealPath)
-			if err != nil {
-				return nil, err
-			}
-			return &Response{Entry: entry, EntryOK: ok}, nil
-		case "save":
-			if err := scan_repo.SaveCacheEntry(req.CacheRoot, req.RealPath, req.Entry); err != nil {
-				return nil, err
-			}
-			return &Response{}, nil
-		case "save-load":
-			if err := scan_repo.SaveCacheEntry(req.CacheRoot, req.RealPath, req.Entry); err != nil {
-				return nil, err
-			}
-			entry, ok, err := scan_repo.LoadCacheEntry(req.CacheRoot, req.RealPath)
-			if err != nil {
-				return nil, err
-			}
-			return &Response{Entry: entry, EntryOK: ok}, nil
-		case "overwrite":
-			if err := scan_repo.SaveCacheEntry(req.CacheRoot, req.RealPath, req.Entry); err != nil {
-				return nil, err
-			}
-			if err := scan_repo.SaveCacheEntry(req.CacheRoot, req.RealPath, req.EntryB); err != nil {
-				return nil, err
-			}
-			entry, ok, err := scan_repo.LoadCacheEntry(req.CacheRoot, req.RealPath)
-			if err != nil {
-				return nil, err
-			}
-			return &Response{Entry: entry, EntryOK: ok}, nil
-		default:
-			return nil, fmt.Errorf("unknown CacheOp %q", req.CacheOp)
-		}
+		return nil, fmt.Errorf("unknown/retired CacheOp %q (dense mirror store removed)", req.CacheOp)
 	}
 	if req.ParseURL != "" {
 		owner, repo, ok := scan_repo.ParseRemoteOwnerRepo(req.ParseURL)

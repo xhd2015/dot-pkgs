@@ -1,18 +1,18 @@
 # Scenario
 
-**Feature**: `NoCache=true` performs discovery but writes no mirror files
+**Feature**: `NoCache=true` discovers repos but writes no cache artifacts under CacheRoot
 
 ```
-# NoCache skip
-workspace/my-repo + CacheRoot set + NoCache=true
-  -> Scan discovers my-repo
-  -> CacheRoot/mirror has no entry.json (mirror absent or empty of entries)
+workspace/my-repo + CacheRoot
+  -> Scan(NoCache=true)
+  -> Result has my-repo
+  -> CacheRoot has no home/repos.json, no walk.jsonl, no mirror/
 ```
 
 ## Steps
 
-1. Create workspace with one main repo `my-repo/`.
-2. Set `req.Roots`; parent already set `NoCache=true` and temp `CacheRoot`.
+1. Create workspace with one main repo.
+2. Keep NoCache=true from parent.
 
 ```go
 import (

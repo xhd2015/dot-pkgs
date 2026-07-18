@@ -1,6 +1,6 @@
 # Scenario
 
-**Feature**: first Scan with empty mirror and Debug logs cold mode
+**Feature**: first Scan with empty cache and Debug logs cold mode
 
 ```
 # cold debug (missing root cache entry)

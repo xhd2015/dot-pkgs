@@ -1,38 +1,39 @@
 # Scenario
 
-**Feature**: cold `Scan` with explicit `CacheRoot` populates (or skips) mirror entries
+**Feature**: cold `Scan` with explicit `CacheRoot` seeds index + walk log (no dense mirror)
 
 ```
-# cold walk + cache side effects
-caller roots + CacheRoot + NoCache
-  -> Scan (full live walk)
-  -> Result.Repos (discovery)
-  -> when NoCache=false: SaveCacheEntry for visited dirs under mirror/
-  -> when NoCache=true: no mirror write
+# cold Scan side effects (v2)
+NoCache=false + CacheRoot set
+  -> Scan full walk
+  -> home/repos.json seed + home/walk.jsonl seal
+  -> Result.Repos discovery unchanged
+  -> no <CacheRoot>/mirror
+
+# NoCache=true
+  -> full walk; no index / walk / mirror under CacheRoot
 ```
 
 ## Preconditions
 
-- `CacheOp` remains empty so `Run` dispatches to `Scan` (not pure cache APIs).
-- `CacheRoot` is a temp dir from parent `cache/SETUP.md`.
-- Fake `.git` fixtures; no enrichment (`ListRemotes`/`ListWorktrees` false).
-- Asserts load mirror entries via `LoadCacheEntry` after Scan.
+- `CacheOp` empty so `Run` dispatches to `Scan`.
+- Asserts load durable index via `LoadRepoIndex` / walk files after Scan when writes enabled.
+- Explicit temp `CacheRoot` from parent.
 
 ## Steps
 
-1. Clear `CacheOp` so Scan path runs.
-2. Default `NoCache` false (write branch); `no-cache/` overrides.
-3. Provide `fakeGitRepo` / `fakeGitWorktree` for fixtures (siblings under `scan/` are not inherited).
+1. Clear enrichment; leave Roots / NoCache to descendants.
+2. Provide `fakeGitRepo` / `fakeGitWorktree` for fixtures.
 
 ```go
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
 
 func Setup(t *testing.T, req *Request) error {
 	req.CacheOp = ""
-	req.NoCache = false
 	req.ListRemotes = false
 	req.ListWorktrees = false
 	return nil
@@ -47,10 +48,18 @@ func fakeGitRepo(t *testing.T, dir string) {
 func fakeGitWorktree(t *testing.T, mainDir, wtDir string) {
 	t.Helper()
 	fakeGitRepo(t, mainDir)
-	wtName := filepath.Base(wtDir)
-	wtGitDir := filepath.Join(mainDir, ".git", "worktrees", wtName)
-	mkdirAll(t, wtGitDir)
-	absWtGitDir := absPath(t, wtGitDir)
-	writeFile(t, filepath.Join(wtDir, ".git"), "gitdir: "+absWtGitDir+"\n")
+	mkdirAll(t, wtDir)
+	// gitlink file pointing at main .git
+	writeFile(t, filepath.Join(wtDir, ".git"), "gitdir: "+filepath.Join(mainDir, ".git")+"\n")
+}
+
+func assertNoMirrorDir(t *testing.T, cacheRoot string) {
+	t.Helper()
+	mirrorDir := filepath.Join(cacheRoot, "mirror")
+	if st, err := os.Stat(mirrorDir); err == nil {
+		t.Fatalf("mirror path exists at %s (mode=%v); dense mirror is retired", mirrorDir, st.Mode())
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat mirror: %v", err)
+	}
 }
 ```

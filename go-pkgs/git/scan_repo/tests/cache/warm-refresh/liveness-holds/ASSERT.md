@@ -3,7 +3,7 @@
 - Scan succeeds with no RootErrors.
 - Exactly one repo: `unit-a/still-here` (main).
 - Deleted `gone-repo` is **not** listed.
-- Mirror for deleted path: absent or `is_repo=false`.
+- Index does not list the deleted path.
 
 ## Errors
 
@@ -11,7 +11,7 @@
 
 ## Side Effects
 
-- Liveness (P3) remains binding under budgeted refresh (P4).
+- Liveness remains binding under budgeted refresh.
 
 ```go
 import (
@@ -58,12 +58,16 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("GitDir = %q, want %q", r.GitDir, wantGitDir)
 	}
 
-	entry, ok, loadErr := scan_repo.LoadCacheEntry(req.CacheRoot, gonePath)
+	idx, ok, loadErr := scan_repo.LoadRepoIndex(req.CacheRoot, scan_repo.UniverseHome)
 	if loadErr != nil {
-		t.Fatalf("LoadCacheEntry(gone): %v", loadErr)
+		t.Fatalf("LoadRepoIndex: %v", loadErr)
 	}
-	if ok && entry.IsRepo {
-		t.Fatalf("deleted path still is_repo=true in cache; entry=%+v", entry)
+	if ok {
+		for _, e := range idx.Repos {
+			if e.Path == gonePath {
+				t.Fatalf("index still lists deleted path %s", gonePath)
+			}
+		}
 	}
 }
 ```

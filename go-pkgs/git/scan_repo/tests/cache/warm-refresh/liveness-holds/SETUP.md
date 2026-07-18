@@ -42,7 +42,7 @@ func Setup(t *testing.T, req *Request) error {
 	req.WarmRefreshBudget = time.Second
 	coldSeedScan(t, req.Roots, req.CacheRoot)
 
-	stampRefreshedAt(t, req.CacheRoot, absPath(t, unitA), time.Now().Add(-2*time.Hour))
+	stampUnitModTime(t, unitA, time.Now().Add(-2*time.Hour))
 
 	req.RealPath = absPath(t, goneRepo)
 	if err := os.RemoveAll(goneRepo); err != nil {

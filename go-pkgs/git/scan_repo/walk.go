@@ -7,14 +7,16 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/file/remotefs"
 )
 
-func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfig, verbose bool, stderr io.Writer, onRepo func(Repo) error, cacheRoot string) ([]Repo, error) {
+// walkRoot walks root discovering git checkouts. When recordWalkLog is true and
+// cacheRoot is set, each visited directory is appended as a walk.jsonl "visit"
+// event (cold full walk only; warm unit refresh passes false).
+// Dense mirror is not written; durable state is index + walk log only.
+func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfig, verbose bool, stderr io.Writer, onRepo func(Repo) error, cacheRoot string, recordWalkLog bool) ([]Repo, error) {
 	if remote, err := remotefs.IsRemoteBackedPath(root); err != nil {
 		maybeWarnSkip(verbose, stderr, root, err)
 		return nil, nil
@@ -25,6 +27,7 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 
 	var repos []Repo
 	var repoRoots []string
+	logVisits := recordWalkLog && cacheRoot != ""
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -65,12 +68,16 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 			}
 		}
 
+		// P3: cold walk visit for every directory actually processed.
+		if logVisits {
+			if err := AppendWalkVisit(cacheRoot, path); err != nil {
+				return err
+			}
+		}
+
 		gitPath := filepath.Join(path, ".git")
 		info, statErr := os.Stat(gitPath)
 		if statErr != nil || !(info.IsDir() || info.Mode().IsRegular()) {
-			if err := saveNonRepoCacheEntry(cacheRoot, path); err != nil {
-				return err
-			}
 			return nil
 		}
 
@@ -80,9 +87,6 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 				Path:  path,
 				Name:  filepath.Base(path),
 				Error: resolveErr.Error(),
-			}
-			if err := saveRepoCacheEntry(cacheRoot, path, repo); err != nil {
-				return err
 			}
 			if onRepo != nil {
 				if err := onRepo(repo); err != nil {
@@ -99,9 +103,6 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 			Name:     filepath.Base(path),
 			GitDir:   gitDir,
 			RepoType: repoType,
-		}
-		if err := saveRepoCacheEntry(cacheRoot, path, repo); err != nil {
-			return err
 		}
 		if onRepo != nil {
 			if err := onRepo(repo); err != nil {
@@ -120,115 +121,6 @@ func walkRoot(ctx context.Context, root string, maxDepth int, ignore ignoreConfi
 		return repos, err
 	}
 	return repos, nil
-}
-
-// saveRepoCacheEntry writes a mirror entry for a discovered git checkout.
-// No-op when cacheRoot is empty (NoCache or unset CacheRoot).
-func saveRepoCacheEntry(cacheRoot, path string, repo Repo) error {
-	if cacheRoot == "" {
-		return nil
-	}
-	entry := CacheEntry{
-		Version:      1,
-		RefreshedAt:  time.Now().UTC().Format(time.RFC3339),
-		IsRepo:       true,
-		RepoType:     string(repo.RepoType),
-		GitDir:       repo.GitDir,
-		ScanComplete: true,
-	}
-	if info, err := os.Stat(path); err == nil {
-		entry.MtimeNs = info.ModTime().UnixNano()
-	}
-	return SaveCacheEntry(cacheRoot, path, entry)
-}
-
-// saveNonRepoCacheEntry writes a mirror entry for a walked non-repo directory,
-// recording immediate child directory basenames for later warm-path use.
-// When rewriting the parent, orphan mirror subtrees for former children that
-// no longer exist on disk are removed (P7 GC).
-func saveNonRepoCacheEntry(cacheRoot, path string) error {
-	if cacheRoot == "" {
-		return nil
-	}
-	children, err := listChildDirBasenames(path)
-	if err != nil {
-		return err
-	}
-	// P7: drop mirror subtrees for basenames that used to be children but are
-	// gone from the live directory (cold rewalk or budgeted unit refresh).
-	if old, ok, loadErr := LoadCacheEntry(cacheRoot, path); loadErr != nil {
-		return loadErr
-	} else if ok {
-		if err := gcOrphanChildren(cacheRoot, path, old.Children, children); err != nil {
-			return err
-		}
-	}
-	entry := CacheEntry{
-		Version:      1,
-		RefreshedAt:  time.Now().UTC().Format(time.RFC3339),
-		IsRepo:       false,
-		Children:     children,
-		ScanComplete: true,
-	}
-	if info, err := os.Stat(path); err == nil {
-		entry.MtimeNs = info.ModTime().UnixNano()
-	}
-	return SaveCacheEntry(cacheRoot, path, entry)
-}
-
-// gcOrphanChildren removes mirror subtrees for child basenames that appear in
-// prevChildren but not in liveChildren. LoadCacheEntry for those real paths
-// must return ok=false after removal.
-func gcOrphanChildren(cacheRoot, parentPath string, prevChildren, liveChildren []string) error {
-	if len(prevChildren) == 0 {
-		return nil
-	}
-	live := make(map[string]struct{}, len(liveChildren))
-	for _, c := range liveChildren {
-		live[c] = struct{}{}
-	}
-	for _, name := range prevChildren {
-		if name == "" || name == "." || name == ".." {
-			continue
-		}
-		if _, ok := live[name]; ok {
-			continue
-		}
-		orphanPath := filepath.Join(parentPath, name)
-		if err := removeMirrorSubtree(cacheRoot, orphanPath); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// removeMirrorSubtree deletes the entire mirror directory node for realPath
-// (entry.json and any nested child mirror dirs under it).
-func removeMirrorSubtree(cacheRoot, realPath string) error {
-	entryPath, err := MirrorEntryPath(cacheRoot, realPath)
-	if err != nil {
-		return err
-	}
-	mirrorDir := filepath.Dir(entryPath)
-	if err := os.RemoveAll(mirrorDir); err != nil {
-		return err
-	}
-	return nil
-}
-
-func listChildDirBasenames(path string) ([]string, error) {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, err
-	}
-	children := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			children = append(children, e.Name())
-		}
-	}
-	sort.Strings(children)
-	return children, nil
 }
 
 func isPermissionError(err error) bool {

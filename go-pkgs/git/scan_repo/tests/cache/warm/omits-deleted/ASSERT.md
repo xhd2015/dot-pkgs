@@ -3,8 +3,7 @@
 - Scan succeeds with no RootErrors.
 - Exactly one repo: `still-here` (main), correct Path/GitDir.
 - `gone-repo` is **not** listed in `resp.Repos`.
-- Mirror for the deleted path (`req.RealPath`): either Load returns `ok=false`,
-  or `ok=true` with `is_repo=false` (liveness cleared the mark).
+- Durable index: gone path absent after warm (liveness drop), still-here present.
 
 ## Errors
 
@@ -12,7 +11,7 @@
 
 ## Side Effects
 
-- Stale `is_repo=true` for a deleted path must not survive warm Scan.
+- Stale index rows for deleted paths must not survive warm Scan serve.
 
 ```go
 import (
@@ -60,13 +59,27 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("GitDir = %q, want %q", r.GitDir, wantGitDir)
 	}
 
-	// Liveness must clear the stale mirror mark for the deleted path.
-	entry, ok, loadErr := scan_repo.LoadCacheEntry(req.CacheRoot, gonePath)
+	idx, ok, loadErr := scan_repo.LoadRepoIndex(req.CacheRoot, scan_repo.UniverseHome)
 	if loadErr != nil {
-		t.Fatalf("LoadCacheEntry(gone): %v", loadErr)
+		t.Fatalf("LoadRepoIndex: %v", loadErr)
 	}
-	if ok && entry.IsRepo {
-		t.Fatalf("deleted path still is_repo=true in cache (want absent or is_repo=false); entry=%+v", entry)
+	if !ok {
+		t.Fatal("expected home/repos.json after warm Scan")
+	}
+	for _, e := range idx.Repos {
+		if e.Path == gonePath {
+			t.Fatalf("index still lists deleted path %s after warm liveness", gonePath)
+		}
+	}
+	foundStill := false
+	for _, e := range idx.Repos {
+		if e.Path == stillPath {
+			foundStill = true
+			break
+		}
+	}
+	if !foundStill {
+		t.Fatalf("index missing still-here %s", stillPath)
 	}
 }
 ```

@@ -2,7 +2,8 @@
 
 - Scan succeeds with no RootErrors.
 - Exactly one repo: `unit-a/known-repo` (main).
-- `unit-a/new-repo` is **not** listed (young unit skipped; no rewalk).
+- `unit-a/nested/new-repo` is **not** listed (young unit skipped; no rewalk;
+  path is not a sibling of any indexed repo).
 
 ## Errors
 
@@ -11,6 +12,7 @@
 ## Side Effects
 
 - YoungAge gate prevents refresh even when WarmRefreshBudget would allow work.
+- Soft incompleteness for nested (non-sibling) uncached repos under young units.
 
 ```go
 import (
@@ -32,11 +34,11 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	}
 
 	knownPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "known-repo"))
-	newPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "new-repo"))
+	newPath := absPath(t, filepath.Join(req.Roots[0], "unit-a", "nested", "new-repo"))
 
 	for i, r := range resp.Repos {
 		if r.Path == newPath {
-			t.Fatalf("warm refresh listed new-repo under young unit at repos[%d]=%q; want omit", i, r.Path)
+			t.Fatalf("warm refresh listed nested new-repo under young unit at repos[%d]=%q; want omit", i, r.Path)
 		}
 	}
 	if len(resp.Repos) != 1 {

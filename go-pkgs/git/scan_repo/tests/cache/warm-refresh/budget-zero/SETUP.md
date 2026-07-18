@@ -1,20 +1,21 @@
 # Scenario
 
-**Feature**: negative WarmRefreshBudget performs no unit rewalk (pure P3 serve)
+**Feature**: negative WarmRefreshBudget performs no unit rewalk (pure P3 serve + sibling probe)
 
 ```
-# aged unit would be eligible, but budget forbids work
+# aged unit would be eligible, but budget forbids rewalk work
 workspace/unit-a/known-repo --cold seed--> stamp unit-a now-2h
-plant unit-a/new-repo
+plant unit-a/nested/new-repo  # nested under unit-a; NOT a sibling of known-repo
   -> Scan(YoungAge=1s, WarmRefreshBudget=-1)  # negative = zero refresh work
   -> Result includes known-repo only
-  -> new-repo omitted (budget gate)
+  -> new-repo omitted (budget gate; sibling probe does not see nested path)
 ```
 
 ## Steps
 
 1. Create `unit-a/known-repo`; cold-seed; stamp unit aged.
-2. Plant `unit-a/new-repo`.
+2. Plant `unit-a/nested/new-repo` (requires unit rewalk; not a direct sibling of
+   the indexed repo, so sibling probe alone cannot find it).
 3. Set `WarmRefreshBudget=-1` (no refresh work); `YoungAge=1s` so age alone
    would allow refresh.
 
@@ -39,9 +40,10 @@ func Setup(t *testing.T, req *Request) error {
 	req.WarmRefreshBudget = -1
 	coldSeedScan(t, req.Roots, req.CacheRoot)
 
-	stampRefreshedAt(t, req.CacheRoot, absPath(t, unitA), time.Now().Add(-2*time.Hour))
+	stampUnitModTime(t, unitA, time.Now().Add(-2*time.Hour))
 
-	newRepo := filepath.Join(unitA, "new-repo")
+	// Nested (not sibling of known-repo under unit-a): only a unit rewalk finds it.
+	newRepo := filepath.Join(unitA, "nested", "new-repo")
 	mkdirAll(t, newRepo)
 	fakeGitRepo(t, newRepo)
 	return nil
