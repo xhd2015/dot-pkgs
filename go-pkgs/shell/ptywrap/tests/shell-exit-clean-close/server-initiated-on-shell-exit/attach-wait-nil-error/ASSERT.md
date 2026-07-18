@@ -5,8 +5,8 @@
 
 ## Errors
 
-- `AttachErr` contains `terminal closed` and/or `unexpected EOF` — current bug
-  when server closes without close frame 1000.
+- `AttachErr` contains `terminal closed` and/or `unexpected EOF` — unclean end
+  when neither exit marker nor close 1000 is honored.
 - Any non-nil attach error after a normal shell exit.
 
 ## Side Effects

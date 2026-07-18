@@ -118,6 +118,10 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		return runShellExitWSCloseCode(t, req)
 	case "shell-exit-attach-wait":
 		return runShellExitAttachWait(t, req)
+	case "shell-exit-marker-without-close":
+		return runShellExitMarkerWithoutClose(t, req)
+	case "shell-exit-hard-drop-without-marker":
+		return runShellExitHardDropWithoutMarker(t, req)
 	default:
 		return nil, fmt.Errorf("unknown phase %q", req.Phase)
 	}
@@ -630,6 +634,133 @@ func runShellExitAttachWait(t *testing.T, req *Request) (*Response, error) {
 	resp.SessionListed = sessionInList(sessions, id)
 	resp.SessionCount = len(sessions)
 	resp.SessionStatus = sessionStatus(sessions, id)
+	return resp, nil
+}
+
+// runShellExitMarkerWithoutClose proves Attach Wait ends on the session-exit
+// text marker alone: mock server sends session_id + "[Terminal exited]" and
+// never closes the socket. Correct client returns nil within a short deadline
+// (does not hang waiting for close 1000 / 1006).
+func runShellExitMarkerWithoutClose(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	_ = req
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/terminal", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		// Keep conn open until test ends; do not send a close frame.
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"session_id","session_id":"mock-exit-marker"}`))
+		time.Sleep(50 * time.Millisecond)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\n[Terminal exited]"))
+		// Block until client disconnects so the socket stays open without close.
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				_ = conn.Close()
+				return
+			}
+		}
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	c := ptyclient.NewClient(srv.URL)
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	defer stdinR.Close()
+	t.Cleanup(func() { _ = stdinW.Close() })
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	defer stdoutW.Close()
+	go io.Copy(io.Discard, stdoutR)
+
+	done := make(chan error, 1)
+	go func() {
+		_, attachErr := ptyclient.AttachWithIO(c, ptyclient.ConnectOptions{
+			// Known id skips strict handshake timeout if needed; mock always sends session_id.
+			SessionID:    "mock-exit-marker",
+			Wait:         true,
+			SkipTTYCheck: true,
+		}, stdinR, stdoutW, stdoutW)
+		done <- attachErr
+	}()
+
+	select {
+	case attachErr := <-done:
+		if attachErr != nil {
+			resp.AttachErr = attachErr.Error()
+		}
+	case <-time.After(3 * time.Second):
+		resp.AttachErr = "timeout_hang: attach did not return after exit marker without close"
+	}
+	resp.SessionID = "mock-exit-marker"
+	return resp, nil
+}
+
+// runShellExitHardDropWithoutMarker proves Attach Wait still errors when the
+// peer tears down the socket without sending "[Terminal exited]" and without
+// a normal close frame. Negative control: do not silence 1006/EOF globally.
+func runShellExitHardDropWithoutMarker(t *testing.T, req *Request) (*Response, error) {
+	resp := &Response{}
+	_ = req
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/terminal", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"session_id","session_id":"mock-hard-drop"}`))
+		time.Sleep(50 * time.Millisecond)
+		// Bare tear-down: no exit marker, no FormatCloseMessage(1000).
+		_ = conn.Close()
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	c := ptyclient.NewClient(srv.URL)
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	defer stdinR.Close()
+	t.Cleanup(func() { _ = stdinW.Close() })
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	defer stdoutW.Close()
+	go io.Copy(io.Discard, stdoutR)
+
+	done := make(chan error, 1)
+	go func() {
+		_, attachErr := ptyclient.AttachWithIO(c, ptyclient.ConnectOptions{
+			SessionID:    "mock-hard-drop",
+			Wait:         true,
+			SkipTTYCheck: true,
+		}, stdinR, stdoutW, stdoutW)
+		done <- attachErr
+	}()
+
+	select {
+	case attachErr := <-done:
+		if attachErr != nil {
+			resp.AttachErr = attachErr.Error()
+		}
+	case <-time.After(3 * time.Second):
+		resp.AttachErr = "timeout_hang: attach did not return after hard drop without marker"
+	}
+	resp.SessionID = "mock-hard-drop"
 	return resp, nil
 }
 

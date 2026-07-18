@@ -1,13 +1,14 @@
 # Scenario
 
-**Bug**: server must initiate a clean WS close when the shell exits under an
-active writer/attacher
+**Feature**: shell exits under an active writer/attacher — observe clean end via
+server close 1000 and/or client Attach Wait success (including marker-only)
 
 ```
 short-lived session (still running at attach)
   -> claim writer/attacher
   -> child exits
-  -> server-initiated WebSocket end (observe close code and/or Attach Wait)
+  -> exit marker broadcast + server-initiated WS close 1000
+  -> leaves observe CloseCode and/or Attach Wait
 ```
 
 ## Preconditions
@@ -15,17 +16,26 @@ short-lived session (still running at attach)
 - Child command is still running when the first attach claims writer so
   `ServeSessionWebSocket` takes the `<-s.done` branch (not `alreadyExited`).
 - Default harness command: `sh -c sleep 1`.
+- `marker-without-close` uses a mock peer (no real child); root ServerBase is
+  unused for that leaf.
 
 ## Steps
 
-1. Grouping documents the server-initiated shell-exit path.
+1. Grouping documents the clean shell-exit attach-end path.
 2. Leaves set `Phase` to the observation surface under test.
 
 ## Context
 
-MECE split at this level is by **how** we observe the close (raw code vs client
-Attach Wait), not by different exit triggers. Client-initiated close-1000 churn
-is covered elsewhere (lifecycle leak trees) and is out of scope here.
+MECE split under this grouping is by **observation / signal reliability**:
+
+| Leaf | Signal under test |
+|------|-------------------|
+| `ws-close-code-1000` | Server sends close **1000** on shell exit |
+| `attach-wait-nil-error` | Real end-to-end Attach Wait → nil |
+| `marker-without-close` | Client ends on marker alone (no close frame) |
+
+Hard-drop **without** marker (must still error) is a sibling group, not this
+path. Client-initiated close-1000 churn is covered elsewhere (lifecycle trees).
 
 ```go
 import "testing"

@@ -152,6 +152,8 @@ func runBridge(conn *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 	var runErr error
 	select {
 	case err := <-readerErrCh:
+		// Session-end marker returns nil from the reader; treat that as clean
+		// success even if a later close would have been 1006.
 		runErr = normalizeTerminalReadError(err)
 	case err := <-stdinErrCh:
 		if err != nil && err != io.EOF {
@@ -307,8 +309,11 @@ func readTerminalOutput(conn *websocket.Conn, stdout io.Writer) error {
 				return err
 			}
 		case websocket.TextMessage:
+			// Session exited: end the attach Wait on status, not only on socket
+			// death. Waiting for a close frame hangs when the peer tears down
+			// without a normal close (1006) or when the close is lost.
 			if isTerminalExitMarker(data) {
-				continue
+				return nil
 			}
 			handled, _, err := parseServerMessage(data)
 			if err != nil {

@@ -1,6 +1,6 @@
 # Scenario
 
-**Bug**: after shell exit, attach WebSocket must close with code 1000, not 1006
+**Feature**: after shell exit, attach WebSocket must close with code 1000, not 1006
 
 ```
 create sh -c sleep 1
@@ -21,8 +21,9 @@ create sh -c sleep 1
 
 ## Context
 
-Direct characterization of the production fix site: on `<-s.done`, send close
-control 1000 before closing the connection.
+Server half of the dual contract: on `<-s.done`, send close control **1000**
+before closing the connection. Complements client marker-first hang-proofing
+(see `marker-without-close`).
 
 ```go
 import "testing"

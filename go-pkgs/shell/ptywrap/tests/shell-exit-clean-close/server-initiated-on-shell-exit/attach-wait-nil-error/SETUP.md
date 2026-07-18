@@ -1,18 +1,18 @@
 # Scenario
 
-**Bug**: client Attach Wait must return nil after normal shell exit (no
+**Feature**: client Attach Wait returns nil after normal shell exit (no
 `terminal closed: unexpected EOF`)
 
 ```
 create sh -c sleep 1
   -> ptywrap/client AttachWithIO(Wait=true, SkipTTYCheck)
-  -> shell exits; server closes WS
+  -> shell exits; marker and/or server close 1000
   -> Attach returns nil (AttachErr empty)
 ```
 
 ## Preconditions
 
-- Phase `shell-exit-attach-wait` uses real `ptywrap/client` normalize path.
+- Phase `shell-exit-attach-wait` uses real `ptywrap/client` status-first path.
 - Pipes for stdin/stdout (non-TTY OK with SkipTTYCheck).
 
 ## Steps
@@ -23,8 +23,9 @@ create sh -c sleep 1
 ## Context
 
 End-to-end user-facing contract matching `remote-agent bash` + `exit`: attach
-wait must not print Error after clean shell exit. Relies on server sending
-close 1000 so `normalizeTerminalReadError` returns nil.
+wait must not print Error after clean shell exit. Success may come from the
+**exit marker** (status-first) and/or **close 1000** via
+`normalizeTerminalReadError` — both are valid; this leaf only requires nil Wait.
 
 ```go
 import "testing"
