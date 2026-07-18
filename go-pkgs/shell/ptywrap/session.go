@@ -65,6 +65,9 @@ type session struct {
 
 	inputCh   chan inputEvent
 	inputOnce sync.Once
+
+	// Incomplete OSC query fragments across PTY read chunks (auto-reply).
+	oscPartial []byte
 }
 
 func (s *session) readLoop() {
@@ -74,6 +77,13 @@ func (s *session) readLoop() {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
 			data := buf[:n]
+			// Auto-answer OSC 10/11 color probes so headless PTYs (tty-watch)
+			// do not leave Bubble Tea / termenv blocked on OSCTimeout.
+			s.oscPartial = maybeAutoReplyOSC(func(reply []byte) error {
+				_, werr := s.ptmx.Write(reply)
+				return werr
+			}, s.oscPartial, data)
+
 			s.mu.Lock()
 			// Apply to live screen before (as) scrollback append so sticky cells
 			// survive ring trim.
@@ -371,6 +381,12 @@ func (s *session) appendExitMarker() {
 		return
 	}
 	s.scrollback = append(s.scrollback, exitMarker...)
+	// Live screen is the source for attach_mode=snapshot / screen export.
+	// Without writing the marker into the VT, consumers that prefer the live
+	// frame never see "[Terminal exited]" (only raw scrollback would).
+	if s.screen != nil {
+		_, _ = s.screen.Write(exitMarker)
+	}
 	if len(s.scrollback) > maxScrollback {
 		s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
 	}
