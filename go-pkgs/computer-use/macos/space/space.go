@@ -2,6 +2,11 @@
 // Accessibility / AppleScript. It does not parse CLI flags or run follow-up
 // commands — callers (e.g. kool macos space) own that.
 //
+// Create returns ErrMaxDesktops (errors.Is) when macOS is already at the
+// 16-Desktop hard limit. CountDesktops optionally counts Desktops without
+// opening Mission Control (default: com.apple.spaces plist); it is not used
+// by Create automatically.
+//
 // Example:
 //
 //	if err := space.Create(nil); err != nil {
@@ -32,6 +37,10 @@ type Desktop struct {
 var (
 	// ErrUnsupportedPlatform is returned when not running on macOS.
 	ErrUnsupportedPlatform = errors.New("space: unsupported platform (macOS only)")
+	// ErrMaxDesktops is returned when Create cannot add a Desktop because
+	// macOS is already at its hard maximum (16 Mission Control Desktops).
+	// Callers can detect it with errors.Is(err, space.ErrMaxDesktops).
+	ErrMaxDesktops = errors.New("space: already at macOS maximum of 16 Desktops")
 )
 
 const (
@@ -143,7 +152,8 @@ func CreateAndActivate(cfg *Config) (int, error) {
 		if createErr == nil {
 			break
 		}
-		if !isTransientSpaceError(createErr) || attempt+1 == createRetries {
+		// Capacity errors are permanent; do not retry Create.
+		if errors.Is(createErr, ErrMaxDesktops) || !isTransientSpaceError(createErr) || attempt+1 == createRetries {
 			return 0, createErr
 		}
 		settle(cfg)
@@ -252,12 +262,34 @@ func newAX(cfg *Config) *axClient {
 func (a *axClient) Create() error {
 	out, err := a.osascript(scriptCreate)
 	if err != nil {
-		return err
+		return mapCreateError(err)
 	}
 	if strings.HasPrefix(out, "FAIL:") {
-		return fmt.Errorf("%s", out)
+		return mapCreateError(fmt.Errorf("%s", out))
 	}
 	return nil
+}
+
+// mapCreateError classifies Mission Control create failures.
+// Max-cap messages from scriptCreate become ErrMaxDesktops (errors.Is).
+func mapCreateError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrMaxDesktops) {
+		return err
+	}
+	if isMaxDesktopsMessage(err.Error()) {
+		return fmt.Errorf("%w", ErrMaxDesktops)
+	}
+	return err
+}
+
+// isMaxDesktopsMessage reports AppleScript / osascript text for the 16-Desktop cap.
+func isMaxDesktopsMessage(s string) bool {
+	// scriptCreate: "FAIL: cannot create Desktop: already at macOS maximum of 16 ..."
+	return strings.Contains(s, "already at macOS maximum of 16") ||
+		strings.Contains(s, "macOS maximum of 16")
 }
 
 func (a *axClient) Switch(n int) error {
