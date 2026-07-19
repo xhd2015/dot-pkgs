@@ -124,17 +124,28 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 	s.registerConn(conn, role)
 
 	type wsCloseResult struct {
-		closeCode int
+		closeCode        int
+		deleteOnClose    bool
+		keepChildOnClose bool
 	}
 	wsCloseCh := make(chan wsCloseResult, 1)
-	deleteOnClose := false
 	isWriter := role == roleWriter
 	canWrite := isWriter || role == roleAttacher
 
 	go func() {
 		var closeCode int
+		deleteOnClose := false
+		// keepChildOnClose is set by {"type":"detach_keep"} so tty-watch Ctrl-]
+		// (and multi-attach) can release the writer without reaping the PTY child.
+		// Bare writer close still stopChild() so web create-on-connect churn does
+		// not leak shells (see lifecycle leak doctests).
+		keepChildOnClose := false
 		defer func() {
-			wsCloseCh <- wsCloseResult{closeCode: closeCode}
+			wsCloseCh <- wsCloseResult{
+				closeCode:        closeCode,
+				deleteOnClose:    deleteOnClose,
+				keepChildOnClose: keepChildOnClose,
+			}
 		}()
 		for {
 			msgType, message, err := conn.ReadMessage()
@@ -145,24 +156,31 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 				return
 			}
 
-			if !canWrite {
-				continue
-			}
-
+			// detach_keep is accepted even for observers so clients can always
+			// signal "leave the session running" before a normal close.
 			if msgType == websocket.TextMessage {
 				var msg ControlMessage
 				if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
 					switch msg.Type {
 					case "resize":
-						s.enqueueResize(msg.Cols, msg.Rows)
+						if canWrite {
+							s.enqueueResize(msg.Cols, msg.Rows)
+						}
 						continue
 					case "close_delete":
 						if isWriter {
 							deleteOnClose = true
 						}
 						continue
+					case "detach_keep":
+						keepChildOnClose = true
+						continue
 					}
 				}
+			}
+
+			if !canWrite {
+				continue
 			}
 
 			s.enqueueBytes(message)
@@ -181,16 +199,17 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 	}
 
 	handleWriterClose := func(result wsCloseResult) {
-		shouldDelete := isWriter && (result.closeCode == 4000 || deleteOnClose)
+		shouldDelete := isWriter && (result.closeCode == 4000 || result.deleteOnClose)
 		if shouldDelete {
 			mgr.remove(s.id)
 			return
 		}
 		s.unregisterConn(conn)
-		// Writer normal close (1000) or other non-delete disconnect: free the
-		// OS PTY by reaping the child, but keep session metadata+scrollback
-		// listable as exited so reconnect-scrollback still works.
-		if isWriter && !alreadyExited {
+		// Writer normal close (1000) without detach_keep: free the OS PTY by
+		// reaping the child, but keep session metadata+scrollback listable as
+		// exited so reconnect-scrollback still works (web tab close).
+		// detach_keep (tty-watch Ctrl-]) only releases the writer claim.
+		if isWriter && !alreadyExited && !result.keepChildOnClose {
 			s.stopChild()
 		}
 	}
