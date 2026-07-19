@@ -68,6 +68,8 @@ type session struct {
 
 	// Incomplete OSC query fragments across PTY read chunks (auto-reply).
 	oscPartial []byte
+	// Incomplete CSI 6n (DSR cursor) fragments across PTY read chunks.
+	dsrPartial []byte
 }
 
 func (s *session) readLoop() {
@@ -90,6 +92,13 @@ func (s *session) readLoop() {
 			if s.screen != nil {
 				_, _ = s.screen.Write(data)
 			}
+			// CPR uses 1-based cursor after applying this chunk (snapshot.go).
+			cprRow, cprCol := 1, 1
+			if s.screen != nil {
+				cur := s.screen.Cursor()
+				cprRow = cur.Y + 1
+				cprCol = cur.X + 1
+			}
 			s.scrollback = append(s.scrollback, data...)
 			if len(s.scrollback) > maxScrollback {
 				s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
@@ -104,6 +113,13 @@ func (s *session) readLoop() {
 				attacherSet = append(attacherSet, conn)
 			}
 			s.mu.Unlock()
+
+			// Auto-answer CSI 6n (DSR cursor) with CPR from live VT cursor.
+			// Must run after screen apply so row/col match the model the child sees.
+			s.dsrPartial = maybeAutoReplyDSR(func(reply []byte) error {
+				_, werr := s.ptmx.Write(reply)
+				return werr
+			}, s.dsrPartial, data, cprRow, cprCol)
 
 			s.broadcastOutput(data, writer, observerSet, attacherSet)
 		}
