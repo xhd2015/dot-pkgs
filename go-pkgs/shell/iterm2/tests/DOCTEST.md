@@ -9,6 +9,10 @@ when possible, `cd` to a target directory, optionally run follow-up commands,
 and run `osascript`. Most leaves inject dependencies; one live leaf exercises
 real `osascript` when labeled.
 
+P1 **tab-set** create scripts live in the nested root `tab-set/` (own
+`DOCTEST.md` / `Request` / `Run`) so Classic TDD missing-API symbols do not
+break this tree’s existing leaves.
+
 ## DSN (Domain Specific Notion)
 
 ### Participants
@@ -20,6 +24,7 @@ real `osascript` when labeled.
 - **Script builder** — `BuildScript` emits AppleScript: scan windows/tabs/sessions,
   read session variable `path` via `tell aSession`, reuse matching window with
   `create tab`, else `create window`; writes `cd` and follow-up `write text` lines.
+- **Tab-set script builder** — see nested root `tab-set/` (`BuildTabSetNewWindowScript`).
 - **Escaper** — `EscapePathForAppleScript` and `EscapeCommandForAppleScript`
   escape backslashes and double quotes for embedded string literals.
 - **OpenConfig** — validates platform (darwin), install check, directory stat,
@@ -49,6 +54,10 @@ real `osascript` when labeled.
 
 - `BuildPathScanSmokeScript` probes session paths only; returns `"ok"` on success.
 
+**Tab-set (nested)**
+
+- Nested doctest root `tab-set/` covers `BuildTabSetNewWindowScript` (P1 Classic TDD).
+
 ## Decision Tree
 
 ```
@@ -65,6 +74,14 @@ iterm2-lib/
 │   ├── smart-open-scans-user-variable/ scan matches path or user.koolTargetDir
 │   ├── reuse-match-selects-window/     reuse match selects matchingWindow to front
 │   └── no-exec-shell/              no exec $SHELL
+├── tab-set/                        [nested DOCTEST.md — P1 build-tab-set-script, Classic TDD RED]
+│   ├── new-window-four-tabs/
+│   ├── single-tab/
+│   ├── stamps-set-and-tab-vars/
+│   ├── sets-session-names/
+│   ├── optional-cwd/
+│   ├── window-name/
+│   └── command-escape/
 ├── escaping/                       [Phase=escape-*]
 │   ├── path-quotes/                EscapePathForAppleScript
 │   └── command-quotes/             EscapeCommandForAppleScript
@@ -95,6 +112,7 @@ iterm2-lib/
 | `script/smart-open-scans-user-variable/` | build-script | Smart scan matches `path` or `user.koolTargetDir` |
 | `script/reuse-match-selects-window/` | build-script | Reuse match selects matchingWindow to front |
 | `script/no-exec-shell/` | build-script | No `exec $SHELL` |
+| `tab-set/*` (nested root) | build-tab-set-script | See `tab-set/DOCTEST.md` (P1 Classic TDD) |
 | `escaping/path-quotes/` | escape-path | Escapes `"` in paths |
 | `escaping/command-quotes/` | escape-command | Escapes `"` in commands |
 | `open/invokes-osascript/` | open-config | Injectable osascript receives script |

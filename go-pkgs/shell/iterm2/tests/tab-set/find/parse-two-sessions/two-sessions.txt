@@ -1,0 +1,2 @@
+bots	t1	win-A	sess-1	/dev/ttys001
+bots	t2	win-A	sess-2	/dev/ttys002

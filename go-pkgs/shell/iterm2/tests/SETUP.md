@@ -22,6 +22,7 @@ caller dir + follow-ups -> BuildScript -> AppleScript string
 - Script assertions use substring checks aligned with vscode-ext `iterm2.ts`.
 - `open/` leaves use injectable `Config` — no real iTerm2 side effects.
 - Live leaf requires macOS, iTerm2 installed, and `--label side-effect-open-iterm2`.
+- Tab-set P1 lives under nested root `tab-set/` (does not inherit this Run).
 
 ```go
 import (
