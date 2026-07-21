@@ -41,10 +41,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	req.CommandDir = filepath.Clean(filepath.Join(DOCTEST_ROOT, ".."))
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	req.CommandDir = filepath.Clean(filepath.Join(d.DOCTEST_ROOT, ".."))
 	req.RepoDir = t.TempDir()
 	req.ToolPath = filepath.Join(req.RepoDir, "git-hook-github-workflow-test")
 	req.CaseName = "default"

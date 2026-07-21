@@ -40,10 +40,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	req.CommandDir = filepath.Dir(DOCTEST_ROOT)
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	req.CommandDir = filepath.Dir(d.DOCTEST_ROOT)
 	req.RepoDir = t.TempDir()
 	req.ToolPath = filepath.Join(req.RepoDir, "git-hook-go-no-local-replace")
 	build := exec.Command("go", "build", "-o", req.ToolPath, ".")

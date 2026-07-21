@@ -91,6 +91,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 // Request configures a live-screen-model harness phase.
@@ -360,9 +362,9 @@ func runStickyScenario(t *testing.T, req *Request, opts stickyScenarioOpts) (*Re
 	return resp, nil
 }
 
-func fixtureScriptPath() string {
-	// Leaf packages run with working directory = leaf dir; DOCTEST_ROOT is tree root.
-	return filepath.Join(DOCTEST_ROOT, "testdata", "sticky_dirty_tui.py")
+func fixtureScriptPath(d *session.Doctest) string {
+	// Leaf packages run with working directory = leaf dir; d.DOCTEST_ROOT is tree root.
+	return filepath.Join(d.DOCTEST_ROOT, "testdata", "sticky_dirty_tui.py")
 }
 
 func fixtureDoneFile(token string) bool {

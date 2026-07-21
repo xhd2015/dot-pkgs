@@ -21,7 +21,7 @@ fixture.go -> CheckAST -> []Violation
 
 ## Context
 
-- `DOCTEST_ROOT` points to this test tree's root directory.
+- `d.DOCTEST_ROOT` points to this test tree's root directory.
 - Each leaf's `Setup` populates `req.Src` by reading `fixture.go` from the leaf directory.
 
 ```go
