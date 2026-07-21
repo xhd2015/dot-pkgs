@@ -19,7 +19,7 @@ test runner -> Setup chain -> Run(ListOwned | NormalizeRepoURL) -> Assert
 
 ## Context
 
-- `DOCTEST_ROOT` points at this `tests/` directory.
+- `d.DOCTEST_ROOT` points at this `tests/` directory.
 - `DOCTEST_SESSION_ID` is available for session-scoped temp state if needed.
 - List-owned leaves inherit mock-gh helpers from `list-owned/SETUP.md`.
 

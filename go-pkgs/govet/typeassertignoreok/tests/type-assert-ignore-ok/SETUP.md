@@ -20,7 +20,7 @@ fixture.go -> CheckAST -> []Violation
 
 ## Context
 
-- `DOCTEST_ROOT` points to this test tree's root directory.
+- `d.DOCTEST_ROOT` points to this test tree's root directory.
 
 ```go
 import "testing"

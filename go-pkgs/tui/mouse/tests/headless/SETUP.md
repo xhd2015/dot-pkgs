@@ -13,7 +13,7 @@ Harness -> exec tty-watch send/snapshot/kill
 ## Preconditions
 
 - Go toolchain on PATH.
-- Module root is `DOCTEST_ROOT/../../../..` from this nested tree
+- Module root is `d.DOCTEST_ROOT/../../../..` from this nested tree
   (`headless` → `tests` → `mouse` → `tui` → go-pkgs).
 - **tty-watch binary** (not a go.mod require): look up order in `ensureBins`:
   1. `TTY_WATCH_BIN` env
@@ -23,7 +23,7 @@ Harness -> exec tty-watch send/snapshot/kill
 - go-pkgs **must not** import or replace `github.com/xhd2015/tty-watch`.
 - Fixture package: `tui/mouse/cmd/fixture-inline`.
 - Shared only across leaves: compiled binaries under
-  `$TMPDIR/mouse-headless-doctest-<DOCTEST_SESSION_ID>/`.
+  `process-local MkdirTemp binary (in-memory mutex)`.
 - Per-leaf: temp Home dir and unique SessionID (mutated state never shared).
 
 ## Context
@@ -49,15 +49,21 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func sessionCacheDir() string {
-	return filepath.Join(os.TempDir(), "mouse-headless-doctest-"+DOCTEST_SESSION_ID)
+func sessionCacheDir(d *session.Doctest) string {
+	return filepath.Join(os.TempDir(), "mouse-headless-doctest-"+d.DOCTEST_SESSION_ID)
 }
 
-func moduleRoot() string {
-	// headless -> tests -> mouse -> tui -> go-pkgs
-	return filepath.Clean(filepath.Join(DOCTEST_ROOT, "..", "..", "..", ".."))
+func moduleRoot(t *testing.T, d *session.Doctest) string {
+	t.Helper()
+	root, err := filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", "..", "..", ".."))
+	if err != nil {
+		t.Fatalf("repo root: %v", err)
+	}
+	return root
 }
 
 func ttyWatchSrcDir() string {
@@ -117,9 +123,9 @@ func resolveTTYWatchBin(cache string) (string, error) {
 	return outBin, nil
 }
 
-func ensureBins(t *testing.T) (fixtureBin, ttyWatchBin string, err error) {
+func ensureBins(t *testing.T, d *session.Doctest) (fixtureBin, ttyWatchBin string, err error) {
 	t.Helper()
-	cache := sessionCacheDir()
+	cache := sessionCacheDir(d)
 	if err := os.MkdirAll(cache, 0o755); err != nil {
 		return "", "", err
 	}
@@ -149,12 +155,12 @@ func ensureBins(t *testing.T) (fixtureBin, ttyWatchBin string, err error) {
 	return fixtureBin, ttyWatchBin, err
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	if req == nil {
 		return fmt.Errorf("nil request")
 	}
-	fixBin, twBin, err := ensureBins(t)
+	fixBin, twBin, err := ensureBins(t, d)
 	if err != nil {
 		return err
 	}

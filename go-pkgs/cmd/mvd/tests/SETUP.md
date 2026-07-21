@@ -27,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 var buildOnce sync.Once
@@ -46,12 +48,12 @@ func findModuleRoot(dir string) string {
 	}
 }
 
-func getMvdBin(t *testing.T) string {
+func getMvdBin(t *testing.T, d *session.Doctest) string {
 	t.Helper()
 	buildOnce.Do(func() {
-		modRoot := filepath.Dir(filepath.Dir(DOCTEST_ROOT))
+		modRoot := filepath.Dir(filepath.Dir(d.DOCTEST_ROOT))
 		if modRoot == "" {
-			modRoot = findModuleRoot(DOCTEST_ROOT)
+			modRoot = findModuleRoot(d.DOCTEST_ROOT)
 		}
 		tmpDir, err := os.MkdirTemp("", "mvd-doc-test")
 		if err != nil {
