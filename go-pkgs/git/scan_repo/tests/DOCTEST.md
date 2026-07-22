@@ -21,7 +21,8 @@ rewalking oldest eligible units (unit age from live directory ModTime). Separate
 cold Scan appends **walk JSONL** and a cursor; later Scans **consume** under an
 adaptive sync budget. `Options.Refresh` forces a cold full walk + rewrite even
 when warm-eligible. Nested trees: `cache/repo-index/`, `cache/index-serve/`,
-`cache/walk-log/`, `cache/no-mirror/`.
+`cache/walk-log/`, `cache/no-mirror/`, `post-filter/` (P1 return-value base-path
+filter after optional worktree resolve; classic TDD RED until implementer).
 
 ## DSN (Domain Specific Notion)
 
@@ -240,7 +241,7 @@ scan-repo
 ├── find-github/               [FindLocalMainByGitHub]
 │   ├── basename-mismatch/     clone dir name != github repo name
 │   └── skips-worktree/        returns main, not linked worktree
-└── cache/                     [explicit temp CacheRoot; index + walk; mirror retired]
+├── cache/                     [explicit temp CacheRoot; index + walk; mirror retired]
     ├── no-mirror/             [RED until product stops writing mirror/]
     │   ├── cold-scan-no-mirror-dir/  # cold Scan → no CacheRoot/mirror
     │   └── warm-no-mirror-growth/    # after seed + warm → still no mirror/
@@ -291,6 +292,11 @@ scan-repo
                 ├── delta-lt-10s/     # 0 sync; no consume discover
                 ├── delta-10s-to-60s/ # 500ms
                 └── delta-ge-60s/     # 1s
+└── post-filter/               [nested — P1 resolve then base-path filter; RED until implementer]
+    ├── walk-log-foreign-leak/                 # warm consume must not emit foreign agent-pro
+    ├── list-worktrees-inner-only/             # under-root wt on main.Worktrees
+    ├── list-worktrees-outside-base-stripped/  # outer wt stripped from Worktrees
+    └── list-worktrees-false-top-level-filter/ # flag off: Worktrees empty + top-level filter
 ```
 
 ## Test Index
@@ -365,7 +371,11 @@ scan-repo
 | `cache/walk-log/consume/gone` | WalkLog (nested) | Removed visit → `gone` event |
 | `cache/walk-log/consume/budget/delta-lt-10s` | WalkLog (nested) | Adaptive budget 0; no consume discover |
 | `cache/walk-log/consume/budget/delta-10s-to-60s` | WalkLog (nested) | Budget 500ms tier |
-| `cache/walk-log/consume/budget/delta-ge-60s` | WalkLog (nested) | Budget 1s tier
+| `cache/walk-log/consume/budget/delta-ge-60s` | WalkLog (nested) | Budget 1s tier |
+| `post-filter/walk-log-foreign-leak` | PostFilter (nested, RED) | Warm walk-log consume must not return foreign agent-pro |
+| `post-filter/list-worktrees-inner-only` | PostFilter (nested, RED) | Under-root linked wt listed on main.Worktrees |
+| `post-filter/list-worktrees-outside-base-stripped` | PostFilter (nested, RED) | Outer worktree stripped from Worktrees after resolve |
+| `post-filter/list-worktrees-false-top-level-filter` | PostFilter (nested, RED) | ListWorktrees=false: empty Worktrees + top-level under-root filter |
 
 ## How to Run
 
@@ -390,6 +400,9 @@ doctest test -v ./go-pkgs/git/scan_repo/tests/cache/index-serve/
 # Walk JSONL cold + gen_end consume + adaptive budget (own DOCTEST.md):
 doctest vet ./go-pkgs/git/scan_repo/tests/cache/walk-log/
 doctest test -v ./go-pkgs/git/scan_repo/tests/cache/walk-log/
+# P1 post-process base-path filter (own DOCTEST.md; RED until implementer):
+doctest vet ./go-pkgs/git/scan_repo/tests/post-filter/
+doctest test -v ./go-pkgs/git/scan_repo/tests/post-filter/
 ```
 
 From monorepo / worktree root:
@@ -399,6 +412,7 @@ doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/test
 doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/tests/cache/repo-index/
 doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/tests/cache/index-serve/
 doctest test -v ./external/dot-pkgs-master-2026-07-15/go-pkgs/git/scan_repo/tests/cache/walk-log/
+doctest test -v ./external/dot-pkgs-master-2026-07-22/go-pkgs/git/scan_repo/tests/post-filter/
 ```
 
 ```go

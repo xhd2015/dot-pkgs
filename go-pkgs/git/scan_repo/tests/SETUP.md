@@ -29,6 +29,10 @@ warm path + WarmRefreshBudget + YoungAge + unit dir ModTime
 # force refresh (P5) — nested tests/cache/force-refresh/
 cold seed -> plant brand-new -> Scan(Refresh=true)
   -> full cold walk finds brand-new (warm would omit)
+
+# post-filter (P1) — nested tests/post-filter/ (RED until implementer)
+warm walk-log foreign visit / ListWorktrees resolve
+  -> post-process base-path filter on Result.Repos + Worktrees
 ```
 
 ## Preconditions

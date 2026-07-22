@@ -203,7 +203,13 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 					return ctx.Err()
 				default:
 				}
+				// Resolve (remotes/worktrees) then base-path filter before emit.
 				repo = enrichRepo(ctx, repo, opts)
+				filtered := filterReposUnderRoot(absRoot, []Repo{repo})
+				if len(filtered) == 0 {
+					return nil
+				}
+				repo = filtered[0]
 				if onErr := opts.OnRepo(repo); onErr != nil {
 					repo.Error = appendRepoError(repo.Error, onErr.Error())
 				}
@@ -308,6 +314,11 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 			})
 			continue
 		}
+		// Resolve worktrees/remotes, then drop paths outside this scan root.
+		for i := range found {
+			found[i] = enrichRepo(ctx, found[i], opts)
+		}
+		found = filterReposUnderRoot(absRoot, found)
 		result.Repos = append(result.Repos, found...)
 	}
 
@@ -315,13 +326,37 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 		return result.Repos[i].Path < result.Repos[j].Path
 	})
 
-	if opts.OnRepo == nil {
-		for i := range result.Repos {
-			result.Repos[i] = enrichRepo(ctx, result.Repos[i], opts)
-		}
-	}
-
 	return result, nil
+}
+
+// filterReposUnderRoot drops top-level repos whose Path is not under absRoot
+// and strips Worktrees entries whose Path is not under absRoot.
+// Call after enrichRepo when ListWorktrees may have filled Worktrees.
+func filterReposUnderRoot(absRoot string, repos []Repo) []Repo {
+	if len(repos) == 0 {
+		return repos
+	}
+	out := make([]Repo, 0, len(repos))
+	for _, r := range repos {
+		if !pathIsUnderRoot(absRoot, r.Path) {
+			continue
+		}
+		if n := len(r.Worktrees); n > 0 {
+			kept := make([]Worktree, 0, n)
+			for _, wt := range r.Worktrees {
+				if pathIsUnderRoot(absRoot, wt.Path) {
+					kept = append(kept, wt)
+				}
+			}
+			if len(kept) == 0 {
+				r.Worktrees = nil
+			} else {
+				r.Worktrees = kept
+			}
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 func enrichRepo(ctx context.Context, repo Repo, opts Options) Repo {
