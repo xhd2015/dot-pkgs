@@ -85,6 +85,8 @@ type Options struct {
 	// WarmRefreshBudget bounds wall time spent rewalking refresh units on a
 	// warm scan (P4). 0 means the product default (1s). Negative means no
 	// refresh work. Not applied on cold full walks.
+	// In WarmRefreshAsync mode this is the min-budget floor for Join; polish
+	// may continue past it while the process has not Joined.
 	WarmRefreshBudget time.Duration
 	// YoungAge is the minimum age (now - unit_dir.ModTime) before a refresh unit
 	// is eligible. 0 means the product default (60s).
@@ -98,6 +100,11 @@ type Options struct {
 	// last_scan_end when present; if still unknown, budget treats delta as
 	// ancient (full 1s tier).
 	LastScanEnd time.Time
+
+	// WarmRefreshMode selects sync (default) vs async warm polish after serve.
+	// Scan() always forces Sync. Use ScanSession for Async + Join/Stop.
+	// Cold / NoCache / Refresh ignore this field.
+	WarmRefreshMode WarmRefreshMode
 }
 
 // debugf writes a greppable "scan: …" line to opts.Stderr when Debug is on.
@@ -137,14 +144,32 @@ func resolveCacheRoot(opts Options) string {
 	return filepath.Join(home, ".cache", defaultCacheDirName)
 }
 
+// Scan discovers git repositories under opts.Roots.
+// Always uses WarmRefreshSync: budgeted warm polish finishes before return.
+// For opt-in async polish (durable-only, Join/Stop), use ScanSession.
 func Scan(ctx context.Context, opts Options) (Result, error) {
+	opts.WarmRefreshMode = WarmRefreshSync
+	sess, err := ScanSession(ctx, opts)
+	if err != nil {
+		return Result{}, err
+	}
+	return sess.Result, nil
+}
+
+// ScanSession is like Scan but honors WarmRefreshMode.
+//
+// WarmRefreshSync (default): polish runs before return; Refresh is nil.
+// WarmRefreshAsync (warm path only): returns after serve with Result frozen at
+// the serve snapshot; background polish updates durable cache only. Callers
+// must Session.Join (or Stop then Join) before process exit.
+func ScanSession(ctx context.Context, opts Options) (Session, error) {
 	if len(opts.Roots) == 0 {
-		return Result{}, fmt.Errorf("at least one root is required")
+		return Session{}, fmt.Errorf("at least one root is required")
 	}
 
 	ignore, err := buildIgnoreConfig(opts)
 	if err != nil {
-		return Result{}, err
+		return Session{}, err
 	}
 
 	// NoCache=true disables all durable cache I/O (index + walk log). When cache
@@ -167,11 +192,20 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 
+	async := opts.WarmRefreshMode == WarmRefreshAsync
+	var asyncJobs []polishJob
+	// Resolved unit-refresh budget for the async handle (0 if disabled).
+	asyncBudget, asyncBudgetOK := resolveWarmRefreshBudget(opts.WarmRefreshBudget)
+	if !asyncBudgetOK {
+		asyncBudget = 0
+	}
+
 	var result Result
 	for _, root := range opts.Roots {
 		select {
 		case <-ctx.Done():
-			return Result{}, ctx.Err()
+			// Async polish is only started after all roots; discard pending jobs.
+			return Session{}, ctx.Err()
 		default:
 		}
 
@@ -232,16 +266,26 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 						}
 					}
 				}
-				if walkErr == nil {
-					// New units merge via handleOnRepo; existing seeds path dedupe.
+				if walkErr == nil && async {
+					// Freeze Result at serve; polish durable-only in background.
+					asyncJobs = append(asyncJobs, polishJob{
+						absRoot:   absRoot,
+						cacheRoot: cacheRoot,
+						opts:      opts,
+						ignore:    ignore,
+						served:    append([]Repo(nil), served...),
+					})
+					debugf(opts, "refresh async scheduled root=%s", absRoot)
+				} else if walkErr == nil {
+					// Sync: New units merge via handleOnRepo; existing seeds path dedupe.
 					var refreshStats warmRefreshStats
-					_, refreshStats, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, served, handleOnRepo)
+					_, refreshStats, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, served, handleOnRepo, nil)
 					debugf(opts, "refresh root=%s budget=%s eligible=%d refreshed=%d duration=%s",
 						absRoot, refreshStats.budget, refreshStats.eligible, refreshStats.refreshed, refreshStats.duration)
-				}
-				// P4: walk-log consume (re-list visits, gone/new, gen_end G+1).
-				if walkErr == nil {
-					_, walkErr = consumeWalkLog(ctx, cacheRoot, opts, absRoot, rootCollected, handleOnRepo)
+					// P4: walk-log consume (re-list visits, gone/new, gen_end G+1).
+					if walkErr == nil {
+						_, walkErr = consumeWalkLog(ctx, cacheRoot, opts, absRoot, rootCollected, handleOnRepo)
+					}
 				}
 			} else {
 				_, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, handleOnRepo, cacheRoot, true)
@@ -261,7 +305,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 			debugf(opts, "root=%s total duration=%s", absRoot, time.Since(rootStart))
 			if walkErr != nil {
 				if walkErr == ctx.Err() {
-					return Result{}, walkErr
+					return Session{}, walkErr
 				}
 				result.RootErrors = append(result.RootErrors, RootError{
 					Root:  root,
@@ -278,15 +322,24 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 			found, serveStats, walkErr = warmServeRootOpts(ctx, absRoot, cacheRoot, opts, nil)
 			debugf(opts, "serve root=%s candidates=%d live=%d duration=%s",
 				absRoot, serveStats.candidates, serveStats.live, serveStats.duration)
-			if walkErr == nil {
+			if walkErr == nil && async {
+				asyncJobs = append(asyncJobs, polishJob{
+					absRoot:   absRoot,
+					cacheRoot: cacheRoot,
+					opts:      opts,
+					ignore:    ignore,
+					served:    append([]Repo(nil), found...),
+				})
+				debugf(opts, "refresh async scheduled root=%s", absRoot)
+			} else if walkErr == nil {
 				var refreshStats warmRefreshStats
-				found, refreshStats, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, found, nil)
+				found, refreshStats, walkErr = warmBudgetRefresh(ctx, absRoot, opts, cacheRoot, ignore, found, nil, nil)
 				debugf(opts, "refresh root=%s budget=%s eligible=%d refreshed=%d duration=%s",
 					absRoot, refreshStats.budget, refreshStats.eligible, refreshStats.refreshed, refreshStats.duration)
-			}
-			// P4: walk-log consume (re-list visits, gone/new, gen_end G+1).
-			if walkErr == nil {
-				found, walkErr = consumeWalkLog(ctx, cacheRoot, opts, absRoot, found, nil)
+				// P4: walk-log consume (re-list visits, gone/new, gen_end G+1).
+				if walkErr == nil {
+					found, walkErr = consumeWalkLog(ctx, cacheRoot, opts, absRoot, found, nil)
+				}
 			}
 		} else {
 			found, walkErr = walkRoot(ctx, absRoot, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot, true)
@@ -306,7 +359,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 		debugf(opts, "root=%s total duration=%s", absRoot, time.Since(rootStart))
 		if walkErr != nil {
 			if walkErr == ctx.Err() {
-				return Result{}, walkErr
+				return Session{}, walkErr
 			}
 			result.RootErrors = append(result.RootErrors, RootError{
 				Root:  root,
@@ -315,6 +368,7 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 			continue
 		}
 		// Resolve worktrees/remotes, then drop paths outside this scan root.
+		// Async: found is serve-only; enrich that snapshot.
 		for i := range found {
 			found[i] = enrichRepo(ctx, found[i], opts)
 		}
@@ -326,7 +380,11 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 		return result.Repos[i].Path < result.Repos[j].Path
 	})
 
-	return result, nil
+	sess := Session{Result: result}
+	if async && len(asyncJobs) > 0 {
+		sess.Refresh = startAsyncRefresh(asyncBudget, asyncJobs)
+	}
+	return sess, nil
 }
 
 // filterReposUnderRoot drops top-level repos whose Path is not under absRoot

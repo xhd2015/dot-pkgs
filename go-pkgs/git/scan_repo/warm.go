@@ -103,6 +103,16 @@ type warmRefreshStats struct {
 	duration  time.Duration
 }
 
+// refreshGate controls whether unit refresh may continue past WarmRefreshBudget.
+// nil gate = sync hard budget (product default).
+// extendPastBudget = true for async polish: keep rewalking until workerCtx is
+// cancelled (Join-after-budget or Stop); still soft-caps units before the
+// budget deadline.
+type refreshGate struct {
+	workerCtx        context.Context
+	extendPastBudget bool
+}
+
 // warmBudgetRefresh rewalks oldest eligible direct-child units under absRoot
 // until WarmRefreshBudget wall time is exhausted, merging newly found repos
 // into existing. Negative budget means no refresh work. Zero budget uses the
@@ -113,9 +123,15 @@ type warmRefreshStats struct {
 // deadline/cancel while the parent is still live, the unit stop is soft —
 // partial discoveries merge into existing and remaining units are skipped.
 //
+// When gate != nil and gate.extendPastBudget, rewalk may continue after the
+// budget wall until gate.workerCtx is cancelled (async Join/Stop). Soft stop
+// on workerCtx cancel keeps partial index merges (no hard error).
+//
 // Unit age is live directory ModTime (not mirror refreshed_at). Brand-new
 // root-level dirs planted after cold seed stay young under default YoungAge.
-func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheRoot string, ignore ignoreConfig, existing []Repo, onRepo func(Repo) error) ([]Repo, warmRefreshStats, error) {
+//
+// Pass gate=nil for sync hard-budget behavior (Scan default).
+func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheRoot string, ignore ignoreConfig, existing []Repo, onRepo func(Repo) error, gate *refreshGate) ([]Repo, warmRefreshStats, error) {
 	start := time.Now()
 	var stats warmRefreshStats
 
@@ -128,6 +144,12 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 	stats.budget = budget
 	youngAge := resolveYoungAge(opts.YoungAge)
 	now := resolveNow(opts)
+
+	// Prefer gate.workerCtx as the base walk context for async so cancel is soft.
+	baseCtx := ctx
+	if gate != nil && gate.workerCtx != nil {
+		baseCtx = gate.workerCtx
+	}
 
 	units, err := listRefreshUnits(absRoot)
 	if err != nil {
@@ -171,25 +193,37 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 	budgetDeadline := budgetStart.Add(budget)
 	for _, u := range candidates {
 		remaining := time.Until(budgetDeadline)
-		if remaining <= 0 {
+		extend := gate != nil && gate.extendPastBudget
+		if remaining <= 0 && !extend {
+			break
+		}
+		// Async post-budget: stop when workerCtx cancelled (Join/Stop).
+		if extend && baseCtx.Err() != nil {
 			break
 		}
 		select {
-		case <-ctx.Done():
+		case <-baseCtx.Done():
 			stats.duration = time.Since(start)
-			return existing, stats, ctx.Err()
+			// Async worker cancel is soft (partial progress already merged/persisted).
+			if extend {
+				return existing, stats, nil
+			}
+			return existing, stats, baseCtx.Err()
 		default:
 		}
 
 		// Mid-unit cap: child deadline = remaining budget wall (does not cancel
 		// parent). Sub-ms remainings skip the child deadline so between-unit
 		// gating still allows one small unit to finish under a tiny budget.
-		walkCtx := ctx
+		// After budget with extendPastBudget, walk only under baseCtx (no wall cap).
+		walkCtx := baseCtx
 		var unitCancel context.CancelFunc
 		var unitCtx context.Context
 		if remaining >= minBudgetForMidUnitCap {
-			unitCtx, unitCancel = context.WithDeadline(ctx, budgetDeadline)
+			unitCtx, unitCancel = context.WithDeadline(baseCtx, budgetDeadline)
 			walkCtx = unitCtx
+		} else if remaining <= 0 && !extend {
+			break
 		}
 		// Warm unit refresh: live rewalk only; no mirror, no cold walk.jsonl visits.
 		found, walkErr := walkRoot(walkCtx, u.path, opts.MaxDepth, ignore, opts.Verbose, opts.Stderr, nil, cacheRoot, false)
@@ -198,8 +232,17 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 		}
 
 		if walkErr != nil {
-			// Parent cancel/deadline is a hard failure (SIGINT path).
-			if err := ctx.Err(); err != nil {
+			// Async worker cancel: soft stop — keep partial merge, no hard error.
+			if extend && baseCtx.Err() != nil {
+				_ = mergeFound(found)
+				if cacheRoot != "" {
+					_ = seedHomeRepoIndex(cacheRoot, absRoot, existing)
+				}
+				stats.duration = time.Since(start)
+				return existing, stats, nil
+			}
+			// Parent cancel/deadline is a hard failure (SIGINT path) for sync.
+			if err := baseCtx.Err(); err != nil {
 				_ = mergeFound(found)
 				stats.duration = time.Since(start)
 				return existing, stats, err
@@ -212,7 +255,16 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 					return existing, stats, err
 				}
 				stats.refreshed++
-				break
+				if cacheRoot != "" {
+					_ = seedHomeRepoIndex(cacheRoot, absRoot, existing)
+				}
+				// Sync: budget child deadline ends the whole refresh.
+				// Async extend: continue remaining units past budget until
+				// workerCtx is cancelled (Join/Stop).
+				if !extend {
+					break
+				}
+				continue
 			}
 			stats.duration = time.Since(start)
 			return existing, stats, walkErr
@@ -222,9 +274,16 @@ func warmBudgetRefresh(ctx context.Context, absRoot string, opts Options, cacheR
 			stats.duration = time.Since(start)
 			return existing, stats, err
 		}
+		// Persist incrementally so Stop/cancel keeps already-scanned index.
+		if cacheRoot != "" {
+			if seedErr := seedHomeRepoIndex(cacheRoot, absRoot, existing); seedErr != nil {
+				stats.duration = time.Since(start)
+				return existing, stats, seedErr
+			}
+		}
 	}
 
-	// Persist merged discoveries into durable index (no mirror).
+	// Final persist (no-op if already seeded per unit).
 	if cacheRoot != "" && stats.refreshed > 0 {
 		if seedErr := seedHomeRepoIndex(cacheRoot, absRoot, existing); seedErr != nil {
 			stats.duration = time.Since(start)

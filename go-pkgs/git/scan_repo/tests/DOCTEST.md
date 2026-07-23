@@ -83,6 +83,17 @@ filter after optional worktree resolve; classic TDD RED until implementer).
   partial merge on expiry). Cold scans remain unlimited full walk (no budget).
   Optional `Now` clock for deterministic tests (nil → `time.Now`). Orthogonal
   to walk-log consume budget.
+- **Warm refresh mode (sync default / async opt-in)** —
+  `Options.WarmRefreshMode`: `WarmRefreshSync` (zero value) runs unit refresh +
+  walk-log consume inside `Scan`/`ScanSession` before return (today).
+  `WarmRefreshAsync` (via `ScanSession` only; classic `Scan` forces Sync): after
+  warm serve, returns a `Session` with Result frozen at the serve snapshot and
+  a `RefreshHandle`. Background polish updates durable index/walk log only
+  (no OnRepo / Result mutation). Join rule: keep polishing while work remains
+  and (`now < start+budget` **or** Join not yet requested); on Join before
+  budget wait until budget or idle; on Join after budget soft-stop; `Stop`
+  aborts min-budget wait and keeps already-written index. Idle (no work) →
+  Join returns immediately (budget is max effort, not sleep).
 - **Force refresh** — when `Options.Refresh=true`, Scan skips the warm path
   and performs a cold full walk + index/walk rewrite under `CacheRoot` (unless
   `NoCache`). Unlike budgeted warm refresh, force refresh is unlimited and finds
