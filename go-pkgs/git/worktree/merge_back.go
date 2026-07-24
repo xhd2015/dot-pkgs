@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +47,9 @@ type MergeBackOptions struct {
 	TargetPath string
 	DryRun     bool
 	Remove     bool
+	// Stdout receives dry-run planned command display (nil → os.Stdout).
+	// Apply path does not write here; callers print result.Message.
+	Stdout io.Writer
 	// Confirm is called before executing when plan.NeedsConfirm.
 	// Must return (true, nil) to proceed. (false, nil) aborts cleanly.
 	// nil + NeedsConfirm → ErrConfirmationRequired (non-interactive).
@@ -155,7 +159,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 			return result, nil
 		}
 		if opts.DryRun {
-			return printDryRun(result, plan)
+			return printDryRun(opts.Stdout, result, plan)
 		}
 		if err := executeRemove(plan, sourceAbs, mainRepo, branch); err != nil {
 			return nil, err
@@ -171,7 +175,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	}
 
 	if opts.DryRun {
-		return printDryRun(result, plan)
+		return printDryRun(opts.Stdout, result, plan)
 	}
 
 	if plan.NeedsConfirm {
@@ -237,7 +241,7 @@ func mergeBackViaTmpWorktree(
 	}
 
 	if opts.DryRun {
-		return printDryRun(result, tmpPlan)
+		return printDryRun(opts.Stdout, result, tmpPlan)
 	}
 
 	if tmpPlan.NeedsConfirm {
@@ -555,10 +559,13 @@ func WritePlannedCommandsDisplay(b *strings.Builder, plan MergeBackPlan) {
 	}
 }
 
-func printDryRun(result *MergeBackResult, plan MergeBackPlan) (*MergeBackResult, error) {
+func printDryRun(out io.Writer, result *MergeBackResult, plan MergeBackPlan) (*MergeBackResult, error) {
+	if out == nil {
+		out = os.Stdout
+	}
 	var b strings.Builder
 	WritePlannedCommandsDisplay(&b, plan)
-	fmt.Print(strings.TrimSuffix(b.String(), "\n"))
+	fmt.Fprint(out, strings.TrimSuffix(b.String(), "\n"))
 	result.Action = "dry-run"
 	result.Message = "dry-run: planned commands listed"
 	return result, nil
