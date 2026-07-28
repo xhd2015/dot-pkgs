@@ -14,9 +14,15 @@ TabSetSpec{Name=bots, Tabs with IDs t1,t2}
 2. Two tabs with IDs `t1` and `t2`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.TabSetName = "bots"
 	req.Tabs = []TabSpecInput{
 		{ID: "t1", Name: "One", Command: "echo-one"},

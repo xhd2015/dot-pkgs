@@ -12,9 +12,15 @@ config tabs t-run,t-idle,t-unk,t-miss + Find three of them
 1. Four config tabs; find three with different busy states; one missing.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.TabSetName = "bots"
 	req.Tabs = []TabSpecInput{
 		{ID: "t-run", Name: "Run", Command: "c1"},

@@ -212,10 +212,11 @@ func buildCreateTabInWindowScript(windowID, setName string, tab TabSpec) string 
 		lines = append(lines, fmt.Sprintf(`      set name to "%s"`, EscapeCommandForAppleScript(tab.Name)))
 	}
 	if tab.Cwd != "" {
+		// cd always executes with newline (NoSubmit does not apply to cwd).
 		lines = append(lines, fmt.Sprintf(`      write text ("cd " & quoted form of "%s")`, EscapePathForAppleScript(tab.Cwd)))
 	}
 	if tab.Command != "" {
-		lines = append(lines, fmt.Sprintf(`      write text "%s"`, EscapeCommandForAppleScript(tab.Command)))
+		lines = append(lines, fmt.Sprintf(`      %s`, writeTextCommand(tab.Command, tab.NoSubmit)))
 	}
 	lines = append(lines,
 		`    end tell`,
@@ -226,7 +227,7 @@ func buildCreateTabInWindowScript(windowID, setName string, tab TabSpec) string 
 }
 
 // buildResendCommandScript writes the tab command into an existing idle session.
-// Never sends Ctrl+C — write text only.
+// Never sends Ctrl+C — write text only. Honors TabSpec.NoSubmit.
 func buildResendCommandScript(ref TabSessionRef, tab TabSpec) string {
 	lines := []string{
 		`tell application "iTerm2"`,
@@ -267,7 +268,7 @@ func buildResendCommandScript(ref TabSessionRef, tab TabSpec) string {
 			`    tell targetSession`,
 		)
 		if tab.Command != "" {
-			lines = append(lines, fmt.Sprintf(`      write text "%s"`, EscapeCommandForAppleScript(tab.Command)))
+			lines = append(lines, fmt.Sprintf(`      %s`, writeTextCommand(tab.Command, tab.NoSubmit)))
 		}
 		lines = append(lines,
 			`    end tell`,
@@ -279,7 +280,7 @@ func buildResendCommandScript(ref TabSessionRef, tab TabSpec) string {
 			`  tell current session of current window`,
 		)
 		if tab.Command != "" {
-			lines = append(lines, fmt.Sprintf(`    write text "%s"`, EscapeCommandForAppleScript(tab.Command)))
+			lines = append(lines, fmt.Sprintf(`    %s`, writeTextCommand(tab.Command, tab.NoSubmit)))
 		}
 		lines = append(lines, `  end tell`)
 	}

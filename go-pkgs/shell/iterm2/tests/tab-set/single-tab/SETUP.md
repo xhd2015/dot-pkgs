@@ -14,9 +14,15 @@ TabSetSpec{Tabs×1}
 2. One tab with id `only`, command `solo-cmd`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.TabSetName = "solo"
 	req.Tabs = []TabSpecInput{
 		{ID: "only", Name: "Only", Command: "solo-cmd"},

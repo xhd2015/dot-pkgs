@@ -14,9 +14,15 @@ TabSetSpec{WindowName=Bots Window, Tabs×1}
 2. One tab so script still creates a window.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.TabSetName = "bots"
 	req.WindowName = "Bots Window"
 	req.Tabs = []TabSpecInput{

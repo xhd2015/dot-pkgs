@@ -16,12 +16,17 @@ fixture (two tab-separated lines)
 ```go
 import (
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "parse-find"
-	data, err := os.ReadFile("two-sessions.txt")
+	// Process cwd is undetermined; join fixture to leaf case dir.
+	path := filepath.Join(d.DOCTEST_CASE, "two-sessions.txt")
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

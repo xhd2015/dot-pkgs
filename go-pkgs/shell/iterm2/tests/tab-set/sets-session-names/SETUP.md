@@ -13,9 +13,15 @@ TabSetSpec{Tabs with Name=Alpha, Beta}
 1. Two tabs with distinct display names `Alpha` and `Beta`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.TabSetName = "named"
 	req.Tabs = []TabSpecInput{
 		{ID: "n1", Name: "Alpha", Command: "run-alpha"},

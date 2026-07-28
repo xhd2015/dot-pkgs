@@ -12,9 +12,15 @@ Find(two sessions) -> StopTabSet
 1. Find two sessions in same window.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.TabSetName = "bots"
 	req.FindSessions = []SessionRefInput{
 		{TabID: "t1", WindowID: "win-1", SessionID: "s1", TTY: "/dev/ttys050"},

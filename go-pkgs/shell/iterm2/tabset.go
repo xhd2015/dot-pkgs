@@ -13,10 +13,21 @@ const (
 
 // TabSpec describes one tab in a tab set.
 type TabSpec struct {
-	ID      string
-	Name    string
-	Command string
-	Cwd     string
+	ID       string
+	Name     string
+	Command  string
+	Cwd      string
+	NoSubmit bool // when true, write text without newline (stage command; user submits)
+}
+
+// writeTextCommand returns an AppleScript write-text line for cmd.
+// When noSubmit is true, appends " without newline" so Enter is not sent.
+func writeTextCommand(cmd string, noSubmit bool) string {
+	line := fmt.Sprintf(`write text "%s"`, EscapeCommandForAppleScript(cmd))
+	if noSubmit {
+		return line + ` without newline`
+	}
+	return line
 }
 
 // TabSetSpec describes a named set of tabs opened in one new iTerm2 window.
@@ -71,7 +82,7 @@ func BuildTabSetNewWindowScript(spec TabSetSpec) string {
 
 		if tab.Command != "" {
 			lines = append(lines,
-				fmt.Sprintf(`    write text "%s"`, EscapeCommandForAppleScript(tab.Command)),
+				fmt.Sprintf(`    %s`, writeTextCommand(tab.Command, tab.NoSubmit)),
 			)
 		}
 

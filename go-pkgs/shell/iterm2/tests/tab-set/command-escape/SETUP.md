@@ -13,9 +13,15 @@ TabSpec.Command = echo "hi"\path
 1. One tab whose command is ``echo "hi"\x`` (double quote + backslash).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.TabSetName = "esc"
 	req.Tabs = []TabSpecInput{
 		{ID: "e1", Name: "Esc", Command: `echo "hi"\x`},

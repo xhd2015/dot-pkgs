@@ -13,9 +13,15 @@ ClassifyBusyFromComm("", false)    -> BusyStateUnknown
 1. Leaf Assert covers empty comm and `ok=false` cases.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.FgComm = ""
 	req.FgOK = false
 	return nil

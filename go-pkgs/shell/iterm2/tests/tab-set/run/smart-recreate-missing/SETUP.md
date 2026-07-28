@@ -13,9 +13,15 @@ Find(only t1) + config {t1,t2} -> RunTabSet
 2. Find only returns `t1`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.RunMode = "smart"
 	req.TabSetName = "bots"
 	req.Tabs = []TabSpecInput{

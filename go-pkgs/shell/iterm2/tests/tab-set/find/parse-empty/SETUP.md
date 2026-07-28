@@ -12,9 +12,15 @@
 2. `FindOutput` is empty string.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	_ = d
+
 	req.Phase = "parse-find"
 	req.FindOutput = ""
 	return nil

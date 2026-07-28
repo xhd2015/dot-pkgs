@@ -1,7 +1,7 @@
 # shell/iterm2 — tab-set create, find, busy, orchestration (P1–P3)
 
 ## Version
-0.0.2
+0.0.3
 
 Nested library doctests for **tab-set** features in
 `github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2`. Does not inherit the parent
@@ -11,10 +11,11 @@ open-dir `Request`/`Run` from `../DOCTEST.md`.
 |-------|--------|
 | **P1** create (`BuildTabSetNewWindowScript`) | Implemented — GREEN |
 | **P2** find + busy | Implemented — GREEN |
-| **P3** `RunTabSet` / `StatusTabSet` / `StopTabSet` + injectable `TabSetConfig` | Classic TDD — RED until implementer |
+| **P3** `RunTabSet` / `StatusTabSet` / `StopTabSet` + injectable `TabSetConfig` | Implemented — GREEN |
+| **NoSubmit** `TabSpec.NoSubmit` → `write text "…" without newline` | Classic TDD — RED |
 
-P3 product symbols are invoked from **P3 leaf Asserts** (not root `Run`) so
-missing orchestration APIs fail only those packages; P1/P2 leaves stay GREEN.
+New NoSubmit leaves set `NoSubmit` via reflection (`setNoSubmit` in root SETUP)
+so packages **compile** today; asserts fail RED until the field/behavior lands.
 
 ## DSN (Domain Specific Notion)
 
@@ -32,6 +33,16 @@ missing orchestration APIs fail only those packages; P1/P2 leaves stay GREEN.
 
 **P1 create / P2 find+busy** — unchanged (see create/find/busy leaves).
 
+**TabSpec.NoSubmit** (this cycle)
+
+- `NoSubmit bool` on `TabSpec` (default false).
+- When true: command write is `write text "cmd" without newline` (stage, no Enter).
+- When false/omit: `write text "cmd"` (submit with newline as today).
+- **cwd / `cd`:** always write with newline / expression form that executes;
+  only the **command** honors NoSubmit.
+- Applies to all command write paths: `BuildTabSetNewWindowScript`,
+  create-tab-in-window, resend idle.
+
 **RunTabSet** (P3)
 
 - `TabSetRunMode`: Smart (default), NewWindow, NoNewWindow.
@@ -43,7 +54,8 @@ missing orchestration APIs fail only those packages; P1/P2 leaves stay GREEN.
     distinct WindowIDs → non-empty `Warning` (e.g. mentions "2 windows").
   - Per config tab: missing → create tab + stamp + command (`created`);
     busy/unknown → skip (`skipped-busy` / `skipped-unknown`);
-    idle → resend command only via write text (`resent`) — **no Ctrl+C**.
+    idle → resend command only via write text (`resent`) — **no Ctrl+C**;
+    resend honors NoSubmit.
 - Mutating AppleScript goes through `cfg.Exec`; find via `cfg.Find`.
 
 **StatusTabSet** (P3)
@@ -78,7 +90,10 @@ tab-set/
 │   ├── sets-session-names/
 │   ├── optional-cwd/
 │   ├── window-name/
-│   └── command-escape/
+│   ├── command-escape/
+│   ├── no-submit-true/             NoSubmit → without newline              [RED]
+│   ├── default-submit/             default submit form (no without newline)
+│   └── cwd-and-no-submit/          cd executes; command without newline    [RED]
 ├── busy/                           [P2 classify-busy]
 │   ├── idle-shell/
 │   ├── busy-child/
@@ -87,12 +102,14 @@ tab-set/
 │   ├── script-scans-vars/
 │   ├── parse-two-sessions/
 │   └── parse-empty/
-├── run/                            [P3 run-tab-set] Classic TDD RED
+├── run/                            [P3 run-tab-set]
 │   ├── smart-first-create/         empty find → create window script
 │   ├── new-window-mode/            Mode NewWindow always create
 │   ├── smart-skip-busy/            busy → skipped-busy, no resend
 │   ├── smart-resend-idle/          idle → resent write text
+│   ├── smart-resend-idle-no-submit/ resend without newline               [RED]
 │   ├── smart-recreate-missing/     missing tab → create tab
+│   ├── smart-recreate-no-submit/   create-tab without newline              [RED]
 │   ├── smart-multi-window-warn/    2 windows → Warning; one window synced
 │   ├── no-new-window-missing-front/ NoNewWindow + no front → ErrNoITermWindow
 │   └── no-ctrl-c/                  no control-c / ctrl-c keystroke in scripts
@@ -105,57 +122,67 @@ tab-set/
 
 ## Test Index
 
-| Leaf | Phase | Description |
-|------|-------|-------------|
-| `new-window-four-tabs/` | build-tab-set-script | P1 create structure |
-| `single-tab/` | build-tab-set-script | P1 single tab |
-| `stamps-set-and-tab-vars/` | build-tab-set-script | P1 markers |
-| `sets-session-names/` | build-tab-set-script | P1 session names |
-| `optional-cwd/` | build-tab-set-script | P1 optional cwd |
-| `window-name/` | build-tab-set-script | P1 window name |
-| `command-escape/` | build-tab-set-script | P1 command escape |
-| `busy/idle-shell/` | classify-busy | P2 idle shells |
-| `busy/busy-child/` | classify-busy | P2 busy non-shell |
-| `busy/unknown-empty/` | classify-busy | P2 unknown |
-| `find/script-scans-vars/` | build-find-script | P2 find script |
-| `find/parse-two-sessions/` | parse-find | P2 parse two |
-| `find/parse-empty/` | parse-find | P2 parse empty |
-| `run/smart-first-create/` | run-tab-set | empty find → create |
-| `run/new-window-mode/` | run-tab-set | always new window |
-| `run/smart-skip-busy/` | run-tab-set | skip busy tab |
-| `run/smart-resend-idle/` | run-tab-set | resend idle command |
-| `run/smart-recreate-missing/` | run-tab-set | recreate missing tab |
-| `run/smart-multi-window-warn/` | run-tab-set | multi-window warning |
-| `run/no-new-window-missing-front/` | run-tab-set | ErrNoITermWindow |
-| `run/no-ctrl-c/` | run-tab-set | no Ctrl+C in scripts |
-| `status/mixed-states/` | status-tab-set | mixed tab states |
-| `stop/empty/` | stop-tab-set | empty stop warning |
-| `stop/closes-marked/` | stop-tab-set | close marked sessions |
+| Leaf | Phase | Description | Expect |
+|------|-------|-------------|--------|
+| `new-window-four-tabs/` | build-tab-set-script | P1 create structure | GREEN |
+| `single-tab/` | build-tab-set-script | P1 single tab | GREEN |
+| `stamps-set-and-tab-vars/` | build-tab-set-script | P1 markers | GREEN |
+| `sets-session-names/` | build-tab-set-script | P1 session names | GREEN |
+| `optional-cwd/` | build-tab-set-script | P1 optional cwd | GREEN |
+| `window-name/` | build-tab-set-script | P1 window name | GREEN |
+| `command-escape/` | build-tab-set-script | P1 command escape | GREEN |
+| `no-submit-true/` | build-tab-set-script | NoSubmit → without newline | RED |
+| `default-submit/` | build-tab-set-script | default submit (no without newline) | GREEN |
+| `cwd-and-no-submit/` | build-tab-set-script | cd executes; cmd without newline | RED |
+| `busy/idle-shell/` | classify-busy | P2 idle shells | GREEN |
+| `busy/busy-child/` | classify-busy | P2 busy non-shell | GREEN |
+| `busy/unknown-empty/` | classify-busy | P2 unknown | GREEN |
+| `find/script-scans-vars/` | build-find-script | P2 find script | GREEN |
+| `find/parse-two-sessions/` | parse-find | P2 parse two | GREEN |
+| `find/parse-empty/` | parse-find | P2 parse empty | GREEN |
+| `run/smart-first-create/` | run-tab-set | empty find → create | GREEN |
+| `run/new-window-mode/` | run-tab-set | always new window | GREEN |
+| `run/smart-skip-busy/` | run-tab-set | skip busy tab | GREEN |
+| `run/smart-resend-idle/` | run-tab-set | resend idle command | GREEN |
+| `run/smart-resend-idle-no-submit/` | run-tab-set | resend without newline | RED |
+| `run/smart-recreate-missing/` | run-tab-set | recreate missing tab | GREEN |
+| `run/smart-recreate-no-submit/` | run-tab-set | create-tab without newline | RED |
+| `run/smart-multi-window-warn/` | run-tab-set | multi-window warning | GREEN |
+| `run/no-new-window-missing-front/` | run-tab-set | ErrNoITermWindow | GREEN |
+| `run/no-ctrl-c/` | run-tab-set | no Ctrl+C in scripts | GREEN |
+| `status/mixed-states/` | status-tab-set | mixed tab states | GREEN |
+| `stop/empty/` | stop-tab-set | empty stop warning | GREEN |
+| `stop/closes-marked/` | stop-tab-set | close marked sessions | GREEN |
 
 ## How to Run
 
 ```sh
-cd external/dot-pkgs-master-2026-07-18/go-pkgs
+# from go-pkgs module root (main repo or wrk --bring external path)
 doctest vet ./shell/iterm2/tests/tab-set
 doctest test ./shell/iterm2/tests/tab-set
 ```
 
-Expect after design: **P1+P2 GREEN**, **P3 RED** (undefined orchestration symbols in P3 Asserts).
+Expect: existing leaves **GREEN**; new NoSubmit leaves **RED** (missing field /
+without-newline until implementer).
 
 ```go
 import (
 	"fmt"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2"
 )
 
 // TabSpecInput mirrors iterm2.TabSpec for leaf Setup.
+// NoSubmit is documented for leaves; root Run does not map it until product
+// TabSpec.NoSubmit exists (new leaves set the field in Assert instead).
 type TabSpecInput struct {
-	ID      string
-	Name    string
-	Command string
-	Cwd     string
+	ID       string
+	Name     string
+	Command  string
+	Cwd      string
+	NoSubmit bool
 }
 
 // SessionRefInput mirrors iterm2.TabSessionRef for injectable Find fixtures.
@@ -256,7 +283,8 @@ type Response struct {
 //	func StopTabSet(setName string, cfg *TabSetConfig) (*TabSetStopResult, error)
 //
 //	var ErrNoITermWindow error // NoNewWindow without frontmost window
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
+	_ = d
 	resp := &Response{}
 	switch req.Phase {
 	case "build-tab-set-script":
