@@ -19,6 +19,8 @@ import (
 	"strings"
 )
 
+// AppPath is the system-wide default install path (/Applications/iTerm.app).
+// Prefer ResolveAppPath() for detection: it also checks ~/Applications first.
 const AppPath = "/Applications/iTerm.app"
 
 // KoolTargetDirVar is the iTerm2 user session variable used to track kool-opened dirs.
@@ -69,7 +71,7 @@ const (
 type Config struct {
 	// Osascript runs AppleScript. When nil, default runner is used.
 	Osascript func(script string) error
-	// Installed reports whether iTerm2 is present. When nil, AppPath / env is checked.
+	// Installed reports whether iTerm2 is present. When nil, ResolveAppPath / env is checked.
 	Installed func() bool
 	// FollowUpCommands are shell commands written after cd (OpenConfig only).
 	FollowUpCommands []string
@@ -77,10 +79,41 @@ type Config struct {
 	Mode OpenMode
 }
 
-// IsInstalled reports whether iTerm2.app exists at AppPath.
+// appCandidates returns install paths in preference order: ~/Applications then /Applications.
+func appCandidates() []string {
+	cands := make([]string, 0, 2)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cands = append(cands, filepath.Join(home, "Applications", "iTerm.app"))
+	}
+	cands = append(cands, AppPath)
+	return cands
+}
+
+// resolveAppPathAmong returns the first existing .app bundle path among candidates, or "".
+func resolveAppPathAmong(candidates []string) string {
+	for _, p := range candidates {
+		if p == "" {
+			continue
+		}
+		info, err := os.Stat(p)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		return p
+	}
+	return ""
+}
+
+// ResolveAppPath returns the preferred existing iTerm2.app path.
+// Order: ~/Applications/iTerm.app, then /Applications/iTerm.app.
+// Returns "" when none exist.
+func ResolveAppPath() string {
+	return resolveAppPathAmong(appCandidates())
+}
+
+// IsInstalled reports whether an iTerm2.app bundle exists under ~/Applications or /Applications.
 func IsInstalled() bool {
-	_, err := os.Stat(AppPath)
-	return err == nil
+	return ResolveAppPath() != ""
 }
 
 // EscapePathForAppleScript escapes a path embedded in an AppleScript string literal.

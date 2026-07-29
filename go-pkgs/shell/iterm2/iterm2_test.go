@@ -90,6 +90,78 @@ func TestOpenConfigNotInstalled(t *testing.T) {
 	}
 }
 
+func TestResolveAppPathAmongPrefersHomeThenSystem(t *testing.T) {
+	root := t.TempDir()
+	homeApp := filepath.Join(root, "home", "Applications", "iTerm.app")
+	sysApp := filepath.Join(root, "system", "Applications", "iTerm.app")
+
+	// neither
+	if got := resolveAppPathAmong([]string{homeApp, sysApp}); got != "" {
+		t.Fatalf("resolveAppPathAmong(none) = %q, want empty", got)
+	}
+
+	// only system
+	if err := os.MkdirAll(sysApp, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveAppPathAmong([]string{homeApp, sysApp}); got != sysApp {
+		t.Fatalf("resolveAppPathAmong(system only) = %q, want %q", got, sysApp)
+	}
+
+	// both: home wins
+	if err := os.MkdirAll(homeApp, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveAppPathAmong([]string{homeApp, sysApp}); got != homeApp {
+		t.Fatalf("resolveAppPathAmong(both) = %q, want home %q", got, homeApp)
+	}
+
+	// only home
+	if err := os.RemoveAll(sysApp); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveAppPathAmong([]string{homeApp, sysApp}); got != homeApp {
+		t.Fatalf("resolveAppPathAmong(home only) = %q, want %q", got, homeApp)
+	}
+
+	// file is not a bundle directory
+	filePath := filepath.Join(root, "not-a-bundle")
+	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveAppPathAmong([]string{filePath}); got != "" {
+		t.Fatalf("resolveAppPathAmong(file) = %q, want empty", got)
+	}
+}
+
+func TestAppCandidatesOrder(t *testing.T) {
+	cands := appCandidates()
+	if len(cands) < 1 {
+		t.Fatal("appCandidates() empty")
+	}
+	// last is always system AppPath
+	if cands[len(cands)-1] != AppPath {
+		t.Fatalf("last candidate = %q, want %q", cands[len(cands)-1], AppPath)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		if len(cands) != 1 {
+			t.Fatalf("without home, want only AppPath, got %v", cands)
+		}
+		return
+	}
+	wantHome := filepath.Join(home, "Applications", "iTerm.app")
+	if len(cands) != 2 || cands[0] != wantHome || cands[1] != AppPath {
+		t.Fatalf("appCandidates() = %v, want [%q, %q]", cands, wantHome, AppPath)
+	}
+}
+
+func TestIsInstalledMatchesResolveAppPath(t *testing.T) {
+	if IsInstalled() != (ResolveAppPath() != "") {
+		t.Fatalf("IsInstalled()=%v but ResolveAppPath()=%q", IsInstalled(), ResolveAppPath())
+	}
+}
+
 func TestOpenUnsupportedPlatform(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("darwin always supports iterm2 package entry checks")
