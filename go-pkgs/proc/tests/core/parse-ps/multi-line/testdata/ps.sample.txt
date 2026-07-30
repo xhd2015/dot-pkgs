@@ -1,0 +1,4 @@
+    1     0 /sbin/launchd
+  100     1 /usr/bin/bash -l
+  200   100 /usr/bin/vim /tmp/note.go
+  201   100 sleep 30

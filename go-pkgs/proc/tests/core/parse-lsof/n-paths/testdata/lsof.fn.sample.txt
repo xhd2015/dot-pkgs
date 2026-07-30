@@ -1,0 +1,11 @@
+p1234
+fcwd
+n/private/tmp/workdir
+ftxt
+n/usr/bin/vim
+f1
+n/Users/me/.grok/sessions/abc/events.jsonl
+f2
+n/private/tmp/workdir
+f3
+n/var/log/system.log
