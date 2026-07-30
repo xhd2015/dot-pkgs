@@ -50,6 +50,14 @@ type MergeBackOptions struct {
 	// Must return (true, nil) to proceed. (false, nil) aborts cleanly.
 	// nil + NeedsConfirm → ErrConfirmationRequired (non-interactive).
 	Confirm func(plan MergeBackPlan) (bool, error)
+
+	// TmpDir is the parent directory for temporary worktrees used on the
+	// dirty-diverged path. Empty uses os.TempDir() (product-neutral; not WRK_HOME).
+	TmpDir string
+
+	// StashLabel is the message for git stash push -m during dirty migration.
+	// Empty uses a product-neutral default ("merge-back"), not "wrk-merge-back".
+	StashLabel string
 }
 
 // MergeBackResult describes the outcome of a merge-back operation.
@@ -100,6 +108,21 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 
 	branch, err := ReadBranch(sourceAbs)
 	if err != nil {
+		return nil, err
+	}
+
+	// Exclusive-branch: refuse merge/delete when source or target branch is
+	// checked out in more than one worktree (including dead registrations).
+	// Runs before dry-run success plans and before any mutation so cascade and
+	// --done branch -D cannot skip the guard.
+	if err := EnsureBranchExclusive(mainRepo, branch); err != nil {
+		return nil, err
+	}
+	targetBranch, err := ReadBranch(targetAbs)
+	if err != nil {
+		return nil, err
+	}
+	if err := EnsureBranchExclusive(mainRepo, targetBranch); err != nil {
 		return nil, err
 	}
 
@@ -218,7 +241,7 @@ func mergeBackViaTmpWorktree(
 
 	targetLabelStr := targetLabel(targetAbs)
 
-	tmpPath, tmpBranch, err := createTmpWorktree(mainRepo, branch, mergeRef)
+	tmpPath, tmpBranch, err := createTmpWorktree(mainRepo, branch, mergeRef, opts.TmpDir)
 	if err != nil {
 		return nil, fmt.Errorf("create tmp worktree: %w", err)
 	}
@@ -262,7 +285,7 @@ func mergeBackViaTmpWorktree(
 	// Stash user's dirty changes from source, test them against the
 	// rebased HEAD in tmp, then migrate them back to source after
 	// the branch ref is updated.
-	if err := migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch); err != nil {
+	if err := migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch, opts.StashLabel); err != nil {
 		return nil, err
 	}
 
@@ -283,9 +306,15 @@ func mergeBackViaTmpWorktree(
 		return nil, fmt.Errorf("clean source worktree: %w", err)
 	}
 
-	// Pop the migrated stash back onto source.
-	if err := runGit(sourceAbs, "stash", "pop"); err != nil {
+	// Restore migrated dirty changes onto source.
+	// Use apply (not pop): modern git deletes refs/stash and its reflog when the
+	// last stash entry is dropped/popped, so pop would erase the StashLabel from
+	// history. Drop only when another stash entry remains below (pre-existing).
+	if err := runGit(sourceAbs, "stash", "apply"); err != nil {
 		return nil, fmt.Errorf("restore dirty changes to source: %w", err)
+	}
+	if err := dropStashTopIfNotLast(sourceAbs); err != nil {
+		return nil, err
 	}
 
 	result.Action = "rebased-and-merged"
@@ -293,15 +322,55 @@ func mergeBackViaTmpWorktree(
 	return result, nil
 }
 
+// defaultStashLabel is the product-neutral stash -m message when StashLabel is empty.
+const defaultStashLabel = "merge-back"
+
+// resolveStashLabel returns opts label or the neutral default.
+func resolveStashLabel(label string) string {
+	if label == "" {
+		return defaultStashLabel
+	}
+	return label
+}
+
+// dropStashTopIfNotLast drops stash@{0} when at least one older stash entry
+// remains. When stash@{0} is the only entry, it is left in place: modern git
+// deletes refs/stash (and its reflog) when the last stash is dropped, which
+// would erase the StashLabel from stash history. Leaving the sole entry keeps
+// the label observable via `git stash list` / `git reflog show stash`.
+func dropStashTopIfNotLast(dir string) error {
+	list, err := cmd.Run(context.Background(), dir, "stash", "list")
+	if err != nil {
+		return err
+	}
+	lines := 0
+	for _, line := range strings.Split(strings.TrimSpace(list), "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines++
+		}
+	}
+	if lines <= 1 {
+		// Sole entry (or empty): keep so the label remains in stash history.
+		return nil
+	}
+	if err := runGit(dir, "stash", "drop"); err != nil {
+		return fmt.Errorf("drop migrated stash: %w", err)
+	}
+	return nil
+}
+
 // migrateDirtyChanges stashes dirty tracked+untracked changes from source,
 // applies them to tmp (the rebased worktree) to check for conflicts, then
 // re-stashes them on tmp. If apply-on-tmp conflicts, the source stash is
 // preserved so the user can manually resolve on source.
-func migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch string) error {
+// stashLabel is the git stash push -m message (empty → defaultStashLabel).
+func migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch, stashLabel string) error {
+	label := resolveStashLabel(stashLabel)
+
 	// git stash push includes untracked files (-u) but not ignored.
 	// On clean worktrees this is a no-op (empty stash).
 	// We push first, then check if anything was stashed.
-	if err := runGit(sourceAbs, "stash", "push", "-u", "-m", "wrk-merge-back"); err != nil {
+	if err := runGit(sourceAbs, "stash", "push", "-u", "-m", label); err != nil {
 		return fmt.Errorf("stash dirty changes: %w", err)
 	}
 
@@ -310,7 +379,7 @@ func migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch string) error {
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(stashList, "wrk-merge-back") {
+	if !strings.Contains(stashList, label) {
 		// Source was clean — nothing to migrate.
 		return nil
 	}
@@ -333,7 +402,7 @@ func migrateDirtyChanges(sourceAbs, mainRepo, tmpPath, branch string) error {
 	// Re-stash from tmp — this captures the user's changes relative to
 	// the rebased HEAD. After source branch is update-ref'd and reset,
 	// we'll pop this stash on source.
-	if err := runGit(tmpPath, "stash", "push", "-u", "-m", "wrk-merge-back"); err != nil {
+	if err := runGit(tmpPath, "stash", "push", "-u", "-m", label); err != nil {
 		return fmt.Errorf("re-stash from tmp: %w", err)
 	}
 
@@ -353,11 +422,17 @@ func runGit(dir string, args ...string) error {
 
 func combinedOutput(out []byte) string { return strings.TrimSpace(string(out)) }
 
-func createTmpWorktree(mainRepo, sourceBranch, mergeRef string) (tmpPath, tmpBranch string, err error) {
-	worktreesDir, err := resolveWrkWorktreesDir()
-	if err != nil {
-		return "", "", err
+// resolveTmpWorktreesDir returns the parent for temporary worktrees.
+// Empty tmpDir uses os.TempDir() — product-neutral, no WRK_HOME required.
+func resolveTmpWorktreesDir(tmpDir string) string {
+	if tmpDir != "" {
+		return tmpDir
 	}
+	return os.TempDir()
+}
+
+func createTmpWorktree(mainRepo, sourceBranch, mergeRef, tmpDir string) (tmpPath, tmpBranch string, err error) {
+	worktreesDir := resolveTmpWorktreesDir(tmpDir)
 	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
 		return "", "", err
 	}
@@ -400,17 +475,6 @@ func cleanupTmpWorktree(mainRepo, tmpPath, tmpBranch string) {
 	branchArgs := []string{"-C", mainRepo, "branch", "-D", tmpBranch}
 	logGitVerbose(branchArgs)
 	exec.Command("git", branchArgs...).Run()
-}
-
-func resolveWrkWorktreesDir() (string, error) {
-	if v := os.Getenv("WRK_HOME"); v != "" {
-		return filepath.Join(pathfmt.Expand(v), "worktrees"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home dir: %w", err)
-	}
-	return filepath.Join(home, ".wrk", "worktrees"), nil
 }
 
 func resolveDate() string {

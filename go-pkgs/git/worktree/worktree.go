@@ -1,16 +1,15 @@
 package worktree
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd"
 	gitops "github.com/xhd2015/gitops/git"
+	gitopsWorktree "github.com/xhd2015/gitops/git/worktree"
 )
 
 // GitVerboseLogger is invoked before major git subprocesses when wrk -v is set.
@@ -24,6 +23,7 @@ func logGitVerbose(args []string) {
 }
 
 // Entry represents one row from `git worktree list --porcelain`.
+// Public go-pkgs type; values are converted from gitops worktree.Entry.
 type Entry struct {
 	Path   string
 	Branch string // empty when detached
@@ -31,10 +31,29 @@ type Entry struct {
 	IsMain bool // true when .git is a directory (main checkout)
 }
 
+func entryFromGitops(e gitopsWorktree.Entry) Entry {
+	return Entry{
+		Path:   e.Path,
+		Branch: e.Branch,
+		HEAD:   e.HEAD,
+		IsMain: e.IsMain,
+	}
+}
+
+func entriesFromGitops(es []gitopsWorktree.Entry) []Entry {
+	if es == nil {
+		return nil
+	}
+	out := make([]Entry, len(es))
+	for i, e := range es {
+		out[i] = entryFromGitops(e)
+	}
+	return out
+}
+
 // IsDead reports whether the worktree directory no longer exists on disk.
 func IsDead(path string) bool {
-	_, err := os.Stat(path)
-	return os.IsNotExist(err)
+	return gitopsWorktree.IsDead(path)
 }
 
 // samePath reports whether two paths refer to the same location, resolving
@@ -84,32 +103,17 @@ func ShowToplevel(path string) (string, error) {
 
 // IsLinked reports whether path is a linked worktree (.git is a file, not a directory).
 func IsLinked(path string) bool {
-	info, err := os.Stat(filepath.Join(path, ".git"))
-	return err == nil && info.Mode().IsRegular()
+	return gitopsWorktree.IsLinked(path)
 }
 
 // IsMainRepo reports whether path is a main git checkout (.git is a directory).
 func IsMainRepo(path string) bool {
-	info, err := os.Stat(filepath.Join(path, ".git"))
-	return err == nil && info.IsDir()
+	return gitopsWorktree.IsMainRepo(path)
 }
 
 // ReadMainRepo resolves the main repository path from a linked worktree's .git file.
 func ReadMainRepo(linkedPath string) (string, error) {
-	gitFile := filepath.Join(linkedPath, ".git")
-	content, err := os.ReadFile(gitFile)
-	if err != nil {
-		return "", fmt.Errorf("read .git file: %w", err)
-	}
-	s := strings.TrimSpace(string(content))
-	const prefix = "gitdir: "
-	if !strings.HasPrefix(s, prefix) {
-		return "", fmt.Errorf("unexpected .git file format in worktree %s", linkedPath)
-	}
-	gitdir := strings.TrimSpace(s[len(prefix):])
-	// gitdir is <mainRepo>/.git/worktrees/<name>
-	mainRepo := filepath.Dir(filepath.Dir(filepath.Dir(gitdir)))
-	return mainRepo, nil
+	return gitopsWorktree.ReadMainRepo(linkedPath)
 }
 
 // ReadBranch returns the current branch name, or "HEAD" when detached.
@@ -129,17 +133,7 @@ func ReadBranchCtx(ctx context.Context, worktreePath string) (string, error) {
 // ResolveMainRepo returns the main repository for path, whether path is a main
 // checkout or a linked worktree.
 func ResolveMainRepo(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("resolve path: %w", err)
-	}
-	if IsLinked(abs) {
-		return ReadMainRepo(abs)
-	}
-	if IsMainRepo(abs) {
-		return abs, nil
-	}
-	return "", fmt.Errorf("%s is not a git repository", abs)
+	return gitopsWorktree.ResolveMainRepo(path)
 }
 
 // List returns all worktrees including the main checkout.
@@ -148,58 +142,86 @@ func List(repoPath string) ([]Entry, error) {
 }
 
 // ListCtx is List with cancellation support.
+// Low-level inventory is delegated to gitops; ctx is checked before the call
+// (gitops List itself has no context).
 func ListCtx(ctx context.Context, repoPath string) ([]Entry, error) {
-	out, err := cmd.Run(ctx, repoPath, "worktree", "list", "--porcelain")
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	entries, err := gitopsWorktree.List(repoPath)
 	if err != nil {
-		return nil, fmt.Errorf("git worktree list: %w", err)
+		return nil, err
 	}
-	entries := ParseListPorcelain(out)
-	for i := range entries {
-		entries[i].IsMain = IsMainRepo(entries[i].Path)
-	}
-	return entries, nil
+	return entriesFromGitops(entries), nil
 }
 
 // ListLinked returns linked worktrees only (excludes the main checkout).
 func ListLinked(repoPath string) ([]Entry, error) {
-	all, err := List(repoPath)
+	entries, err := gitopsWorktree.ListLinked(repoPath)
 	if err != nil {
 		return nil, err
 	}
-	var linked []Entry
-	for _, e := range all {
-		if !e.IsMain {
-			linked = append(linked, e)
+	return entriesFromGitops(entries), nil
+}
+
+// WorktreesOnBranch returns registered worktrees whose Branch equals branch.
+// Detached entries (Branch empty) never match. Multiple matches are returned
+// as data only — no policy error.
+func WorktreesOnBranch(repoPath, branch string) ([]Entry, error) {
+	entries, err := gitopsWorktree.WorktreesOnBranch(repoPath, branch)
+	if err != nil {
+		return nil, err
+	}
+	return entriesFromGitops(entries), nil
+}
+
+// BranchSharedError is returned when a named branch is checked out in more than
+// one registered worktree (including dead/prunable entries). Callers may wrap
+// with product-specific refuse wording; Error() is generic library text.
+type BranchSharedError struct {
+	Branch   string
+	MainRepo string
+	Entries  []Entry
+}
+
+func (e *BranchSharedError) Error() string {
+	if e == nil {
+		return "branch is checked out in multiple worktrees"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "branch %q is checked out in multiple worktrees:", e.Branch)
+	for _, ent := range e.Entries {
+		if IsDead(ent.Path) {
+			fmt.Fprintf(&b, "\n  %s (missing; prune with: git -C %s worktree prune)", ent.Path, e.MainRepo)
+		} else {
+			fmt.Fprintf(&b, "\n  %s", ent.Path)
 		}
 	}
-	return linked, nil
+	return b.String()
+}
+
+// EnsureBranchExclusive returns *BranchSharedError when branch has more than one
+// registered worktree checkout under mainRepo. Detached HEAD (empty branch or
+// "HEAD") is skipped. Dead registrations count toward the multi-checkout total.
+func EnsureBranchExclusive(mainRepo, branch string) error {
+	if branch == "" || branch == "HEAD" {
+		return nil
+	}
+	entries, err := WorktreesOnBranch(mainRepo, branch)
+	if err != nil {
+		return err
+	}
+	if len(entries) > 1 {
+		return &BranchSharedError{
+			Branch:   branch,
+			MainRepo: mainRepo,
+			Entries:  entries,
+		}
+	}
+	return nil
 }
 
 // ParseListPorcelain parses `git worktree list --porcelain` output into entries.
 func ParseListPorcelain(output string) []Entry {
-	var entries []Entry
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	var current Entry
-	for scanner.Scan() {
-		line := scanner.Text()
-		switch {
-		case strings.HasPrefix(line, "worktree "):
-			if current.Path != "" {
-				entries = append(entries, current)
-			}
-			current = Entry{Path: line[len("worktree "):]}
-		case strings.HasPrefix(line, "HEAD "):
-			current.HEAD = line[len("HEAD "):]
-		case strings.HasPrefix(line, "branch "):
-			ref := line[len("branch "):]
-			const prefix = "refs/heads/"
-			if strings.HasPrefix(ref, prefix) {
-				current.Branch = ref[len(prefix):]
-			}
-		}
-	}
-	if current.Path != "" {
-		entries = append(entries, current)
-	}
-	return entries
+	return entriesFromGitops(gitopsWorktree.ParseListPorcelain(output))
 }

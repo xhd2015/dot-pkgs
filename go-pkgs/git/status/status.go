@@ -3,6 +3,8 @@ package status
 import (
 	"fmt"
 	"strings"
+
+	gitopsStatus "github.com/xhd2015/gitops/git/status"
 )
 
 type Counts struct {
@@ -26,78 +28,33 @@ func (c WrkCounts) dirty() bool {
 }
 
 func ParsePorcelain(porcelain string) Counts {
-	var counts Counts
-	for _, line := range strings.Split(porcelain, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if len(line) < 2 {
-			continue
-		}
-		x, y := line[0], line[1]
-		if x == '?' && y == '?' {
-			counts.Untracked++
-			continue
-		}
-		if x == 'R' {
-			counts.Renamed++
-			continue
-		}
-		if x == 'C' {
-			counts.Copied++
-			continue
-		}
-		if x == 'A' {
-			counts.Added++
-			continue
-		}
-		if x == 'U' || y == 'U' {
-			counts.Unmerged++
-		}
-		if x == 'D' || y == 'D' {
-			counts.Deleted++
-			continue
-		}
-		if x == 'M' || y == 'M' {
-			counts.Modified++
-		}
+	c := gitopsStatus.ParsePorcelain(porcelain)
+	return Counts{
+		Modified:  c.Modified,
+		Added:     c.Added,
+		Deleted:   c.Deleted,
+		Untracked: c.Untracked,
+		Renamed:   c.Renamed,
+		Copied:    c.Copied,
+		Unmerged:  c.Unmerged,
 	}
-	return counts
 }
 
 // ParsePorcelainWrk applies wrk taxonomy (?? → added; M/default → changed).
+// Implemented via gitops ParseChangeCounts (same four-bucket rules).
 func ParsePorcelainWrk(porcelain string) WrkCounts {
-	var counts WrkCounts
-	for _, line := range strings.Split(porcelain, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "??") {
-			counts.Added++
-			continue
-		}
-		if len(line) < 2 {
-			counts.Changed++
-			continue
-		}
-		x, y := line[0], line[1]
-		switch {
-		case x == 'R' || y == 'R':
-			counts.Renamed++
-		case x == 'A' || y == 'A':
-			counts.Added++
-		case x == 'D' || y == 'D':
-			counts.Deleted++
-		default:
-			counts.Changed++
-		}
+	c := gitopsStatus.ParseChangeCounts(porcelain)
+	return WrkCounts{
+		Added:   c.Added,
+		Changed: c.Changed,
+		Renamed: c.Renamed,
+		Deleted: c.Deleted,
 	}
-	return counts
 }
 
 // FormatWrk renders wrk --status Status: value (no ANSI).
+// Deprecated: wrk owns this wording in wrkcli (formatWrkStatus). Kept as a shim for
+// checkout.Enrich (StyleWrk) and other non-wrk callers; wrk should not call FormatWrk.
 func FormatWrk(counts WrkCounts) string {
 	if !counts.dirty() {
 		return "clean"
@@ -148,9 +105,9 @@ func Format(counts Counts, style FormatStyle) string {
 
 func wrkCountsFromBackup(counts Counts) WrkCounts {
 	return WrkCounts{
-		Added:    counts.Added + counts.Untracked,
-		Changed:  counts.Modified,
-		Renamed:  counts.Renamed,
-		Deleted:  counts.Deleted,
+		Added:   counts.Added + counts.Untracked,
+		Changed: counts.Modified,
+		Renamed: counts.Renamed,
+		Deleted: counts.Deleted,
 	}
 }

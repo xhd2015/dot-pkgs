@@ -3,19 +3,21 @@ package worktree
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/status"
+	gitopsWorktree "github.com/xhd2015/gitops/git/worktree"
 )
 
 // IsClean reports whether the worktree has no uncommitted changes.
+// Uses porcelain status (untracked counts as dirty), matching historical go-pkgs
+// semantics via gitops IsPorcelainClean.
 func IsClean(path string) error {
-	out, err := cmd.Run(context.Background(), path, "status", "--porcelain")
+	ok, err := gitopsWorktree.IsPorcelainClean(path)
 	if err != nil {
 		return fmt.Errorf("git status: %w", err)
 	}
-	if len(strings.TrimSpace(out)) > 0 {
+	if !ok {
 		return fmt.Errorf("worktree %s has uncommitted changes", path)
 	}
 	return nil
