@@ -1,11 +1,16 @@
-# gotool — replace, resolve, update
+# gotool — replace, resolve, update, pin
 
 ## Version
 
-0.0.1
+0.0.2
 
 Library doc tests for `github.com/xhd2015/dot-pkgs/go-pkgs/gotool` (migrated from
 `kool-wrk/tools/go`). Each leaf calls gotool APIs directly via root `Run()` — no CLI.
+
+**Classic TDD (Pin):** `update.Pin` is scaffolded but not implemented. Leaves under
+`update/pin/` expect **RED** until the implementer lands real Pin semantics.
+Existing `update/basic` still exercises `Update` and should stay GREEN until the
+implementer rewires `Update` as a thin wrapper around `Pin`.
 
 ## DSN (Domain Specific Notion)
 
@@ -14,11 +19,20 @@ Library doc tests for `github.com/xhd2015/dot-pkgs/go-pkgs/gotool` (migrated fro
 - **`resolve.ResolveLocalModules(currentDir, []string{localDir})`** — reads consumer
   `go.mod`, resolves local module path, returns `LocalModuleInfo.IsDependency`.
 - **`update.Update(dir)`** — drops replace for the target module and sets require to the
-  latest matching git version tag.
-- **`ConsumerDir`** — module directory whose `go.mod` is edited (replace/update) or read
+  latest matching git version tag (cwd = consumer; implementer will wrap `Pin`).
+- **`update.Pin(opts)`** — library pin with explicit `ConsumerDir`, `DepDir`, optional
+  `Version`, and `DryRun`. No process-global Chdir; edits use
+  `commands.GoModEditOptions{Dir: ConsumerDir}`.
+- **`ConsumerDir`** — module directory whose `go.mod` is edited (replace/update/pin) or read
   (resolve).
-- **`TargetDir`** — local Go module directory passed to `Replace` / `Update`.
+- **`TargetDir` / `DepDir`** — local Go module directory passed to `Replace` / `Update` /
+  `Pin` as the dependency source (module path + tags).
 - **`LocalModDir`** — dependency directory checked by resolve leaves.
+- **`Version`** — optional exact go require version for Pin (e.g. `v0.0.5`); empty =
+  resolve latest tag.
+- **`DryRun`** — Pin plans result without writing consumer `go.mod`.
+- **`DiskVersion`** — require version observed on disk after the call (may differ from
+  planned `ModuleVersion` on dry-run).
 
 ## Decision Tree
 
@@ -30,31 +44,44 @@ gotool tests
 │   ├── is-dependency/            # module in require → IsDependency true
 │   └── not-dependency/           # unknown module → IsDependency false
 └── update/
-    └── basic/                    # Update drops replace, sets require from git tag
+    ├── basic/                    # Update drops replace, sets require from git tag (GREEN)
+    └── pin/                      # Pin API — classic TDD RED until implementer
+        ├── basic/                # Pin: drop replace, require latest tag
+        ├── explicit-version/     # Pin with Version=v0.0.5 (forced; no tag lookup required)
+        ├── dry-run/              # would pin; go.mod unchanged; PinResult filled
+        └── missing-tag/          # untagged DepDir + empty Version → error
 ```
 
 ## Test Index
 
-| # | Leaf | Description |
-|---|------|-------------|
-| 1 | `replace/basic` | `Replace` adds `replace old => absDir` in consumer go.mod |
-| 2 | `resolve/is-dependency` | Module listed in require → `IsDependency` true |
-| 3 | `resolve/not-dependency` | Module not in consumer go.mod → `IsDependency` false |
-| 4 | `update/basic` | `Update` drops replace and sets require to latest tag |
+| # | Leaf | Description | Expected |
+|---|------|-------------|----------|
+| 1 | `replace/basic` | `Replace` adds `replace old => absDir` in consumer go.mod | GREEN |
+| 2 | `resolve/is-dependency` | Module listed in require → `IsDependency` true | GREEN |
+| 3 | `resolve/not-dependency` | Module not in consumer go.mod → `IsDependency` false | GREEN |
+| 4 | `update/basic` | `Update` drops replace and sets require to latest tag | GREEN |
+| 5 | `update/pin/basic` | `Pin` drops replace, require latest tag; PinResult filled | RED |
+| 6 | `update/pin/explicit-version` | `Pin` with `Version=v0.0.5` pins that version | RED |
+| 7 | `update/pin/dry-run` | DryRun plans pin; consumer go.mod unchanged on disk | RED |
+| 8 | `update/pin/missing-tag` | Untagged DepDir + empty Version → error mentioning tag | RED |
 
 ## How to Run
 
 ```sh
 doctest vet ./go-pkgs/gotool/tests
 doctest test ./go-pkgs/gotool/tests
+doctest test ./go-pkgs/gotool/tests/update
+doctest test ./go-pkgs/gotool/tests/update/pin
 ```
 
 ```go
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/commands"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/replace"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/resolve"
@@ -62,10 +89,12 @@ import (
 )
 
 type Request struct {
-	Operation   string // "replace", "resolve", "update"
+	Operation   string // "replace", "resolve", "update", "pin"
 	ConsumerDir string
-	TargetDir   string
+	TargetDir   string // dep module dir for replace/update/pin
 	LocalModDir string
+	Version     string // Pin: optional exact require version
+	DryRun      bool   // Pin: plan only, no go.mod writes
 }
 
 type Response struct {
@@ -73,20 +102,30 @@ type Response struct {
 	IsDependency  bool
 	ModulePath    string
 	AbsDir        string
-	ModuleVersion string
-	HasReplace    bool
+	ModuleVersion string // planned/applied require version (PinResult.Version or update disk)
+	Tag           string // PinResult.Tag
+	HasReplace    bool   // replace still present on disk after call
+	DiskVersion   string // require version on disk after call
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
+	t.Helper()
+	_ = d
 	resp := &Response{}
-	oldWd, err := os.Getwd()
-	if err != nil {
-		return nil, err
+
+	// replace/update rely on consumer cwd (legacy). Pin must work without Chdir
+	// (parallel-safe product API via ConsumerDir).
+	needsChdir := req.Operation == "replace" || req.Operation == "update"
+	if needsChdir {
+		oldWd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		if err := os.Chdir(req.ConsumerDir); err != nil {
+			return nil, err
+		}
+		defer os.Chdir(oldWd)
 	}
-	if err := os.Chdir(req.ConsumerDir); err != nil {
-		return nil, err
-	}
-	defer os.Chdir(oldWd)
 
 	switch req.Operation {
 	case "replace":
@@ -100,7 +139,8 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		}
 
 	case "resolve":
-		_, resolved, resp.Err := resolve.ResolveLocalModules(req.ConsumerDir, []string{req.LocalModDir})
+		_, resolved, resolveErr := resolve.ResolveLocalModules(req.ConsumerDir, []string{req.LocalModDir})
+		resp.Err = resolveErr
 		if resp.Err == nil {
 			if len(resolved) != 1 {
 				return nil, fmt.Errorf("expected 1 resolved module, got %d", len(resolved))
@@ -122,7 +162,43 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			}
 			resp.ModulePath = modulePath
 			resp.ModuleVersion = requireVersion(modInfo, resp.ModulePath)
+			resp.DiskVersion = resp.ModuleVersion
 			resp.HasReplace = hasReplaceForPath(modInfo, resp.ModulePath)
+		}
+
+	case "pin":
+		result, pinErr := update.Pin(update.PinOptions{
+			ConsumerDir: req.ConsumerDir,
+			DepDir:      req.TargetDir,
+			Version:     req.Version,
+			DryRun:      req.DryRun,
+		})
+		resp.Err = pinErr
+		resp.ModulePath = result.ModulePath
+		resp.ModuleVersion = result.Version
+		resp.Tag = result.Tag
+
+		// Always inspect consumer go.mod when present (success, dry-run, and error paths).
+		if req.ConsumerDir != "" {
+			modInfo, err := resolve.GetModuleInfo(req.ConsumerDir)
+			if err != nil {
+				// Surface read errors only when Pin itself succeeded; otherwise keep pinErr.
+				if pinErr == nil {
+					return nil, err
+				}
+			} else {
+				path := resp.ModulePath
+				if path == "" {
+					path, _ = modulePathFromTarget(req.TargetDir)
+					if resp.ModulePath == "" {
+						resp.ModulePath = path
+					}
+				}
+				if path != "" {
+					resp.DiskVersion = requireVersion(modInfo, path)
+					resp.HasReplace = hasReplaceForPath(modInfo, path)
+				}
+			}
 		}
 
 	default:

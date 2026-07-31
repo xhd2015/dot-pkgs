@@ -8,13 +8,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/commands"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/resolve"
 )
 
 var semverPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+`)
 
 // Update drops replace for the target module and sets require to the latest git tag.
+// Consumer module is the process cwd (legacy). Prefer Pin for cwd-independent use.
 func Update(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("requires dir")
@@ -24,36 +24,24 @@ func Update(dir string) error {
 		return fmt.Errorf("no such dir: %s", dir)
 	}
 
-	opts := &commands.GoModEditOptions{Dir: dir, Stderr: true}
-	mod, err := commands.GoModEditJSON(opts)
+	consumerDir, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("failed to get module info: %w", err)
-	}
-	if mod.Module.Path == "" {
-		return fmt.Errorf("not a go module: %s", dir)
-	}
-
-	versionPrefix, err := CalculateVersionPrefix(dir, mod.Module.Path)
-	if err != nil {
-		return fmt.Errorf("failed to calculate version prefix for %s: %w", mod.Module.Path, err)
-	}
-	latestTag, err := GetLatestVersionTag(dir, versionPrefix)
-	if err != nil {
-		return fmt.Errorf("failed to get latest version tag for %s: %w", mod.Module.Path, err)
-	}
-	version := StripVersionPrefix(versionPrefix, latestTag)
-	if !isValidVersionTag(version) {
-		return fmt.Errorf("latest version tag %s resolved to invalid version %s", latestTag, version)
-	}
-
-	if err := commands.GoModDropReplace(mod.Module.Path, nil); err != nil {
-		return err
-	}
-	if err := commands.GoModEditRequire(mod.Module.Path, version, nil); err != nil {
 		return err
 	}
 
-	msgCmd := exec.Command("git", "log", "-1", "--format=%s", latestTag)
+	result, err := Pin(PinOptions{
+		ConsumerDir: consumerDir,
+		DepDir:      dir,
+	})
+	if err != nil {
+		return err
+	}
+
+	if result.Tag == "" {
+		return nil
+	}
+
+	msgCmd := exec.Command("git", "log", "-1", "--format=%s", result.Tag)
 	msgCmd.Dir = dir
 	msgCmd.Stderr = os.Stderr
 	msgOutput, err := msgCmd.Output()

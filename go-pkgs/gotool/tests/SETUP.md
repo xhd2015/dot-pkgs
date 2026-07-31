@@ -1,10 +1,10 @@
 # Scenario
 
-**Feature**: gotool library helpers for go.mod replace, resolve, and update
+**Feature**: gotool library helpers for go.mod replace, resolve, update, and pin
 
 ```
 # isolated temp workspace per leaf; go + git on PATH
-consumer go.mod + local module dir -> gotool API -> go.mod side effects
+consumer go.mod + local module dir -> gotool API -> go.mod side effects / PinResult
 ```
 
 ## Preconditions
@@ -16,7 +16,7 @@ consumer go.mod + local module dir -> gotool API -> go.mod side effects
 
 1. Verify `go` and `git` are available.
 2. Leaf `Setup` builds consumer + target module fixtures.
-3. Root `Run` chdirs to `ConsumerDir` and invokes the requested gotool API.
+3. Root `Run` invokes the requested gotool API (`pin` without Chdir; `replace`/`update` chdir to consumer).
 
 ```go
 import (
@@ -26,6 +26,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 const (
@@ -34,7 +36,9 @@ const (
 	fixtureModulePath  = "github.com/example/fixture-mod"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("go not found in PATH: %w", err)
 	}
@@ -115,6 +119,23 @@ func initTaggedFixtureRepo(t *testing.T, workspace string) string {
 	writeFile(t, filepath.Join(repo, "README.md"), "post-tag change\n")
 	mustGit(t, repo, "add", "README.md")
 	mustGit(t, repo, "commit", "-m", "post-tag commit")
+	return repo
+}
+
+// initUntaggedFixtureRepo is like initTaggedFixtureRepo but never creates a version tag.
+func initUntaggedFixtureRepo(t *testing.T, workspace string) string {
+	t.Helper()
+	repo := filepath.Join(workspace, "fixture-mod")
+	if err := os.MkdirAll(repo, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, "go.mod"), "module "+fixtureModulePath+"\n\ngo 1.22\n")
+	writeFile(t, filepath.Join(repo, "mod.go"), "package fixturemod\n")
+	mustGit(t, repo, "init", "-b", "main")
+	mustGit(t, repo, "config", "user.email", "test@example.com")
+	mustGit(t, repo, "config", "user.name", "Test User")
+	mustGit(t, repo, "add", ".")
+	mustGit(t, repo, "commit", "-m", "initial untagged")
 	return repo
 }
 

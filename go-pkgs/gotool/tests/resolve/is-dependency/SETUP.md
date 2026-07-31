@@ -13,7 +13,9 @@
 3. Set operation to `resolve`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	workspace := newWorkspace(t)
 	depDir := initDepModuleRepo(t, workspace, depModulePath)
 	consumer := initConsumerModule(t, workspace, true)

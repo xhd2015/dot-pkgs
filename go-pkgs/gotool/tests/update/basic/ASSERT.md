@@ -5,7 +5,9 @@
 - Replace directive for the module is dropped.
 
 ```go
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
+	t.Helper()
+	_ = d
 	if err != nil {
 		t.Fatalf("unexpected run error: %v", err)
 	}
