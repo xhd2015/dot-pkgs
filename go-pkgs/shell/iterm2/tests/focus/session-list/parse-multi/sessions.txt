@@ -1,0 +1,6 @@
+# sample session list dump (ASCII TAB field sep)
+# WindowID	WindowName	TabIndex	SessionIndex	SessionID	TTY	Name
+win-1	Main	1	1	sess-aaa	/dev/ttys148	Shell
+win-1	Main	2	1	sess-bbb	/dev/ttys149	App
+
+win-2	Other	1	1	sess-ccc	/dev/ttys150	
