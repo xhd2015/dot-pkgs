@@ -16,11 +16,12 @@ type FocusConfig struct {
 // It does not create windows or tabs.
 func BuildFocusScript(ref SessionRef) string {
 	escaped := EscapeCommandForAppleScript(ref.WindowID)
+	escapedSession := EscapeCommandForAppleScript(ref.SessionID)
 	tabIndex := ref.TabIndex
 	if tabIndex < 1 {
 		tabIndex = 1
 	}
-	return strings.Join([]string{
+	lines := []string{
 		`tell application "iTerm2"`,
 		`  activate`,
 		`  set targetWindow to missing value`,
@@ -39,9 +40,25 @@ func BuildFocusScript(ref SessionRef) string {
 		fmt.Sprintf(`      select tab %d of targetWindow`, tabIndex),
 		`    on error`,
 		`    end try`,
-		`  end if`,
-		`end tell`,
-	}, "\n")
+	}
+	if ref.SessionID != "" {
+		// Select the pane too when the tab contains more than one session.
+		lines = append(lines,
+			`    repeat with aTab in tabs of targetWindow`,
+			`      repeat with aSession in sessions of aTab`,
+			`        try`,
+			`          if (id of aSession as string) is "`+escapedSession+`" then`,
+			`            select aSession`,
+			`            exit repeat`,
+			`          end if`,
+			`        on error`,
+			`        end try`,
+			`      end repeat`,
+			`    end repeat`,
+		)
+	}
+	lines = append(lines, `  end if`, `end tell`)
+	return strings.Join(lines, "\n")
 }
 
 // Focus builds the focus AppleScript for ref and runs it via cfg.Exec
