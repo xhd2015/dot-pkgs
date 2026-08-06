@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/applescript"
 )
 
 // AppPath is the system-wide default install path (/Applications/iTerm.app).
@@ -117,19 +119,16 @@ func IsInstalled() bool {
 }
 
 // EscapePathForAppleScript escapes a path embedded in an AppleScript string literal.
+// Delegates to applescript.EscapeString (backslash and double-quote).
 func EscapePathForAppleScript(dirPath string) string {
-	return strings.NewReplacer(
-		`\`, `\\`,
-		`"`, `\"`,
-	).Replace(dirPath)
+	return applescript.EscapeString(dirPath)
 }
 
 // EscapeCommandForAppleScript escapes a command for AppleScript write text literals.
+// Delegates to applescript.EscapeString. For long FollowUp bodies, see
+// applescript.CheckWriteText and DocumentWriteTextLimitation.
 func EscapeCommandForAppleScript(command string) string {
-	return strings.NewReplacer(
-		`\`, `\\`,
-		`"`, `\"`,
-	).Replace(command)
+	return applescript.EscapeString(command)
 }
 
 func buildSessionCommandLines(followUpCommands []string) []string {
