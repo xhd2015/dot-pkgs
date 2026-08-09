@@ -52,4 +52,8 @@ type SpawnOptions struct {
 	ShellFlags []string
 	ExtraPaths []string
 	PS1        string
+	// Env is KEY=value assignments merged into the child environ (last-wins).
+	Env []string
+	// Unset is keys removed from the base environ before Env is applied.
+	Unset []string
 }

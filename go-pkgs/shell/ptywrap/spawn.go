@@ -27,7 +27,7 @@ func startPTY(command []string, cwd string, opts SpawnOptions) (*exec.Cmd, *os.F
 
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = EnsureSpawnTERM(MergeProcessEnv(os.Environ(), opts.Env, opts.Unset))
 	if len(opts.ExtraPaths) > 0 {
 		cmd.Env = append(cmd.Env, "PATH="+os.Getenv("PATH")+":"+strings.Join(opts.ExtraPaths, ":"))
 	}
@@ -84,7 +84,7 @@ func startDefaultShellPTY(cwd string, opts SpawnOptions) (*exec.Cmd, *os.File, [
 
 	cmd := exec.Command(shellPath, shellFlags...)
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = EnsureSpawnTERM(MergeProcessEnv(os.Environ(), opts.Env, opts.Unset))
 	cmd.Env = append(cmd.Env, extraEnv...)
 	if len(opts.ExtraPaths) > 0 {
 		cmd.Env = append(cmd.Env, "PATH="+os.Getenv("PATH")+":"+strings.Join(opts.ExtraPaths, ":"))
