@@ -1,6 +1,6 @@
 ## Expected
 
-- `resp.Display` is `"~"`.
+- `resp.Display` is `"child"` (empty base uses cwd).
 
 ## Errors
 
@@ -18,7 +18,9 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Display != "~" {
-		t.Fatalf("expected \"~\", got %q", resp.Display)
+	if resp.Display != "child" {
+		t.Fatalf("empty base should use cwd: expected %q, got %q (cwd=%q path=%q)",
+			"child", resp.Display, resp.Cwd, req.Path)
 	}
-}```
+}
+```

@@ -33,7 +33,24 @@ func evalPath(path string) string {
 
 // Short returns a shortened form of path for human-readable CLI output only.
 // It must not be used for file I/O or exec.Command.Dir.
+// Equivalent to ShortFrom(path, "") — base is process cwd.
 func Short(path string) string {
+	return ShortFrom(path, "")
+}
+
+// ShortFrom shortens path for display relative to baseDir, then home.
+// It must not be used for file I/O or exec.Command.Dir.
+//
+// Rules:
+//  1. Normalize path with filepath.Abs.
+//  2. base = baseDir when non-empty, else os.Getwd().
+//  3. If base is usable and is not the user home directory, try cwd-style
+//     relative: path == base → "."; strict child → rel (no ".." prefix).
+//     When base equals home, skip relative form so under-home paths become
+//     "~/..." instead of ".spl/..." (cross-process / agent prompts).
+//  4. If under home → "~" or "~/...".
+//  5. Else absolute path.
+func ShortFrom(path, baseDir string) string {
 	if path == "" {
 		return path
 	}
@@ -41,19 +58,29 @@ func Short(path string) string {
 	if err != nil {
 		return path
 	}
-	if cwd, err := os.Getwd(); err == nil {
-		if cwdAbs, err := filepath.Abs(cwd); err == nil {
-			cwdEval := evalPath(cwdAbs)
+
+	base := strings.TrimSpace(baseDir)
+	if base == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			base = cwd
+		}
+	}
+	if base != "" {
+		if baseAbs, err := filepath.Abs(base); err == nil {
+			baseEval := evalPath(baseAbs)
 			absEval := evalPath(abs)
-			if absEval == cwdEval {
-				return "."
-			}
-			rel, err := filepath.Rel(cwdEval, absEval)
-			if err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-				return rel
+			if !baseIsHome(baseEval, baseAbs) {
+				if absEval == baseEval {
+					return "."
+				}
+				rel, err := filepath.Rel(baseEval, absEval)
+				if err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+					return rel
+				}
 			}
 		}
 	}
+
 	if home, err := os.UserHomeDir(); err == nil {
 		if abs == home {
 			return "~"
@@ -64,6 +91,20 @@ func Short(path string) string {
 		}
 	}
 	return abs
+}
+
+// baseIsHome reports whether base (already Abs/eval candidates) is the user home.
+func baseIsHome(baseEval, baseAbs string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return false
+	}
+	homeAbs, err := filepath.Abs(home)
+	if err != nil {
+		return false
+	}
+	homeEval := evalPath(homeAbs)
+	return baseEval == homeEval || baseAbs == homeAbs || baseAbs == home || baseEval == home
 }
 
 // Expand converts a display path (with ~ prefix) back to an absolute path

@@ -14,11 +14,14 @@ path -> Short -> ".codex/hooks/agent-sessions-stop.sh"
 
 ```go
 import (
+	"github.com/xhd2015/doctest/session"
 	"path/filepath"
 	"testing"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	hooksDir := filepath.Join(req.Path, ".codex", "hooks")
 	mkdirAll(t, hooksDir)
 	req.Path = filepath.Join(hooksDir, "agent-sessions-stop.sh")

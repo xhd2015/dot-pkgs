@@ -12,9 +12,15 @@ caller path string -> Short -> Abs normalize -> cwd/home rules -> display string
 1. Set `req.Path` to the relative path `"child"` (not absolute).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	req.Path = "child"
 	return nil
 }```

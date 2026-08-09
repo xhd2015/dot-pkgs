@@ -22,12 +22,15 @@ path under home -> "~" + suffix | otherwise -> absolute unchanged
 
 ```go
 import (
+	"github.com/xhd2015/doctest/session"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err

@@ -8,11 +8,13 @@
 
 ```go
 import (
+	"github.com/xhd2015/doctest/session"
 	"os"
 	"testing"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
+	_ = d
 	if err != nil {
 		t.Fatal(err)
 	}

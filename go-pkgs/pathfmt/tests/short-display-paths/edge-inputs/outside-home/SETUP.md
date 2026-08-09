@@ -14,12 +14,15 @@ otherwise -> absolute unchanged
 
 ```go
 import (
+	"github.com/xhd2015/doctest/session"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	chdirTo(t, t.TempDir())
 	outside := filepath.Join(os.TempDir(), "doctest-display-outside-home")
 	mkdirAll(t, outside)

@@ -19,9 +19,15 @@ otherwise -> absolute unchanged
 1. Save and restore the original cwd.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	saveAndRestoreCwd(t)
 	return nil
 }```

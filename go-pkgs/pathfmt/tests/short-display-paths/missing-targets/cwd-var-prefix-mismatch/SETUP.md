@@ -14,11 +14,14 @@ missing leaf -> Short -> cwd-relative (not absolute leak)
 
 ```go
 import (
+	"github.com/xhd2015/doctest/session"
 	"path/filepath"
 	"testing"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	projRoot := req.Path
 	absRoot, err := filepath.Abs(projRoot)
 	if err != nil {

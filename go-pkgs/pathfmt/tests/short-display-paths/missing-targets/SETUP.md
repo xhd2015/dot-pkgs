@@ -27,11 +27,14 @@ missing file under cwd subtree -> Short -> cwd-relative display (not absolute)
 
 ```go
 import (
+	"github.com/xhd2015/doctest/session"
 	"path/filepath"
 	"testing"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	saveAndRestoreCwd(t)
 	projRoot := t.TempDir()
 	req.Path = projRoot

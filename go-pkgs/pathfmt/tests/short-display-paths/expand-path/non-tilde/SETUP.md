@@ -12,9 +12,15 @@ no ~ prefix -> unchanged
 1. Set `req.Path` to a platform absolute path without a `~` prefix.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	t.Helper()
+	_ = d
 	req.Path = "/abs/path"
 	return nil
 }```

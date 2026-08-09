@@ -8,9 +8,9 @@
 
 ```go
 import (
-	"github.com/xhd2015/doctest/session"
-	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
@@ -18,8 +18,8 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "child"
-	if resp.Display != want {
-		t.Fatalf("expected %q, got %q for relative input %q", want, resp.Display, req.Path)
+	if resp.Display != "child" {
+		t.Fatalf("expected %q, got %q (base=%q path=%q)", "child", resp.Display, req.BaseDir, req.Path)
 	}
-}```
+}
+```
