@@ -31,6 +31,10 @@ Options:
 
 const workflowPath = ".github/workflows/test.yml"
 
+// errMissingGoDirective is returned (wrapped with path) when go.mod has no go line.
+// Callers treat it as a non-fatal skip with a warning.
+var errMissingGoDirective = errors.New("missing go directive")
+
 //go:embed test.yml
 var workflowTemplate string
 
@@ -89,7 +93,7 @@ func runWithOutput(args []string, out io.Writer) error {
 		return err
 	}
 
-	modules, err := discoverGoModules(root)
+	modules, err := discoverGoModules(root, out)
 	if err != nil {
 		return err
 	}
@@ -221,14 +225,14 @@ func fileExists(path string) (bool, error) {
 	return false, fmt.Errorf("stat %s: %w", path, err)
 }
 
-func discoverGoModules(root string) ([]goModule, error) {
+func discoverGoModules(root string, out io.Writer) ([]goModule, error) {
 	if files, ok, err := gitVisibleFiles(root); err != nil {
 		return nil, err
 	} else if ok {
-		return goModulesFromFiles(root, files)
+		return goModulesFromFiles(root, files, out)
 	}
 
-	return walkGoModules(root)
+	return walkGoModules(root, out)
 }
 
 func gitVisibleFiles(root string) ([]string, bool, error) {
@@ -255,7 +259,7 @@ func gitVisibleFiles(root string) ([]string, bool, error) {
 	return files, true, nil
 }
 
-func goModulesFromFiles(root string, files []string) ([]goModule, error) {
+func goModulesFromFiles(root string, files []string, out io.Writer) ([]goModule, error) {
 	var modules []goModule
 	for _, file := range files {
 		if filepath.Base(file) != "go.mod" {
@@ -267,6 +271,10 @@ func goModulesFromFiles(root string, files []string) ([]goModule, error) {
 		path := filepath.Join(root, filepath.FromSlash(file))
 		version, err := goModVersion(path)
 		if err != nil {
+			if errors.Is(err, errMissingGoDirective) {
+				fmt.Fprintf(out, "warning: %v\n", err)
+				continue
+			}
 			return nil, err
 		}
 		dir := filepath.Dir(file)
@@ -281,7 +289,7 @@ func goModulesFromFiles(root string, files []string) ([]goModule, error) {
 	return modules, nil
 }
 
-func walkGoModules(root string) ([]goModule, error) {
+func walkGoModules(root string, out io.Writer) ([]goModule, error) {
 	var modules []goModule
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -308,6 +316,10 @@ func walkGoModules(root string) ([]goModule, error) {
 		}
 		version, err := goModVersion(path)
 		if err != nil {
+			if errors.Is(err, errMissingGoDirective) {
+				fmt.Fprintf(out, "warning: %v\n", err)
+				return nil
+			}
 			return err
 		}
 		dir := filepath.Dir(path)
@@ -357,7 +369,7 @@ func goModVersion(path string) (string, error) {
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("scan %s: %w", path, err)
 	}
-	return "", fmt.Errorf("%s missing go directive", path)
+	return "", fmt.Errorf("%s %w", path, errMissingGoDirective)
 }
 
 func workflowContent(modules []goModule) (string, error) {

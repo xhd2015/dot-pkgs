@@ -4,7 +4,7 @@
 - `.github/workflows/test.yml` is created at the git repository root, not in the subdirectory.
 - The workflow uses container image `golang:1.22`.
 - The workflow runs `go test -v ./...`.
-- The workflow runs `doctest test -v ./...`.
+- The workflow runs `doctest test -v --label-all ./...`.
 
 ## Side Effects
 
@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 		t.Fatalf("stat subdirectory workflow: %v", statErr)
 	}
 	content := resp.WorkflowContent
-	for _, want := range []string{"container:", "golang:1.22", "go test -v ./...", "doctest test -v ./..."} {
+	for _, want := range []string{"container:", "golang:1.22", "go test -v ./...", "doctest test -v --label-all ./..."} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("expected workflow to contain %q, got:\n%s", want, content)
 		}

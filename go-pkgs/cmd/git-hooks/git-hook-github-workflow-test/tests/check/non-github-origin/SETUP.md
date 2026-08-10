@@ -9,7 +9,7 @@
 2. Run the command in check mode with no origin filter so the hook would otherwise evaluate the repository.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CaseName = "check non github origin"
 	req.Args = nil
 	return setOrigin(req, "git@git.example.com:owner/repo.git")

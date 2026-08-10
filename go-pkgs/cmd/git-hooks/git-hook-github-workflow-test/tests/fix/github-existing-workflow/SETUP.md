@@ -9,7 +9,7 @@
 2. Run the command with `--fix`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CaseName = "fix github existing workflow"
 	return writeFile(req.RepoDir, ".github/workflows/test.yml", "name: existing\n")
 }

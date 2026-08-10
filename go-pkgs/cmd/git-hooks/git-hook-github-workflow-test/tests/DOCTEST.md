@@ -25,10 +25,12 @@ doctest test -v ./
 - `check/github-existing-workflow`: GitHub origin, existing workflow, check mode exits silently.
 - `check/non-github-origin`: Non-GitHub origin, check mode skips silently.
 - `check/origin-domain-mismatch`: GitHub origin but `--origin-domain` mismatch, check mode skips silently.
+- `check/invalid-gomod-missing-go-directive`: Comment-only root `go.mod`, check mode warns and continues (exit 0).
 - `fix/github-create-workflow`: GitHub origin, no workflow, `--fix` creates a Go test workflow.
 - `fix/github-create-workflow-from-subdir`: GitHub origin, `--fix` run from a subdirectory creates workflow at git toplevel.
 - `check/github-existing-workflow-from-subdir`: GitHub origin, workflow at git toplevel, check mode run from subdirectory exits silently.
 - `fix/github-existing-workflow`: GitHub origin, existing workflow, `--fix` reports that nothing changed.
+- `fix/invalid-gomod-with-valid-sibling`: Valid root + invalid nested `go.mod`, `--fix` warns, skips nested, creates workflow from root.
 - `fix/non-github-origin`: Non-GitHub origin, `--fix` errors and does not create a workflow.
 - `fix/origin-domain-mismatch`: GitHub origin but `--origin-domain` mismatch, `--fix` skips silently.
 - `args/help`: `--help` prints usage.
@@ -42,6 +44,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request struct {
@@ -61,7 +65,7 @@ type Response struct {
 	WorkflowContent string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	cmd := exec.Command(req.ToolPath, req.Args...)
 	runDir := req.RepoDir
 	if req.RunDir != "" {

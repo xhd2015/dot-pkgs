@@ -14,7 +14,7 @@
 ```go
 import "strings"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	if !strings.Contains(resp.Output, "updated") {
 		t.Fatalf("expected updated message, got:\n%s", resp.Output)
 	}
-	for _, want := range []string{"golang:1.22", "go test -v ./...", "doctest test -v ./..."} {
+	for _, want := range []string{"golang:1.22", "go test -v ./...", "doctest test -v --label-all ./..."} {
 		if !strings.Contains(resp.WorkflowContent, want) {
 			t.Fatalf("expected workflow to contain %q, got:\n%s", want, resp.WorkflowContent)
 		}

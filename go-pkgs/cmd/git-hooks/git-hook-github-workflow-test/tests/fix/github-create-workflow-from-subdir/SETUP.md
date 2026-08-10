@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CaseName = "fix github create workflow from subdir"
 	subdir := filepath.Join(req.RepoDir, "task-hub")
 	if err := os.MkdirAll(subdir, 0o755); err != nil {

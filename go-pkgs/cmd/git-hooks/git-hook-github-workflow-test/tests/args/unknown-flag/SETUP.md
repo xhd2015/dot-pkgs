@@ -7,7 +7,7 @@
 1. Run the command with `--unknown`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CaseName = "unknown flag"
 	req.Args = []string{"--unknown"}
 	return nil

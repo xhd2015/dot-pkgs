@@ -31,7 +31,7 @@ hook binary -> check/fix mode -> workflow file state
 - With no origin filter, the hook evaluates every repository, but it only warns or fixes when the origin host is exactly `github.com`.
 - In check mode, a missing `.github/workflows/test.yml` on GitHub prints a warning recommending `git-hook-github-workflow-test --fix`.
 - In fix mode, non-GitHub origins are errors. Existing workflow files are not overwritten. Missing workflow files are created.
-- Created workflow files use a `golang:<go-version>` container image derived from `go.mod` and run `go test -v ./...` followed by `doctest test -v ./...`.
+- Created workflow files use a `golang:<go-version>` container image derived from `go.mod` and run `go test -v ./...` followed by `doctest test -v --label-all ./...`.
 
 ```go
 import (
@@ -41,10 +41,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	req.CommandDir = filepath.Clean(filepath.Join(DOCTEST_ROOT, ".."))
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	req.CommandDir = filepath.Clean(filepath.Join(d.DOCTEST_ROOT, ".."))
 	req.RepoDir = t.TempDir()
 	req.ToolPath = filepath.Join(req.RepoDir, "git-hook-github-workflow-test")
 	req.CaseName = "default"

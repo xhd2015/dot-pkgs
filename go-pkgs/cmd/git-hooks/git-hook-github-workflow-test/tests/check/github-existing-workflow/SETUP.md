@@ -9,7 +9,7 @@
 2. Run the command in check mode.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CaseName = "check github existing workflow"
 	return writeFile(req.RepoDir, ".github/workflows/test.yml", "name: existing\n")
 }

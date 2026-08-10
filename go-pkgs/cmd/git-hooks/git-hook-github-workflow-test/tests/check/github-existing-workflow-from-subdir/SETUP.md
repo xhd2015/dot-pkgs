@@ -19,7 +19,7 @@ import (
 	"strings"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CaseName = "check github existing workflow from subdir"
 	fix := exec.Command(req.ToolPath, "--fix")
 	fix.Dir = req.RepoDir

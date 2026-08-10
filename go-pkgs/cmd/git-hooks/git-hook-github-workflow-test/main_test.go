@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -122,7 +123,7 @@ func TestDiscoverGoModules(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "ignored-dir", "go.mod"), []byte("module example.com/ignored\n\ngo 1.99\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	modules, err := discoverGoModules(dir)
+	modules, err := discoverGoModules(dir, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +135,54 @@ func TestDiscoverGoModules(t *testing.T) {
 	}
 	if modules[1].Dir != "sub-nested-dir" || modules[1].GoVersion != "1.23.0" {
 		t.Fatalf("nested module = %#v", modules[1])
+	}
+}
+
+func TestDiscoverGoModulesSkipsMissingGoDirective(t *testing.T) {
+	dir := t.TempDir()
+	mustRun(t, dir, "git", "init")
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/root\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	invalidDir := filepath.Join(dir, "kool-template")
+	if err := os.MkdirAll(invalidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	invalidGoMod := filepath.Join(invalidDir, "go.mod")
+	if err := os.WriteFile(invalidGoMod, []byte("// Not a Go module.\n// Template only.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var warn strings.Builder
+	modules, err := discoverGoModules(dir, &warn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(modules) != 1 {
+		t.Fatalf("module count = %d, want 1: %#v", len(modules), modules)
+	}
+	if modules[0].Dir != "" || modules[0].GoVersion != "1.22" {
+		t.Fatalf("root module = %#v", modules[0])
+	}
+	if !strings.Contains(warn.String(), "warning:") || !strings.Contains(warn.String(), "missing go directive") {
+		t.Fatalf("expected missing go directive warning, got:\n%s", warn.String())
+	}
+	if !strings.Contains(warn.String(), invalidGoMod) {
+		t.Fatalf("expected warning to mention %s, got:\n%s", invalidGoMod, warn.String())
+	}
+}
+
+func TestGoModVersionMissingGoDirective(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "go.mod")
+	if err := os.WriteFile(path, []byte("// Not a Go module.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := goModVersion(path)
+	if err == nil {
+		t.Fatal("expected missing go directive error")
+	}
+	if !errors.Is(err, errMissingGoDirective) {
+		t.Fatalf("err = %v, want errors.Is(..., errMissingGoDirective)", err)
 	}
 }
 
