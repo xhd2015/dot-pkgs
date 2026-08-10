@@ -19,7 +19,7 @@ type Result struct {
 	Via  string // direct | path | extra_dir | default_dir | candidate | login_shell:<shell>
 }
 
-// Options configures Look / LookPath. Injectables are nil for production defaults.
+// Options configures Look / LookPath / LookupPaths. Injectables are nil for production defaults.
 type Options struct {
 	Home            string
 	ExtraDirs       []string
