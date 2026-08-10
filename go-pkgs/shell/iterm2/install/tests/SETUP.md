@@ -6,20 +6,23 @@
 # L2 harness (parallel-safe)
 leaf Setup -> Operation + HTTPMode / fixtures on Request
 root Setup  -> WorkDir + Home under t.TempDir (no t.Setenv / t.Chdir)
-root Run    -> install.* public API with injectable HTTPClient / Home / Runner / Register
+root Run    -> install.* public API with injectable HTTPClient / Home / Runner /
+               Register / Open / ClearQuarantineFn
 leaf Assert -> Response fields + filesystem under WorkDir/Home
 ```
 
 ## Preconditions
 
-- Package under test (greenfield — RED until implementer lands it):
+- Package under test:
   `github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2/install`
 - All default leaves are L2: injectable HTTP (`httptest`), temp Home/Target, fake
-  zip/app fixtures. No real network, no real `osascript` / `lsregister`.
+  zip/app fixtures. No real network, no real `osascript` / `lsregister` /
+  `open` / `xattr`.
 - Parallel-safe isolation: `t.TempDir()` only; no `os.Setenv` / `t.Setenv` /
   `os.Chdir` / `t.Chdir` for config.
 - Platform: filesystem ops work on macOS + Linux; full product scriptable path is
   darwin-oriented but skipped via injection in this suite.
+- InstallViaUserOpen leaves stay **RED** until product opts/hooks exist.
 
 ## Steps
 

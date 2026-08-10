@@ -2,21 +2,23 @@
 
 ## Version
 
-0.0.2
+0.0.3
 
-Classic TDD (greenfield) doctests for package
+Classic TDD doctests for package
 `github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2/install`.
 
-Leaves call the intended public API. The package does **not** exist yet → suite
-stays **RED** until the implementer lands source under `shell/iterm2/install/`.
+Leaves call the public API. **InstallViaUserOpen** and its injectables are not
+implemented yet → new leaves stay **RED** (compile and/or assert) until the
+implementer lands the opts/hooks under `shell/iterm2/install/`.
 
 **Default layer: L2** in-process library API with injectable HTTP, Home,
-TargetApp, Register, and ScriptableRunner. No real network in the default suite.
+TargetApp, Register, ScriptableRunner, **Open**, and **ClearQuarantineFn**.
+No real network / real `open` / real `xattr` in the default suite.
 Parallel-safe: no `t.Setenv` / `t.Chdir` / process env mutation for isolation.
 
 **Out of scope this cycle:** brew recipes, parent AppleScript open scripts, auto
 `brew uninstall`, deleting `/Applications/iTerm.app` when a home install exists,
-arch-specific download URLs (stable zip is **universal**).
+arch-specific download URLs (stable zip is **universal**), real Gatekeeper e2e.
 
 ## DSN (Domain Specific Notion)
 
@@ -42,10 +44,21 @@ arch-specific download URLs (stable zip is **universal**).
 - **`VerifyScriptable(opts)`** — AppleScript get version via injectable
   `opts.Runner`; nil → real `osascript` on darwin.
 - **`InstallLatest(ctx, opts)`** — resolve → download → extract → install →
-  optional `Register` (lsregister) → `VerifyInstalled` → optional scriptable.
-  Returns `Result{URL, Version, ZipPath, AppPath, BackupPath}`.
+  optional user-open finalization → optional `Register` (lsregister) →
+  `VerifyInstalled` → optional scriptable.
+  Returns `Result{URL, Version, ZipPath, AppPath, BackupPath}` (optional
+  `Opened` / `QuarantineCleared` if product adds them; suite records via hooks).
   **`InstallOpts.LatestURL`** (empty → `DefaultLatestURL`) is required for L2
   HTTP injection without rewriting the real host.
+- **`InstallOpts.InstallViaUserOpen`** (bool, default false) — when true, after
+  the app is placed at the final target, run user-driven finalization:
+  clear quarantine → register → open final app path → `VerifyInstalled`.
+  When false, Open and ClearQuarantineFn must **not** be invoked.
+- **`InstallOpts.ClearQuarantineFn`** `func(appPath string) error` — nil →
+  default `xattr -dr com.apple.quarantine` (tests always inject).
+- **`InstallOpts.Open`** `func(appPath string) error` — nil → real `open`
+  (tests always inject). Open failure aborts InstallLatest with error
+  (ClearQuarantineFn may already have run).
 - **Constants** — `DefaultLatestURL`, `BundleID`, `AppBundleName` (`iTerm.app`).
 
 ### Behaviors
@@ -90,6 +103,13 @@ arch-specific download URLs (stable zip is **universal**).
 - Fake HTTP serving zip fixture + injected Home + `SkipScriptable` →
   `Result.AppPath` under home Applications; `VerifyInstalled` passes.
 - Injected `Register` (no real lsregister). No arch URL branching.
+- **`InstallViaUserOpen=false` (default):** injected `Open` and
+  `ClearQuarantineFn` are **not** called; install still succeeds.
+- **`InstallViaUserOpen=true`:** after place, order is
+  clear quarantine → register → open → `VerifyInstalled`. Both hooks called
+  **exactly once** with `appPath == Result.AppPath` (ends with `iTerm.app`).
+- **`InstallViaUserOpen=true` + Open error:** InstallLatest returns non-nil
+  error; ClearQuarantineFn may still have been called (clear before open).
 
 ## Decision Tree
 
@@ -120,14 +140,18 @@ shell/iterm2/install/tests/
 │   ├── runner-success/                   # runner returns version
 │   └── runner-fail/                      # runner error → error
 └── install-latest/                       # InstallLatest orchestration
-    └── pipeline-fake-http/               # fake HTTP zip + Home; SkipScriptable
+    ├── pipeline-fake-http/               # fake HTTP zip + Home; SkipScriptable
+    └── via-user-open/                    # InstallViaUserOpen flag + Open/Clear hooks
+        ├── flag-false-no-hooks/          # flag false → Open/Clear never called
+        ├── flag-true-calls-hooks/        # flag true → both once with AppPath
+        └── flag-true-open-fails/         # Open error → InstallLatest error
 ```
 
 ### Parameter significance (high → low)
 
 1. **Operation** — resolve | download | extract | install-app | verify | install-latest
-2. **Outcome class** — happy path vs error / replace vs fresh
-3. **Injection surface** — HTTP fixture, Home/Target, runner, Register
+2. **Outcome class** — happy path vs error / replace vs fresh / via-user-open
+3. **Injection surface** — HTTP fixture, Home/Target, runner, Register, Open, ClearQuarantineFn
 4. **Fixture shape** — zip contents, Info.plist BundleID, MacOS binary presence
 
 ## Test Index
@@ -150,7 +174,13 @@ shell/iterm2/install/tests/
 | 14 | `verify-installed/wrong-bundle-id` | VerifyInstalled | Wrong CFBundleIdentifier → error | RED |
 | 15 | `verify-scriptable/runner-success` | VerifyScriptable | Injected runner returns version | RED |
 | 16 | `verify-scriptable/runner-fail` | VerifyScriptable | Injected runner fails → error | RED |
-| 17 | `install-latest/pipeline-fake-http` | InstallLatest | Full pipeline with fake HTTP zip under Home Applications | RED |
+| 17 | `install-latest/pipeline-fake-http` | InstallLatest | Full pipeline with fake HTTP zip under Home Applications | GREEN* |
+| 18 | `install-latest/via-user-open/flag-false-no-hooks` | InstallLatest | InstallViaUserOpen=false → Open/ClearQuarantineFn not called | RED |
+| 19 | `install-latest/via-user-open/flag-true-calls-hooks` | InstallLatest | InstallViaUserOpen=true → both hooks once with AppPath | RED |
+| 20 | `install-latest/via-user-open/flag-true-open-fails` | InstallLatest | Open fails → InstallLatest error; clear may have run | RED |
+
+\*Existing pipeline leaf remains valid against current production; new via-user-open
+leaves expect RED until InstallViaUserOpen / Open / ClearQuarantineFn land.
 
 ## How to Run
 
@@ -160,6 +190,7 @@ doctest vet ./shell/iterm2/install/tests
 doctest test ./shell/iterm2/install/tests
 doctest test -v ./shell/iterm2/install/tests/resolve/redirect-to-zip
 doctest test -v ./shell/iterm2/install/tests/install-latest/pipeline-fake-http
+doctest test -v ./shell/iterm2/install/tests/install-latest/via-user-open
 ```
 
 Classic TDD: expect **RED** (compile failure until package exists, then assert
@@ -219,9 +250,12 @@ type Request struct {
 	ScriptableFail    bool
 
 	// InstallLatest
-	SkipScriptable  bool
-	RequireHostArch bool
-	CacheDir        string
+	SkipScriptable     bool
+	RequireHostArch    bool
+	CacheDir           string
+	InstallViaUserOpen bool // product InstallOpts.InstallViaUserOpen
+	OpenShouldFail     bool // injected Open returns error
+	ClearShouldFail    bool // injected ClearQuarantineFn returns error (optional)
 
 	// Fixture flags
 	SeedExistingTarget bool
@@ -242,8 +276,12 @@ type Response struct {
 	BackupPath     string
 	RegisteredPath string
 	RegisterCalls  int
-	DestSize       int64
-	ResolvedURL    string
+	// OpenCalls / ClearCalls record each injected hook invocation path
+	// (empty when InstallViaUserOpen is false or hooks never ran).
+	OpenCalls   []string
+	ClearCalls  []string
+	DestSize    int64
+	ResolvedURL string
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
@@ -390,14 +428,19 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		}
 		var registered string
 		var regCalls int
+		var openCalls []string
+		var clearCalls []string
+		// Always inject Open + ClearQuarantineFn so flag-false leaves can
+		// assert zero calls without real open/xattr. Parallel-safe (locals only).
 		result, err := install.InstallLatest(ctx, install.InstallOpts{
-			Home:            req.Home,
-			TargetApp:       req.TargetApp,
-			CacheDir:        cache,
-			LatestURL:       latest,
-			HTTPClient:      client,
-			SkipScriptable:  true, // default suite never hits real osascript
-			RequireHostArch: req.RequireHostArch,
+			Home:               req.Home,
+			TargetApp:          req.TargetApp,
+			CacheDir:           cache,
+			LatestURL:          latest,
+			HTTPClient:         client,
+			SkipScriptable:     true, // default suite never hits real osascript
+			RequireHostArch:    req.RequireHostArch,
+			InstallViaUserOpen: req.InstallViaUserOpen,
 			Register: func(appPath string) error {
 				regCalls++
 				registered = appPath
@@ -406,16 +449,32 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 				}
 				return nil
 			},
+			ClearQuarantineFn: func(appPath string) error {
+				clearCalls = append(clearCalls, appPath)
+				if req.ClearShouldFail {
+					return fmt.Errorf("injected clear quarantine failure")
+				}
+				return nil
+			},
+			Open: func(appPath string) error {
+				openCalls = append(openCalls, appPath)
+				if req.OpenShouldFail {
+					return fmt.Errorf("injected open failure")
+				}
+				return nil
+			},
 		})
 		resp.RegisteredPath = registered
 		resp.RegisterCalls = regCalls
-		if err == nil {
-			resp.URL = result.URL
-			resp.Version = result.Version
-			resp.ZipPath = result.ZipPath
-			resp.AppPath = result.AppPath
-			resp.BackupPath = result.BackupPath
-		}
+		resp.OpenCalls = openCalls
+		resp.ClearCalls = clearCalls
+		// Populate AppPath even on error when product returns partial Result
+		// (hooks may have run before Open failed).
+		resp.URL = result.URL
+		resp.Version = result.Version
+		resp.ZipPath = result.ZipPath
+		resp.AppPath = result.AppPath
+		resp.BackupPath = result.BackupPath
 		return resp, err
 
 	default:

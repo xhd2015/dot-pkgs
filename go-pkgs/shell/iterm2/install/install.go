@@ -82,6 +82,16 @@ type InstallOpts struct {
 	SkipScriptable bool
 	// RequireHostArch enables an optional host-arch check after extract (best-effort).
 	RequireHostArch bool
+	// InstallViaUserOpen, when true, runs user-driven finalization after place:
+	// clear quarantine → register → open → VerifyInstalled.
+	// When false, ClearQuarantineFn and Open are never invoked.
+	InstallViaUserOpen bool
+	// ClearQuarantineFn clears the macOS quarantine attribute; nil →
+	// xattr -dr com.apple.quarantine. Only used when InstallViaUserOpen is true.
+	ClearQuarantineFn func(appPath string) error
+	// Open launches the app for the user; nil → exec open appPath.
+	// Only used when InstallViaUserOpen is true. Failure aborts InstallLatest.
+	Open func(appPath string) error
 }
 
 // Result is the outcome of InstallLatest.
@@ -295,7 +305,8 @@ func VerifyScriptable(opts VerifyScriptableOpts) (string, error) {
 }
 
 // InstallLatest runs the full resolve → download → extract → install →
-// register → verify pipeline.
+// register → verify pipeline. When InstallViaUserOpen is true, after place the
+// order is clear quarantine → register → open → VerifyInstalled.
 func InstallLatest(ctx context.Context, opts InstallOpts) (Result, error) {
 	var result Result
 
@@ -355,12 +366,33 @@ func InstallLatest(ctx context.Context, opts InstallOpts) (Result, error) {
 	result.AppPath = appPath
 	result.BackupPath = findBackupBeside(appPath)
 
+	// User-open path: clear quarantine before register/open.
+	if opts.InstallViaUserOpen {
+		clearFn := opts.ClearQuarantineFn
+		if clearFn == nil {
+			clearFn = defaultClearQuarantine
+		}
+		if err := clearFn(appPath); err != nil {
+			return result, fmt.Errorf("install latest: clear quarantine: %w", err)
+		}
+	}
+
 	register := opts.Register
 	if register == nil {
 		register = defaultRegister
 	}
 	if err := register(appPath); err != nil {
 		return result, fmt.Errorf("install latest: register: %w", err)
+	}
+
+	if opts.InstallViaUserOpen {
+		openFn := opts.Open
+		if openFn == nil {
+			openFn = defaultOpen
+		}
+		if err := openFn(appPath); err != nil {
+			return result, fmt.Errorf("install latest: open: %w", err)
+		}
 	}
 
 	if err := VerifyInstalled(appPath); err != nil {
@@ -388,6 +420,27 @@ func defaultRegister(appPath string) error {
 	cmd := exec.Command(lsregister, "-f", appPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("lsregister: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// defaultClearQuarantine strips the com.apple.quarantine xattr from appPath.
+func defaultClearQuarantine(appPath string) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	cmd := exec.Command("xattr", "-dr", "com.apple.quarantine", appPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("xattr clear quarantine: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// defaultOpen launches appPath with the macOS open(1) utility.
+func defaultOpen(appPath string) error {
+	cmd := exec.Command("open", appPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("open %s: %w (%s)", appPath, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
