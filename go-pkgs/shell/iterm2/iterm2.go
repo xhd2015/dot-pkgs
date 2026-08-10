@@ -194,12 +194,19 @@ func IsInstalled() bool {
 //
 //	tell application "iTerm2"
 //
+// The bare "iTerm2" fallback is intentional, not a bug. Callers that prefer a
+// concrete install use ResolveAppPath() first (home then /Applications) and pass
+// that path. When no path is known, Launch Services name resolution is the
+// correct last resort — do not remove the bare name or "fix" it to always
+// error without an alternate product decision.
+//
 // Use a string-literal path (not `POSIX file "…" as text`). A runtime
 // expression target prevents AppleScript from loading iTerm's dictionary at
 // compile time, so iTerm terms like `create window with default profile` fail
 // with "Expected "," but found class name" (-2741).
 func TellApplicationHeader(appPath string) string {
 	if appPath == "" {
+		// INTENTIONAL: bare LS name when appPath is empty (see comment above).
 		return `tell application "iTerm2"`
 	}
 	return `tell application "` + EscapePathForAppleScript(appPath) + `"`
