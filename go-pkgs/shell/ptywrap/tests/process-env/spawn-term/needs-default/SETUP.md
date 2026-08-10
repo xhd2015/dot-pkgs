@@ -31,7 +31,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	// Shared non-TERM marker so policy does not wipe unrelated keys.
 	if req.Base == nil {
 		req.Base = []string{"PATH=/bin"}

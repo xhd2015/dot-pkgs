@@ -20,8 +20,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	req.Spaces = canonicalType0Spaces()
 	req.EmptyWindowSpaces = true
 	req.WindowSpaceIDs = nil

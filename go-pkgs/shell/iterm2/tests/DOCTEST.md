@@ -13,6 +13,9 @@ P1 **tab-set** create scripts live in the nested root `tab-set/` (own
 `DOCTEST.md` / `Request` / `Run`) so Classic TDD missing-API symbols do not
 break this tree’s existing leaves.
 
+P1 **app-path** (path-bound tell + `ITERM2_APP_PATH` resolve) lives in nested
+root `app-path/` (own `DOCTEST.md` / `Request` / `Run`) for the same reason.
+
 ## DSN (Domain Specific Notion)
 
 ### Participants
@@ -58,6 +61,13 @@ break this tree’s existing leaves.
 
 - Nested doctest root `tab-set/` covers `BuildTabSetNewWindowScript` (P1 Classic TDD).
 
+**App-path (nested)**
+
+- Nested doctest root `app-path/` covers injectable `ResolveAppPathWith`
+  (`ITERM2_APP_PATH` → home → system; env-missing no fallthrough),
+  `TellApplicationHeader` (path-bound vs bare), and representative Build\*App
+  scripts. Classic TDD **RED** until implementer lands path-bound + env resolve.
+
 ## Decision Tree
 
 ```
@@ -74,14 +84,11 @@ iterm2-lib/
 │   ├── smart-open-scans-user-variable/ scan matches path or user.koolTargetDir
 │   ├── reuse-match-selects-window/     reuse match selects matchingWindow to front
 │   └── no-exec-shell/              no exec $SHELL
-├── tab-set/                        [nested DOCTEST.md — P1 build-tab-set-script, Classic TDD RED]
-│   ├── new-window-four-tabs/
-│   ├── single-tab/
-│   ├── stamps-set-and-tab-vars/
-│   ├── sets-session-names/
-│   ├── optional-cwd/
-│   ├── window-name/
-│   └── command-escape/
+├── tab-set/                        [nested DOCTEST.md — tab-set create/find/run]
+├── app-path/                       [nested DOCTEST.md — resolve + path-bound tell, Classic TDD RED]
+│   ├── resolve/                    env-wins, prefer-home, system-only, empty, env-missing
+│   ├── tell-header/                path-bound, bare-fallback
+│   └── script/                     force-new / smart-open / smoke path-bound
 ├── escaping/                       [Phase=escape-*]
 │   ├── path-quotes/                EscapePathForAppleScript
 │   └── command-quotes/             EscapeCommandForAppleScript
@@ -113,6 +120,7 @@ iterm2-lib/
 | `script/reuse-match-selects-window/` | build-script | Reuse match selects matchingWindow to front |
 | `script/no-exec-shell/` | build-script | No `exec $SHELL` |
 | `tab-set/*` (nested root) | build-tab-set-script | See `tab-set/DOCTEST.md` (P1 Classic TDD) |
+| `app-path/*` (nested root) | resolve-app / tell-header / build-*-app | See `app-path/DOCTEST.md` (path-bound + env resolve, Classic TDD RED) |
 | `escaping/path-quotes/` | escape-path | Escapes `"` in paths |
 | `escaping/command-quotes/` | escape-command | Escapes `"` in commands |
 | `open/invokes-osascript/` | open-config | Injectable osascript receives script |

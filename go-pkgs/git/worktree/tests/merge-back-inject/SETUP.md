@@ -44,7 +44,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available on PATH")

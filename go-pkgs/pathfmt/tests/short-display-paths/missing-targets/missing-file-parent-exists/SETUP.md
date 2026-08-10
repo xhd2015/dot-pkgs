@@ -21,7 +21,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	hooksDir := filepath.Join(req.Path, ".codex", "hooks")
 	mkdirAll(t, hooksDir)
 	req.Path = filepath.Join(hooksDir, "agent-sessions-stop.sh")

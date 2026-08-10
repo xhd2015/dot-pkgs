@@ -20,7 +20,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.Op = "children-index"
 	// Intentionally unsorted input order; children of 10 must sort as [20,30].
 	req.FixtureProcs = []FixtureProc{

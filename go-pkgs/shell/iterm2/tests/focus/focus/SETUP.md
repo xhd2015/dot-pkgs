@@ -21,7 +21,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	// Shared focus target for build-script / inject-exec / exec-error leaves.
 	if req.FocusRef.WindowID == "" {
 		req.FocusRef = SessionRefInput{

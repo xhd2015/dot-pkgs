@@ -18,9 +18,6 @@ import (
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
 	// Isolated fixture: parent Run uses classic Scan and can poison a shared
 	// CacheRoot (sync refresh / walk-log). Rebuild for a true async serve snapshot.
-	_ = req
-	_ = resp
-	_ = err
 
 	root := t.TempDir()
 	cacheRoot := t.TempDir()

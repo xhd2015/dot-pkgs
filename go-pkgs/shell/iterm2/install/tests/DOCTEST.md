@@ -286,7 +286,6 @@ type Response struct {
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Helper()
-	_ = d
 
 	if req.WorkDir == "" {
 		t.Fatal("WorkDir not set by Setup")

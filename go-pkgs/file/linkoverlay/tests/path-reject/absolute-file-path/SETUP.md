@@ -20,7 +20,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	abs := filepath.Join(string(filepath.Separator), "tmp", "linkoverlay-abs-reject.txt")
 	req.Layers = []LayerSpec{
 		{

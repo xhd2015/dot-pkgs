@@ -40,7 +40,7 @@ func NormalizeTTY(s string) string {
 func BuildSessionListScript() string {
 	sep := fieldSepAS
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  set fieldSep to ` + sep,
 		`  set outLines to {}`,
 		`  repeat with aWindow in windows`,

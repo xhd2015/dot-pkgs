@@ -19,8 +19,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	if req.WindowID == 0 {
 		req.WindowID = 1001
 	}

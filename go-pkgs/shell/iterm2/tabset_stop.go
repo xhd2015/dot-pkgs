@@ -61,7 +61,7 @@ func StopTabSet(setName string, cfg *TabSetConfig) (*TabSetStopResult, error) {
 func buildCloseWindowScript(windowID string) string {
 	escaped := EscapeCommandForAppleScript(windowID)
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  repeat with aWindow in windows`,
 		`    try`,
 		fmt.Sprintf(`      if (id of aWindow as string) is "%s" then`, escaped),
@@ -78,7 +78,7 @@ func buildCloseWindowScript(windowID string) string {
 
 func buildCloseSessionScript(ref TabSessionRef) string {
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 	}
 	if ref.SessionID != "" {
 		escaped := EscapeCommandForAppleScript(ref.SessionID)

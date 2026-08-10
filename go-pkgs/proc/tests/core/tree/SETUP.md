@@ -39,7 +39,6 @@ func linearChainFixture() []FixtureProc {
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	// Tree leaves set Op + fixture; grouping only documents shared helpers.
 	if req.FixtureProcs == nil {
 		req.FixtureProcs = []FixtureProc{}

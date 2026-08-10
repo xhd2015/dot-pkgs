@@ -20,7 +20,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 
 	req.RunMode = "no-new-window"
 	req.TabSetName = "bots"

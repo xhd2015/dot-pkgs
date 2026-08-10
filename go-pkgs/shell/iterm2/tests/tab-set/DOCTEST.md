@@ -284,7 +284,6 @@ type Response struct {
 //
 //	var ErrNoITermWindow error // NoNewWindow without frontmost window
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	_ = d
 	resp := &Response{}
 	switch req.Phase {
 	case "build-tab-set-script":

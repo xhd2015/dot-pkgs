@@ -27,7 +27,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	t.Logf("clean repo at %s — no mutations", req.Dir)
 	return nil

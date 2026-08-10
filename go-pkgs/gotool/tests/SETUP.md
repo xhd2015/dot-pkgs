@@ -38,7 +38,6 @@ const (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("go not found in PATH: %w", err)
 	}

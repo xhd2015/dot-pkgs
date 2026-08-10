@@ -100,7 +100,6 @@ type Response struct {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	_ = d
 	switch req.Op {
 	case "list_and_linked":
 		entries, err := worktree.List(req.Dir)

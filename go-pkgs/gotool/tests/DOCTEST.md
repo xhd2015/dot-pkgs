@@ -110,7 +110,6 @@ type Response struct {
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Helper()
-	_ = d
 	resp := &Response{}
 
 	// replace/update rely on consumer cwd (legacy). Pin must work without Chdir

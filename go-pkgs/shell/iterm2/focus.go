@@ -22,7 +22,7 @@ func BuildFocusScript(ref SessionRef) string {
 		tabIndex = 1
 	}
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  activate`,
 		`  set targetWindow to missing value`,
 		`  repeat with aWindow in windows`,

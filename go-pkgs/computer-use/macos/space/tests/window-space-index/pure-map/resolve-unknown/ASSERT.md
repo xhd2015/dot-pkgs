@@ -18,9 +18,6 @@ import (
 )
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
-	_ = d
-	_ = req
-	_ = resp
 	if err == nil {
 		t.Fatal("expected error for unknown space id, got nil")
 	}

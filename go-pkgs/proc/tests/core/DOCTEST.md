@@ -198,7 +198,6 @@ func fromProc(ps []proc.Proc) []FixtureProc {
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Helper()
-	_ = d
 	resp := &Response{}
 
 	switch req.Op {

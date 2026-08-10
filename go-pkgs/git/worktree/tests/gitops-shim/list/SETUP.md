@@ -27,8 +27,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
-	_ = req
 	t.Helper()
 	// Grouping: leaves set Op and build fixtures.
 	return nil

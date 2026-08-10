@@ -18,7 +18,6 @@ top -> scan -> modules found -> check replace directives -> issues or nil
 ```go
 func Setup(t *testing.T, req *Request) error {
 	// leaf cases write specific go.mod files
-	_ = t
 	return nil
 }
 ```

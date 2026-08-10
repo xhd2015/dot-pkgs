@@ -23,7 +23,7 @@ type DirectoryFocusCandidate struct {
 func BuildDirectoryFocusFindScript(targetDir string) string {
 	target := EscapePathForAppleScript(targetDir)
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  set targetDir to "` + target + `"`,
 		`  set fieldSep to ` + fieldSepAS,
 		`  set outLines to {}`,

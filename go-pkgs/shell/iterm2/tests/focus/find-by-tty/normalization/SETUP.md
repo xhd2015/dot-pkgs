@@ -19,7 +19,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	req.Refs = []SessionRefInput{
 		{WindowID: "win-norm", TabIndex: 1, SessionID: "s-norm", TTY: "/dev/ttys148", Name: "Norm"},
 		{WindowID: "win-other", TabIndex: 1, SessionID: "s-other", TTY: "/dev/ttys200", Name: "Other"},

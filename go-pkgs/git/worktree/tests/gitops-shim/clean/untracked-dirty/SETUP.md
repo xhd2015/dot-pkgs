@@ -29,7 +29,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	writeFile(t, req.Dir, "untracked.txt", "only untracked\n")
 	return nil

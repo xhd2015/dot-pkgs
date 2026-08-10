@@ -54,7 +54,7 @@ func BuildGetTitleScript(sessionID string, target TitleTarget) string {
 		returnLine = `          return name of aSession`
 	}
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  repeat with aWindow in windows`,
 		`    repeat with aTab in tabs of aWindow`,
 		`      repeat with aSession in sessions of aTab`,
@@ -85,7 +85,7 @@ func BuildSetTitleScript(sessionID string, target TitleTarget, title string) str
 		setLine = `          set name of aSession to "` + escapedTitle + `"`
 	}
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  repeat with aWindow in windows`,
 		`    repeat with aTab in tabs of aWindow`,
 		`      repeat with aSession in sessions of aTab`,

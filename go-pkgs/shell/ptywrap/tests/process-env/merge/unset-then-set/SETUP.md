@@ -30,7 +30,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	// Parent merge/ already cleared TERM policy; re-assert for this interaction branch.
 	req.ApplySpawnTERM = false
 	return nil

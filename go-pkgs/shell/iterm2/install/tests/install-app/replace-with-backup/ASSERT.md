@@ -20,7 +20,6 @@ import (
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	t.Helper()
-	_ = d
 	assertNoError(t, err)
 	if resp.BackupPath == "" {
 		t.Fatal("expected BackupPath for replaced install")

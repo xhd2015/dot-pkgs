@@ -32,7 +32,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 
 	// Clear create-only fields; leaves set Phase (build-find-script | parse-find).
 	req.Tabs = nil

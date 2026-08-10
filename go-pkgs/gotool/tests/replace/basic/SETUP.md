@@ -16,7 +16,6 @@ consumer (require dep) + dep module dir -> replace.Replace -> go.mod has replace
 ```go
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	workspace := newWorkspace(t)
 	depDir := initDepModuleRepo(t, workspace, depModulePath)
 	consumer := initConsumerModule(t, workspace, true)

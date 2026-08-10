@@ -21,8 +21,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	req.Phase = "pure-build-index"
 	req.Spaces = []SpaceInfoInput{
 		{ID: 3, Type: 0},

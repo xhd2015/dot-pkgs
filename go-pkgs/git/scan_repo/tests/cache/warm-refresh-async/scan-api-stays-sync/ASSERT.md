@@ -13,8 +13,6 @@ import (
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
-	_ = resp
-	_ = err
 
 	result, scanErr := scan_repo.Scan(context.Background(), scan_repo.Options{
 		Roots:             req.Roots,

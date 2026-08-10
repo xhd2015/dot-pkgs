@@ -154,7 +154,7 @@ func runTabSetSync(spec TabSetSpec, cfg *TabSetConfig, windowID string, allRefs 
 func buildFocusWindowScript(windowID string) string {
 	escaped := EscapeCommandForAppleScript(windowID)
 	return strings.Join([]string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  activate`,
 		`  set targetWindow to missing value`,
 		`  repeat with aWindow in windows`,
@@ -179,7 +179,7 @@ func buildCreateTabInWindowScript(windowID, setName string, tab TabSpec) string 
 	escapedSet := EscapeCommandForAppleScript(setName)
 	escapedTabID := EscapeCommandForAppleScript(tab.ID)
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  activate`,
 	}
 	if windowID != "" {
@@ -230,7 +230,7 @@ func buildCreateTabInWindowScript(windowID, setName string, tab TabSpec) string 
 // Never sends Ctrl+C — write text only. Honors TabSpec.NoSubmit.
 func buildResendCommandScript(ref TabSessionRef, tab TabSpec) string {
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  activate`,
 	}
 	// Prefer session id when available; fall back to TTY scan.

@@ -45,7 +45,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	// Zero defaults so leaves only set what they need; Op is required by Run.
 	req.Op = ""
 	req.PSOutput = nil

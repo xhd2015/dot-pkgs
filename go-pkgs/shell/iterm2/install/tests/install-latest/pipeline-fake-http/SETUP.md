@@ -22,7 +22,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.HTTPMode = "install-latest"
 	req.FinalZipName = "iTerm2-3_6_11.zip"
 	req.TargetApp = "" // default Home/Applications/iTerm.app

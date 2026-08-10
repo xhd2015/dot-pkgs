@@ -188,7 +188,6 @@ type Response struct {
 // Phase "focus": product Focus invoked in leaf Asserts with injectable
 // FocusConfig.Exec (package isolation; no live osascript).
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	_ = d
 	resp := &Response{}
 	switch req.Phase {
 	case "normalize-tty":

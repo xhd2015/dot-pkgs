@@ -27,7 +27,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	setupDivergedDirty(t, req)
 	req.TmpDir = ""

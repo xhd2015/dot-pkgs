@@ -34,7 +34,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	dir, err := os.MkdirTemp("", "gopkgs-gitops-shim-clean-*")
 	if err != nil {

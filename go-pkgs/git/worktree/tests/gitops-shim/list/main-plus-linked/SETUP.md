@@ -30,7 +30,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	main := initRepo(t)
 	linked := addLinkedBranch(t, main, "feature")

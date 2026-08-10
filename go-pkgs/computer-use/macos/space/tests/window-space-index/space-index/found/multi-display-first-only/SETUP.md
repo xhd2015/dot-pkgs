@@ -22,8 +22,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	req.Spaces = nil
 	req.Displays = []DisplayInput{
 		{Spaces: canonicalType0Spaces()},

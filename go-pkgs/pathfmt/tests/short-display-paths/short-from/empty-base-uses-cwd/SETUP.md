@@ -23,7 +23,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	saveAndRestoreCwd(t)
 	proj := t.TempDir()
 	child := filepath.Join(proj, "child")

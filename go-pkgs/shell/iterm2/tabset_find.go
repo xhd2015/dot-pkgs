@@ -30,7 +30,7 @@ func BuildTabSetFindScript(setName string) string {
 	// fieldSep must not be bare `tab` (iTerm class name in this tell block).
 	sep := fieldSepAS
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  set targetSet to "` + escaped + `"`,
 		`  set fieldSep to ` + sep,
 		`  set outLines to {}`,

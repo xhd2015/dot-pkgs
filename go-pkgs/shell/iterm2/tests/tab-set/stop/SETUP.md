@@ -26,7 +26,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 
 	req.Phase = "stop-tab-set"
 	if req.TabSetName == "" {

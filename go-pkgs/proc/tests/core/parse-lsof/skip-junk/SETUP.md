@@ -19,7 +19,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	// p/f lines, empty n, n/, relative n, then one keep
 	req.LsofOutput = []byte("p99\nfcwd\nn\nn/\nnrelative\nn./foo\nn/tmp/keep-me\nf1\nn/\n")
 	return nil

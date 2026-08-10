@@ -20,7 +20,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 
 	req.TabSetName = "named"
 	req.Tabs = []TabSpecInput{

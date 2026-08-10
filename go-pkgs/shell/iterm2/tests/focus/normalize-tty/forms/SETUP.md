@@ -22,7 +22,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	req.TTY = "/dev/ttys148"
 	return nil
 }

@@ -18,7 +18,6 @@ top -> scan -> no modules -> nil issues
 ```go
 func Setup(t *testing.T, req *Request) error {
 	// repo is empty (git init already done by root SETUP), no go.mod files
-	_ = t
 	return nil
 }
 ```

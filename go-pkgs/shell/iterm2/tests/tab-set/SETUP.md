@@ -50,7 +50,6 @@ const (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	if req.Phase == "" {
 		req.Phase = "build-tab-set-script"
 	}

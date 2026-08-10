@@ -14,8 +14,6 @@ import (
 )
 
 func Assert(t *testing.T, req *Request, resp *Response, err error) {
-	_ = resp
-	_ = err
 
 	start := time.Now()
 	budget := 3 * time.Second

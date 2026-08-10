@@ -22,7 +22,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	chdirTo(t, t.TempDir())
 	outside := filepath.Join(os.TempDir(), "doctest-display-outside-home")
 	mkdirAll(t, outside)

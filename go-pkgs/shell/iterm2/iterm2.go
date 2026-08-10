@@ -22,8 +22,14 @@ import (
 )
 
 // AppPath is the system-wide default install path (/Applications/iTerm.app).
-// Prefer ResolveAppPath() for detection: it also checks ~/Applications first.
+// Prefer ResolveAppPath() for detection: it also checks ~/Applications first
+// and honors ITERM2_APP_PATH.
 const AppPath = "/Applications/iTerm.app"
+
+// EnvITerm2AppPath is the env var for an explicit iTerm2.app bundle override.
+// When set and usable, ResolveAppPath returns it; when set but unusable,
+// resolve returns "" with no fallthrough to home/system installs.
+const EnvITerm2AppPath = "ITERM2_APP_PATH"
 
 // KoolTargetDirVar is the iTerm2 user session variable used to track kool-opened dirs.
 const KoolTargetDirVar = "user.koolTargetDir"
@@ -81,6 +87,19 @@ type Config struct {
 	Mode OpenMode
 }
 
+// ResolveAppPathOpts injects env/home/IsApp for parallel-safe resolve tests.
+// Zero value uses production defaults (os.Getenv, os.UserHomeDir, Stat+IsDir).
+type ResolveAppPathOpts struct {
+	// Getenv reads env; nil => os.Getenv. Tests inject a closure.
+	Getenv func(key string) string
+	// Home returns user home for ~/Applications candidate; nil => os.UserHomeDir.
+	// Empty home skips the home candidate.
+	Home func() string
+	// IsApp reports whether path is a usable iTerm.app bundle directory.
+	// nil => os.Stat + IsDir (same idea as resolveAppPathAmong).
+	IsApp func(path string) bool
+}
+
 // appCandidates returns install paths in preference order: ~/Applications then /Applications.
 func appCandidates() []string {
 	cands := make([]string, 0, 2)
@@ -91,31 +110,92 @@ func appCandidates() []string {
 	return cands
 }
 
+// defaultIsApp reports whether path is an existing directory (usable .app bundle).
+func defaultIsApp(path string) bool {
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 // resolveAppPathAmong returns the first existing .app bundle path among candidates, or "".
 func resolveAppPathAmong(candidates []string) string {
 	for _, p := range candidates {
-		if p == "" {
-			continue
+		if defaultIsApp(p) {
+			return p
 		}
-		info, err := os.Stat(p)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-		return p
 	}
 	return ""
 }
 
-// ResolveAppPath returns the preferred existing iTerm2.app path.
-// Order: ~/Applications/iTerm.app, then /Applications/iTerm.app.
-// Returns "" when none exist.
-func ResolveAppPath() string {
-	return resolveAppPathAmong(appCandidates())
+// ResolveAppPathWith returns the preferred existing iTerm2.app path using opts.
+//
+// Order:
+//  1. ITERM2_APP_PATH if set (non-empty after trim) and IsApp → that path
+//  2. ITERM2_APP_PATH set but unusable → "" (no fallthrough)
+//  3. ~/Applications/iTerm.app if present
+//  4. /Applications/iTerm.app if present
+//  5. ""
+func ResolveAppPathWith(opts ResolveAppPathOpts) string {
+	getenv := opts.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	isApp := opts.IsApp
+	if isApp == nil {
+		isApp = defaultIsApp
+	}
+
+	if envPath := strings.TrimSpace(getenv(EnvITerm2AppPath)); envPath != "" {
+		if isApp(envPath) {
+			return envPath
+		}
+		// Strict: intentional override that is unusable must not fall through.
+		return ""
+	}
+
+	var home string
+	if opts.Home != nil {
+		home = opts.Home()
+	} else if h, err := os.UserHomeDir(); err == nil {
+		home = h
+	}
+	if home != "" {
+		homeApp := filepath.Join(home, "Applications", "iTerm.app")
+		if isApp(homeApp) {
+			return homeApp
+		}
+	}
+	if isApp(AppPath) {
+		return AppPath
+	}
+	return ""
 }
 
-// IsInstalled reports whether an iTerm2.app bundle exists under ~/Applications or /Applications.
+// ResolveAppPath returns the preferred existing iTerm2.app path using production
+// defaults (real env, home, and filesystem). Equivalent to ResolveAppPathWith(zero opts).
+func ResolveAppPath() string {
+	return ResolveAppPathWith(ResolveAppPathOpts{})
+}
+
+// IsInstalled reports whether ResolveAppPath finds a usable iTerm2.app bundle.
 func IsInstalled() bool {
 	return ResolveAppPath() != ""
+}
+
+// TellApplicationHeader returns the AppleScript tell line for appPath.
+// Non-empty path → path-bound POSIX file form; empty → bare "iTerm2".
+func TellApplicationHeader(appPath string) string {
+	if appPath == "" {
+		return `tell application "iTerm2"`
+	}
+	return `tell application (POSIX file "` + EscapePathForAppleScript(appPath) + `" as text)`
+}
+
+// tellHeaderResolved is TellApplicationHeader(ResolveAppPath()) for package scripts.
+func tellHeaderResolved() string {
+	return TellApplicationHeader(ResolveAppPath())
 }
 
 // EscapePathForAppleScript escapes a path embedded in an AppleScript string literal.
@@ -141,10 +221,10 @@ func buildSessionCommandLines(followUpCommands []string) []string {
 	return lines
 }
 
-// BuildPathScanSmokeScript returns AppleScript that probes session path variables.
-func BuildPathScanSmokeScript() string {
+// BuildPathScanSmokeScriptApp returns path-scan smoke AppleScript targeting appPath.
+func BuildPathScanSmokeScriptApp(appPath string) string {
 	lines := []string{
-		`tell application "iTerm2"`,
+		TellApplicationHeader(appPath),
 		`  repeat with aWindow in windows`,
 		`    repeat with aTab in tabs of aWindow`,
 		`      repeat with aSession in sessions of aTab`,
@@ -163,12 +243,17 @@ func BuildPathScanSmokeScript() string {
 	return strings.Join(lines, "\n")
 }
 
-// BuildScript returns AppleScript that smart-opens iTerm2 and cds to dirPath.
-func BuildScript(dirPath string, followUps ...string) string {
+// BuildPathScanSmokeScript returns AppleScript that probes session path variables.
+func BuildPathScanSmokeScript() string {
+	return BuildPathScanSmokeScriptApp(ResolveAppPath())
+}
+
+// BuildScriptApp returns smart-open AppleScript targeting appPath and cds to dirPath.
+func BuildScriptApp(appPath, dirPath string, followUps ...string) string {
 	escaped := EscapePathForAppleScript(dirPath)
 	sessionCommandLines := buildSessionCommandLines(followUps)
 	lines := []string{
-		`tell application "iTerm2"`,
+		TellApplicationHeader(appPath),
 		`  activate`,
 		`  set targetDir to "` + escaped + `"`,
 		`  set matchingWindow to missing value`,
@@ -224,13 +309,18 @@ func BuildScript(dirPath string, followUps ...string) string {
 	return strings.Join(lines, "\n")
 }
 
+// BuildScript returns AppleScript that smart-opens iTerm2 and cds to dirPath.
+func BuildScript(dirPath string, followUps ...string) string {
+	return BuildScriptApp(ResolveAppPath(), dirPath, followUps...)
+}
+
 // BuildReuseCurrentSessionScript returns AppleScript that scans session paths like smart-open.
 // On match it focuses the tab/session at targetDir without cd; on miss it creates a window and cds.
 func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string {
 	escaped := EscapePathForAppleScript(dirPath)
 	sessionCommandLines := buildSessionCommandLines(followUps)
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  activate`,
 		`  set targetDir to "` + escaped + `"`,
 		`  set matchingWindow to missing value`,
@@ -288,15 +378,12 @@ func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string 
 	return strings.Join(lines, "\n")
 }
 
-// BuildForceNewWindowScript returns AppleScript that opens a new iTerm2 window,
-// cds to dirPath, runs follow-up commands, and sets the koolTargetDir variable.
-// Unlike BuildScript and BuildReuseCurrentSessionScript, it skips session scanning
-// entirely — always creating a new window.
-func BuildForceNewWindowScript(dirPath string, followUps ...string) string {
+// BuildForceNewWindowScriptApp returns force-new-window AppleScript targeting appPath.
+func BuildForceNewWindowScriptApp(appPath, dirPath string, followUps ...string) string {
 	escaped := EscapePathForAppleScript(dirPath)
 	sessionCommandLines := buildSessionCommandLines(followUps)
 	lines := []string{
-		`tell application "iTerm2"`,
+		TellApplicationHeader(appPath),
 		`  activate`,
 		`  set targetDir to "` + escaped + `"`,
 		`  set newWindow to (create window with default profile)`,
@@ -309,6 +396,14 @@ func BuildForceNewWindowScript(dirPath string, followUps ...string) string {
 		`end tell`,
 	)
 	return strings.Join(lines, "\n")
+}
+
+// BuildForceNewWindowScript returns AppleScript that opens a new iTerm2 window,
+// cds to dirPath, runs follow-up commands, and sets the koolTargetDir variable.
+// Unlike BuildScript and BuildReuseCurrentSessionScript, it skips session scanning
+// entirely — always creating a new window.
+func BuildForceNewWindowScript(dirPath string, followUps ...string) string {
+	return BuildForceNewWindowScriptApp(ResolveAppPath(), dirPath, followUps...)
 }
 
 func normalizeTargetDirectory(dirPath string) (string, error) {

@@ -19,7 +19,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.ScriptableVersion = "3.5.0"
 	req.ScriptableFail = false
 	return nil

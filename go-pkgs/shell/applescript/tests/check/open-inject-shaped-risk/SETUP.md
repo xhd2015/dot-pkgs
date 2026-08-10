@@ -15,7 +15,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.Op = "check"
 	var b strings.Builder
 	b.WriteString("SeaTalk local-bot session open\n")

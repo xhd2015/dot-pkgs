@@ -18,8 +18,6 @@ import (
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	t.Helper()
-	_ = d
-	_ = req
 	assertNoError(t, err)
 	assertDirExists(t, resp.AppPath)
 	assertFileExists(t, filepath.Join(resp.AppPath, "Contents", "Info.plist"))

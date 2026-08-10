@@ -21,7 +21,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	projRoot := req.Path
 	absRoot, err := filepath.Abs(projRoot)
 	if err != nil {

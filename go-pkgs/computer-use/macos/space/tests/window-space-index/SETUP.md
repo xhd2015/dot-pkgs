@@ -51,9 +51,6 @@ func canonicalType0Spaces() []SpaceInfoInput {
 }
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
-	_ = req
 	// Shared defaults only; grouping/leaf Setups set Phase and fixtures.
 	return nil
 }

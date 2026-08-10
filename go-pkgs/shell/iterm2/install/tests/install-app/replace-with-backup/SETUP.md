@@ -21,7 +21,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.SeedExistingTarget = true
 	req.ExistingMarker = "OLD-INSTALL"
 	req.UseDefaultTarget = false

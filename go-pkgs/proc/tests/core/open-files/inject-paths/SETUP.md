@@ -19,7 +19,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.OpenFilesPID = 4242
 	req.OpenFilesInject = []string{"/tmp/a", "/tmp/b"}
 	return nil

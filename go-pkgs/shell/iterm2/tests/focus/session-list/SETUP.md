@@ -25,7 +25,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	// Leaves set Phase.
 	return nil
 }

@@ -20,7 +20,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	wd, err := os.Getwd()
 	if err != nil {
 		return err

@@ -20,7 +20,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	// blank, short, non-numeric pid, then one valid row, trailing junk
 	req.PSOutput = []byte("\n\n  not-a-pid  1 /bin/x\n42\n  7   1 /bin/true\ngarbage only\n")
 	return nil

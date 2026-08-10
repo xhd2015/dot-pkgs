@@ -100,7 +100,6 @@ func runWrkExternalGit(t *testing.T, dir string, args ...string) {
 }
 
 func Setup(t *testing.T, req *Request) error {
-	_ = t
 	return nil
 }
 

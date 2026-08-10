@@ -19,8 +19,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	req.ForceGOOS = "linux"
 	req.WindowID = 1
 	// Fixtures present so implementer must still gate before using them.

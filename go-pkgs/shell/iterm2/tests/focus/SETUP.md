@@ -40,13 +40,6 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2"
 )
 
-func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
-	_ = req
-	return nil
-}
-
 func sessionRefFromInput(in SessionRefInput) iterm2.SessionRef {
 	return iterm2.SessionRef{
 		WindowID:   in.WindowID,

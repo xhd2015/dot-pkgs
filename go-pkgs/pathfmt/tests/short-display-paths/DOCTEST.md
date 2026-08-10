@@ -137,7 +137,6 @@ type Response struct {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	_ = d
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err

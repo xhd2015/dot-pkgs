@@ -109,7 +109,6 @@ type Response struct {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	_ = d
 	resp := &Response{}
 	opts := worktree.MergeBackOptions{
 		SourcePath: req.SourcePath,

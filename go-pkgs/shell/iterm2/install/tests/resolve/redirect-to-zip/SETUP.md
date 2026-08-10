@@ -20,7 +20,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.HTTPMode = "redirect-zip"
 	req.FinalZipName = "iTerm2-3_6_11.zip"
 	return nil

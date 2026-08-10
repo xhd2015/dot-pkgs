@@ -18,7 +18,6 @@ go.mod -> version replaces only -> not local filesystem -> nil issues
 ```go
 func Setup(t *testing.T, req *Request) error {
 	// leaf cases write specific go.mod files
-	_ = t
 	return nil
 }
 ```

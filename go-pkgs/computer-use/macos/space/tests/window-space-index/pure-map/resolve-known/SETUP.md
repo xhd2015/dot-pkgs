@@ -20,8 +20,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	req.Phase = "pure-resolve"
 	req.Spaces = canonicalType0Spaces()
 	req.ResolveSpaceIDs = []uint64{132}

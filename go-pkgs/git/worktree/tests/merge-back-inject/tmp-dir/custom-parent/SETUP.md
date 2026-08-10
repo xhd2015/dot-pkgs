@@ -31,7 +31,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	if req.SourcePath == "" || req.MainRepo == "" {
 		return fmt.Errorf("custom-parent: ancestor fixture missing SourcePath/MainRepo")

@@ -18,7 +18,6 @@ go.mod -> local filesystem replace -> classify -> intra or extra repo -> return 
 ```go
 func Setup(t *testing.T, req *Request) error {
 	// leaf cases write specific go.mod files
-	_ = t
 	return nil
 }
 ```

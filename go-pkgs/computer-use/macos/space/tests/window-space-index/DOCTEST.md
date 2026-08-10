@@ -198,8 +198,6 @@ type Response struct {
 
 // Run calls the intended package API. Classic TDD: RED until symbols exist.
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	_ = t
-	_ = d
 	resp := &Response{}
 
 	switch req.Phase {

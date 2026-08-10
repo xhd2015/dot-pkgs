@@ -22,8 +22,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	req.Spaces = []SpaceInfoInput{
 		{ID: 3, Type: 0},
 		{ID: 50, Type: 4},

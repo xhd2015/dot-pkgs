@@ -23,6 +23,8 @@ caller dir + follow-ups -> BuildScript -> AppleScript string
 - `open/` leaves use injectable `Config` — no real iTerm2 side effects.
 - Live leaf requires macOS, iTerm2 installed, and `--label side-effect-open-iterm2`.
 - Tab-set P1 lives under nested root `tab-set/` (does not inherit this Run).
+- App-path resolve + path-bound tell lives under nested root `app-path/`
+  (does not inherit this Run; Classic TDD RED until implementer).
 
 ```go
 import (

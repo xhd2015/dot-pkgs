@@ -21,8 +21,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	req.Spaces = canonicalType0Spaces()
 	req.WindowID = 4242
 	req.WindowSpaceIDs = []uint64{132}

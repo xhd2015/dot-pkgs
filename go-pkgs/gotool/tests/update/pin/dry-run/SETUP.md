@@ -14,7 +14,6 @@
 ```go
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	workspace := newWorkspace(t)
 	fixtureDir := initTaggedFixtureRepo(t, workspace)
 	consumer := initConsumerWithReplace(t, workspace, fixtureDir)

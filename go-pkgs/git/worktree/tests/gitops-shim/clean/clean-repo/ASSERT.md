@@ -20,8 +20,6 @@ import (
 )
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
-	_ = d
-	_ = req
 	if err != nil {
 		t.Fatalf("unexpected Run error: %v", err)
 	}

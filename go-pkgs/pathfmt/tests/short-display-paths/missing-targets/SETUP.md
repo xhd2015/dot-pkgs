@@ -34,7 +34,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	saveAndRestoreCwd(t)
 	projRoot := t.TempDir()
 	req.Path = projRoot

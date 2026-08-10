@@ -17,8 +17,6 @@ import (
 )
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
-	_ = d
-	_ = req
 	if err == nil {
 		idx := -1
 		if resp != nil {

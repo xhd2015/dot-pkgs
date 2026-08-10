@@ -152,8 +152,6 @@ type Response struct {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	_ = t
-	_ = d
 	env := ptywrap.MergeProcessEnv(req.Base, req.Set, req.Unset)
 	if req.ApplySpawnTERM {
 		env = ptywrap.EnsureSpawnTERM(env)

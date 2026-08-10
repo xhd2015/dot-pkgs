@@ -19,7 +19,6 @@ multiple go.mod files -> scan each module -> check replaces independently -> all
 ```go
 func Setup(t *testing.T, req *Request) error {
 	// leaf cases write specific go.mod files
-	_ = t
 	return nil
 }
 ```

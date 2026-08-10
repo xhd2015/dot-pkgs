@@ -43,7 +43,7 @@ type TabSetSpec struct {
 func BuildTabSetNewWindowScript(spec TabSetSpec) string {
 	setName := EscapeCommandForAppleScript(spec.Name)
 	lines := []string{
-		`tell application "iTerm2"`,
+		tellHeaderResolved(),
 		`  activate`,
 		`  set newWindow to (create window with default profile)`,
 	}

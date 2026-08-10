@@ -28,8 +28,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
-	_ = req
 	t.Helper()
 	// Grouping: leaf sets Branch and dual linked paths.
 	return nil

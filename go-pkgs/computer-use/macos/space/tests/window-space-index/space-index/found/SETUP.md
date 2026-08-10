@@ -20,8 +20,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = t
-	_ = d
 	if len(req.Spaces) == 0 && len(req.Displays) == 0 {
 		req.Spaces = canonicalType0Spaces()
 	}

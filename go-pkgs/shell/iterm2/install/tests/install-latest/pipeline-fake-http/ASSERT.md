@@ -24,7 +24,6 @@ import (
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	t.Helper()
-	_ = d
 	assertNoError(t, err)
 	assertEqual(t, "Version", resp.Version, "3.6.11")
 	want := filepath.Join(req.Home, "Applications", install.AppBundleName)

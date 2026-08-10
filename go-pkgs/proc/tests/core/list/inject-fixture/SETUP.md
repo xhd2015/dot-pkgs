@@ -19,7 +19,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.ListInject = []FixtureProc{
 		{PID: 11, PPID: 1, Cmd: "fixture-a"},
 		{PID: 22, PPID: 11, Cmd: "fixture-b --flag"},

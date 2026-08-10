@@ -21,7 +21,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	req.Phase = "build-focus-script"
 	return nil
 }

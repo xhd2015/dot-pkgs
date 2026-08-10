@@ -34,7 +34,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	_ = d
 	t.Helper()
 	if req.SourcePath == "" {
 		return fmt.Errorf("custom-message: ancestor fixture missing SourcePath")

@@ -25,7 +25,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	_ = d
 	req.Base = []string{
 		"SECRET=s3cr3t",
 		"PATH=/bin",

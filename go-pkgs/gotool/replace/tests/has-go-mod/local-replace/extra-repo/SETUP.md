@@ -18,7 +18,6 @@ local replace -> resolve target -> git toplevel != top or not found -> IsIntraRe
 ```go
 func Setup(t *testing.T, req *Request) error {
 	// leaf cases write specific local replace paths
-	_ = t
 	return nil
 }
 ```
