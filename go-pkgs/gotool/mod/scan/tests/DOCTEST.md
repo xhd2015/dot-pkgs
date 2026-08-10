@@ -53,6 +53,7 @@ scan tests
 │   ├── nested-gitignore/              # git skip: dir ignored by nested .gitignore pruned
 │   ├── nested-separate-repo/         # git skip: own .git, not a submodule → pruned
 │   ├── keeps-untracked-no-git/       # no git → untracked dir with go.mod IS scanned
+│   ├── empty-module-path/            # go.mod with no module path not emitted
 │   └── many-dirs-perf/               # perf: Scan on ~100 dirs must complete <500ms (RED until CheckIgnore fixed)
 └── stream/
     └── walk-order/                   # ScanStream emits walk order (unsorted) vs Scan sorts
@@ -71,6 +72,7 @@ scan tests
 | 7 | `skips/keeps-untracked-no-git` | no git at root → untracked dir with go.mod IS scanned |
 | 8 | `stream/walk-order` | `ScanStream` emits walk order; `Scan` sorts — contrast proves stream unsorted |
 | 9 | `skips/many-dirs-perf` | performance: Scan on ~100 dirs completes <500ms (RED — `CheckIgnore` per-directory subprocess overhead) |
+| 10 | `skips/empty-module-path` | go.mod with no module path is boundary-only, not in results |
 
 ## How to Run
 

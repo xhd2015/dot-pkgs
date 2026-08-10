@@ -152,6 +152,12 @@ func ScanStream(root string, opts Options, fn func(Module) error) error {
 		if err != nil {
 			return err
 		}
+		// Boundary-only or otherwise invalid go.mod (no module path): not a module.
+		// Presence of go.mod still stops the parent module at this dir; we just
+		// do not emit a Module entry for scanners/taggers.
+		if module.Path == "" {
+			return nil
+		}
 		return fn(module)
 	})
 }
