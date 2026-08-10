@@ -5,7 +5,7 @@
 ```
 AppPath=…/Applications/iTerm.app
   -> BuildForceNewWindowScriptApp(appPath, dir)
-  -> tell application (POSIX file "…" as text) …
+  -> tell application "<appPath>" …
 ```
 
 ## Steps

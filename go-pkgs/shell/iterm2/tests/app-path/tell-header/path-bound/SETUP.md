@@ -1,11 +1,11 @@
 # Scenario
 
-**Feature**: non-empty appPath → POSIX file tell header
+**Feature**: non-empty appPath → quoted-path tell header
 
 ```
 AppPath=/tmp/home/Applications/iTerm.app
   -> TellApplicationHeader
-  -> tell application (POSIX file "…" as text)
+  -> tell application "/tmp/home/Applications/iTerm.app"
 ```
 
 ## Steps

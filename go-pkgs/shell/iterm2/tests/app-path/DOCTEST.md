@@ -23,7 +23,7 @@ Does **not** inherit the parent open-dir `Request`/`Run` from `../DOCTEST.md`
 - **Resolver** — `ResolveAppPath` / `ResolveAppPathWith` picks the preferred
   existing `iTerm.app` bundle path (or empty).
 - **Tell header** — `TellApplicationHeader(appPath)` emits the AppleScript
-  `tell application …` line (path-bound POSIX file vs bare `"iTerm2"`).
+  `tell application …` line (path-bound quoted path vs bare `"iTerm2"`).
 - **Script builders** — open / force-new / smoke (and other package tells)
   prefix scripts with the same header.
 
@@ -43,10 +43,13 @@ Bare name is **open script fallback only** when resolve is empty.
 
 ### Tell header (locked)
 
-- Non-empty `appPath` → path-bound:
-  `tell application (POSIX file "<escaped>" as text)`
+- Non-empty `appPath` → path-bound **string literal**:
+  `tell application "<escaped>"`
   where path is escaped via `EscapePathForAppleScript`. Must **not** use bare
-  `tell application "iTerm2"` as the tell target.
+  `tell application "iTerm2"` as the tell target. Must **not** use
+  `tell application (POSIX file "…" as text)` — that expression form prevents
+  AppleScript from loading iTerm's dictionary at compile time (osascript
+  "Expected "," but found class name" on `create window` / similar terms).
 - Empty `appPath` → bare fallback: `tell application "iTerm2"`.
 
 ### Script builders (locked)
@@ -98,7 +101,7 @@ func TellApplicationHeader(appPath string) string
 | system-only | Only system present → `/Applications/iTerm.app` |
 | empty | None present, env unset → `""` |
 | env-missing | Env set to missing path → `""` (no home/system fallthrough) |
-| path-bound header | Non-empty path → POSIX file tell; not bare `"iTerm2"` |
+| path-bound header | Non-empty path → quoted-path tell; not bare `"iTerm2"`; not POSIX file expr |
 | bare-fallback header | Empty path → `tell application "iTerm2"` |
 | force-new / smart-open / smoke App builders | Embed path-bound header for explicit app path |
 
@@ -113,7 +116,7 @@ app-path/
 │   ├── empty/                      none → ""
 │   └── env-missing/                env set but missing → "" (no fallthrough)
 ├── tell-header/                    [Phase=tell-header]
-│   ├── path-bound/                 POSIX file tell; not bare iTerm2
+│   ├── path-bound/                 quoted path tell; not bare iTerm2
 │   └── bare-fallback/              empty → tell application "iTerm2"
 └── script/                         [Phase=build-*-app]
     ├── force-new-path-bound/       BuildForceNewWindowScriptApp + header
@@ -130,7 +133,7 @@ app-path/
 | `resolve/system-only/` | resolve-app | System when only system exists | RED |
 | `resolve/empty/` | resolve-app | No candidates → empty | RED |
 | `resolve/env-missing/` | resolve-app | Env set unusable → empty, no fallthrough | RED |
-| `tell-header/path-bound/` | tell-header | POSIX file header | RED |
+| `tell-header/path-bound/` | tell-header | Quoted-path header | RED |
 | `tell-header/bare-fallback/` | tell-header | Bare `"iTerm2"` when empty | RED |
 | `script/force-new-path-bound/` | build-force-new-app | Force-new embeds path-bound tell | RED |
 | `script/smart-open-path-bound/` | build-script-app | Smart-open embeds path-bound tell | RED |

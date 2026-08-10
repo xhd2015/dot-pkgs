@@ -8,7 +8,7 @@ ITERM2_APP_PATH / ~/Applications / /Applications
   -> ResolveAppPathWith(Getenv, Home, IsApp) -> app path or ""
 
 # tell header
-appPath -> TellApplicationHeader -> path-bound POSIX file | bare "iTerm2"
+appPath -> TellApplicationHeader -> path-bound quoted path | bare "iTerm2"
 
 # scripts
 appPath + dir -> Build*App -> AppleScript starting with same header
@@ -33,8 +33,10 @@ appPath + dir -> Build*App -> AppleScript starting with same header
 
 - Nested doctest root — independent of parent open-dir, focus, and tab-set trees.
 - Env-missing matches localbot: set but unusable → empty, **no** fallthrough.
-- Path-bound shape:
-  `tell application (POSIX file "<escaped>" as text)`
+- Path-bound shape (string literal so AppleScript loads iTerm's dictionary):
+  `tell application "<escaped path>"`
+- Do **not** use `POSIX file "…" as text` as the tell target — that is a runtime
+  expression and fails to compile iTerm terms (`create window with default profile`).
 
 ```go
 import (
@@ -61,10 +63,10 @@ func bareTellTarget() string {
 // pathBoundTellLine is the expected path-bound tell line for appPath.
 func pathBoundTellLine(appPath string) string {
 	esc := iterm2.EscapePathForAppleScript(appPath)
-	return `tell application (POSIX file "` + esc + `" as text)`
+	return `tell application "` + esc + `"`
 }
 
-// hasPathBoundTell reports whether s uses POSIX-file tell for appPath.
+// hasPathBoundTell reports whether s uses quoted-path tell for appPath.
 func hasPathBoundTell(s, appPath string) bool {
 	if appPath == "" {
 		return false
@@ -74,8 +76,7 @@ func hasPathBoundTell(s, appPath string) bool {
 	}
 	// Accept EscapePathForAppleScript embedding even if whitespace differs slightly.
 	esc := iterm2.EscapePathForAppleScript(appPath)
-	return strings.Contains(s, `POSIX file "`+esc+`"`) &&
-		strings.Contains(s, "tell application")
+	return strings.Contains(s, `tell application "`+esc+`"`)
 }
 
 // hasBareTellTarget reports bare tell application "iTerm2".
@@ -95,6 +96,9 @@ func assertPathBoundScript(t *testing.T, script, appPath string) {
 	}
 	if hasBareTellTarget(script) {
 		t.Fatalf("path-bound script must not use bare %q; script:\n%s", bareTellTarget(), script)
+	}
+	if strings.Contains(script, "POSIX file") {
+		t.Fatalf("path-bound script must not use POSIX file expression; script:\n%s", script)
 	}
 }
 ```

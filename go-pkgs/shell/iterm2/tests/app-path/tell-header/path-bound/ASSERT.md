@@ -1,7 +1,8 @@
 ## Expected
 
-- Header contains path-bound `POSIX file "<escaped appPath>"` tell form.
+- Header contains path-bound `tell application "<escaped appPath>"` form.
 - Header does **not** use bare `tell application "iTerm2"` as the tell target.
+- Header does **not** use `POSIX file` expression form (breaks iTerm dictionary load).
 
 ## Exit Code
 
@@ -29,6 +30,9 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	}
 	if hasBareTellTarget(h) {
 		t.Fatalf("path-bound header must not use bare target; got %q", h)
+	}
+	if strings.Contains(h, "POSIX file") {
+		t.Fatalf("path-bound header must not use POSIX file expression; got %q", h)
 	}
 	// Prefer exact line match when product returns a single-line header.
 	if strings.TrimSpace(h) != want && !strings.Contains(h, want) {

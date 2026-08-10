@@ -17,6 +17,31 @@ func TestEscapePathForAppleScript(t *testing.T) {
 	}
 }
 
+func TestTellApplicationHeaderQuotedPath(t *testing.T) {
+	// Empty → bare name fallback (loads iTerm dictionary by app name).
+	if got := TellApplicationHeader(""); got != `tell application "iTerm2"` {
+		t.Fatalf("empty path header = %q, want bare iTerm2", got)
+	}
+
+	// Non-empty → string-literal path (not POSIX file expression).
+	// Expression form fails to compile iTerm terms at osascript parse time.
+	path := `/Users/me/Applications/iTerm.app`
+	got := TellApplicationHeader(path)
+	want := `tell application "/Users/me/Applications/iTerm.app"`
+	if got != want {
+		t.Fatalf("path header = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "POSIX file") {
+		t.Fatalf("path header must not use POSIX file expression: %q", got)
+	}
+
+	// Escapes quotes inside path.
+	quoted := TellApplicationHeader(`/tmp/"App".app`)
+	if quoted != `tell application "/tmp/\"App\".app"` {
+		t.Fatalf("escaped path header = %q", quoted)
+	}
+}
+
 func TestBuildScriptCreatesWindowAndCDs(t *testing.T) {
 	script := BuildScript("/tmp/proj")
 	if !strings.Contains(script, "create window with default profile") {

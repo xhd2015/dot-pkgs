@@ -185,12 +185,24 @@ func IsInstalled() bool {
 }
 
 // TellApplicationHeader returns the AppleScript tell line for appPath.
-// Non-empty path → path-bound POSIX file form; empty → bare "iTerm2".
+//
+// Non-empty path → path-bound string literal:
+//
+//	tell application "/path/to/iTerm.app"
+//
+// Empty path → bare name fallback:
+//
+//	tell application "iTerm2"
+//
+// Use a string-literal path (not `POSIX file "…" as text`). A runtime
+// expression target prevents AppleScript from loading iTerm's dictionary at
+// compile time, so iTerm terms like `create window with default profile` fail
+// with "Expected "," but found class name" (-2741).
 func TellApplicationHeader(appPath string) string {
 	if appPath == "" {
 		return `tell application "iTerm2"`
 	}
-	return `tell application (POSIX file "` + EscapePathForAppleScript(appPath) + `" as text)`
+	return `tell application "` + EscapePathForAppleScript(appPath) + `"`
 }
 
 // tellHeaderResolved is TellApplicationHeader(ResolveAppPath()) for package scripts.
