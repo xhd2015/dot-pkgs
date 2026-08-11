@@ -3,8 +3,8 @@ module github.com/xhd2015/dot-pkgs/go-pkgs/cmd
 go 1.25.10
 
 require (
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.114
-	github.com/xhd2015/gitops v0.0.30
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.115
+	github.com/xhd2015/gitops v0.0.31
 	github.com/xhd2015/less-flags v1.0.2
 	github.com/xhd2015/lls v0.0.9
 	golang.design/x/clipboard v0.8.0
