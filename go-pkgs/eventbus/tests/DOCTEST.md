@@ -156,6 +156,10 @@ type Response struct {
 	TypeSeatalkMessageReceived string
 	TypeSeatalkSessionOpened   string
 	TypeAgentTTYStarted        string
+	TypeAgentTTYRestarted      string
+	ReasonTTYNew               string
+	ReasonTTYFollowup          string
+	ReasonTTYResume            string
 	SourceSeatalkLocalBot      string
 	SourceAgentRun             string
 
@@ -177,6 +181,10 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		resp.TypeSeatalkMessageReceived = eventbus.TypeSeatalkMessageReceived
 		resp.TypeSeatalkSessionOpened = eventbus.TypeSeatalkSessionOpened
 		resp.TypeAgentTTYStarted = eventbus.TypeAgentTTYStarted
+		resp.TypeAgentTTYRestarted = eventbus.TypeAgentTTYRestarted
+		resp.ReasonTTYNew = eventbus.ReasonTTYNew
+		resp.ReasonTTYFollowup = eventbus.ReasonTTYFollowup
+		resp.ReasonTTYResume = eventbus.ReasonTTYResume
 		resp.SourceSeatalkLocalBot = eventbus.SourceSeatalkLocalBot
 		resp.SourceAgentRun = eventbus.SourceAgentRun
 		return resp, nil

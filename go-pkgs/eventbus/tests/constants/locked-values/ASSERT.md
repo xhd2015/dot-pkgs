@@ -5,6 +5,11 @@
   - `TypeSeatalkMessageReceived` == `"seatalk.message.received"`
   - `TypeSeatalkSessionOpened` == `"seatalk.session.opened"`
   - `TypeAgentTTYStarted` == `"agent.tty.started"`
+  - `TypeAgentTTYRestarted` == `"agent.tty.restarted"`
+- Reason constants:
+  - `ReasonTTYNew` == `"new"`
+  - `ReasonTTYFollowup` == `"followup"`
+  - `ReasonTTYResume` == `"resume"`
 - Source constants:
   - `SourceSeatalkLocalBot` == `"seatalk.local-bot"`
   - `SourceAgentRun` == `"agent-run"`
@@ -42,6 +47,10 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 		{"TypeSeatalkMessageReceived", resp.TypeSeatalkMessageReceived, "seatalk.message.received"},
 		{"TypeSeatalkSessionOpened", resp.TypeSeatalkSessionOpened, "seatalk.session.opened"},
 		{"TypeAgentTTYStarted", resp.TypeAgentTTYStarted, "agent.tty.started"},
+		{"TypeAgentTTYRestarted", resp.TypeAgentTTYRestarted, "agent.tty.restarted"},
+		{"ReasonTTYNew", resp.ReasonTTYNew, "new"},
+		{"ReasonTTYFollowup", resp.ReasonTTYFollowup, "followup"},
+		{"ReasonTTYResume", resp.ReasonTTYResume, "resume"},
 		{"SourceSeatalkLocalBot", resp.SourceSeatalkLocalBot, "seatalk.local-bot"},
 		{"SourceAgentRun", resp.SourceAgentRun, "agent-run"},
 	}

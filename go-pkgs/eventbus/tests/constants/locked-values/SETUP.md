@@ -8,6 +8,10 @@ DefaultPublishPort -> 23891
 TypeSeatalkMessageReceived -> "seatalk.message.received"
 TypeSeatalkSessionOpened -> "seatalk.session.opened"
 TypeAgentTTYStarted -> "agent.tty.started"
+TypeAgentTTYRestarted -> "agent.tty.restarted"
+ReasonTTYNew -> "new"
+ReasonTTYFollowup -> "followup"
+ReasonTTYResume -> "resume"
 SourceSeatalkLocalBot -> "seatalk.local-bot"
 SourceAgentRun -> "agent-run"
 ```
