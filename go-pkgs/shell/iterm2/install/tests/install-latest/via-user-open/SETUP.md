@@ -1,11 +1,11 @@
 # Scenario
 
-**Feature**: `InstallLatest` with optional user-driven finalization
+**Feature**: `InstallLatest` with optional user-driven handoff
 (`InstallViaUserOpen` + injectable `Open` / `ClearQuarantineFn`)
 
 ```
 InstallViaUserOpen=false → place + register + verify; Open/Clear never called
-InstallViaUserOpen=true  → place → clear quarantine → register → open → verify
+InstallViaUserOpen=true  → extract staged → open staged app; no place/clear/register
 ```
 
 ## Steps
@@ -29,7 +29,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Parent already sets Operation=install-latest + SkipScriptable.
 	req.HTTPMode = "install-latest"
 	req.FinalZipName = "iTerm2-3_6_11.zip"
-	req.TargetApp = "" // default Home/Applications/iTerm.app
+	req.TargetApp = "" // place path only used when InstallViaUserOpen=false
 	req.SkipScriptable = true
 	return nil
 }

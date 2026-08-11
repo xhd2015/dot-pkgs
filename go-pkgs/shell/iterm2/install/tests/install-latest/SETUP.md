@@ -3,9 +3,9 @@
 **Feature**: `InstallLatest` orchestration with fake HTTP + injected Home
 
 ```
-resolve -> download -> extract -> install
-  [optional: clear quarantine -> open when InstallViaUserOpen]
-  -> Register -> VerifyInstalled
+resolve -> download -> extract
+  InstallViaUserOpen=false: place -> Register -> VerifyInstalled
+  InstallViaUserOpen=true:  open(staged) -> stop
 (SkipScriptable; no real network / osascript / lsregister / open / xattr)
 ```
 
@@ -15,7 +15,7 @@ resolve -> download -> extract -> install
 2. Leaves configure HTTP fixture, Home-based target, and optional
    `InstallViaUserOpen` / open-fail flags.
 3. Grouping `via-user-open/` covers flag false/true/open-fails; existing
-   `pipeline-fake-http/` stays the baseline happy path.
+   `pipeline-fake-http/` stays the full **place** happy path.
 
 ```go
 import (

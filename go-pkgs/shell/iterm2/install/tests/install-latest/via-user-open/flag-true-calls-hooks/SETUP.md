@@ -1,19 +1,20 @@
 # Scenario
 
-**Feature**: InstallViaUserOpen=true clears quarantine and opens final app path
+**Feature**: InstallViaUserOpen=true opens staged unzipped app (no place)
 
 ```
 InstallLatest(... InstallViaUserOpen=true)
   -> success
-  -> ClearQuarantineFn(appPath) once
-  -> Open(appPath) once
-  -> appPath == Result.AppPath (…/iTerm.app)
+  -> Open(extractedAppPath) once
+  -> no ClearQuarantineFn
+  -> no Register / no InstallApp to Home Applications
+  -> AppPath == staged …/iTerm.app under cache extract
 ```
 
 ## Steps
 
 1. Set `InstallViaUserOpen=true`.
-2. Open and ClearQuarantineFn succeed (recording injectables in root Run).
+2. Open succeeds (recording injectables in root Run).
 
 ```go
 import (

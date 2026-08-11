@@ -43,22 +43,21 @@ arch-specific download URLs (stable zip is **universal**), real Gatekeeper e2e.
   `CFBundleIdentifier` = `BundleID` (`com.googlecode.iterm2`).
 - **`VerifyScriptable(opts)`** — AppleScript get version via injectable
   `opts.Runner`; nil → real `osascript` on darwin.
-- **`InstallLatest(ctx, opts)`** — resolve → download → extract → install →
-  optional user-open finalization → optional `Register` (lsregister) →
-  `VerifyInstalled` → optional scriptable.
+- **`InstallLatest(ctx, opts)`** — resolve → download → extract, then either
+  place + `Register` + `VerifyInstalled` (`InstallViaUserOpen=false`) or
+  open staged app and stop (`InstallViaUserOpen=true`).
   Returns `Result{URL, Version, ZipPath, AppPath, BackupPath}` (optional
   `Opened` / `QuarantineCleared` if product adds them; suite records via hooks).
   **`InstallOpts.LatestURL`** (empty → `DefaultLatestURL`) is required for L2
   HTTP injection without rewriting the real host.
 - **`InstallOpts.InstallViaUserOpen`** (bool, default false) — when true, after
-  the app is placed at the final target, run user-driven finalization:
-  clear quarantine → register → open final app path → `VerifyInstalled`.
-  When false, Open and ClearQuarantineFn must **not** be invoked.
-- **`InstallOpts.ClearQuarantineFn`** `func(appPath string) error` — nil →
-  default `xattr -dr com.apple.quarantine` (tests always inject).
+  extract: `VerifyInstalled(staged)` → `Open(staged)` → stop (no InstallApp,
+  no ClearQuarantineFn, no Register). When false, Open and ClearQuarantineFn
+  must **not** be invoked; full place path runs.
+- **`InstallOpts.ClearQuarantineFn`** — retained for injectables; not used on
+  the user-open path. Tests always inject to assert zero calls when open=true.
 - **`InstallOpts.Open`** `func(appPath string) error` — nil → real `open`
-  (tests always inject). Open failure aborts InstallLatest with error
-  (ClearQuarantineFn may already have run).
+  (tests always inject). Only used when InstallViaUserOpen; failure aborts.
 - **Constants** — `DefaultLatestURL`, `BundleID`, `AppBundleName` (`iTerm.app`).
 
 ### Behaviors
@@ -104,12 +103,11 @@ arch-specific download URLs (stable zip is **universal**), real Gatekeeper e2e.
   `Result.AppPath` under home Applications; `VerifyInstalled` passes.
 - Injected `Register` (no real lsregister). No arch URL branching.
 - **`InstallViaUserOpen=false` (default):** injected `Open` and
-  `ClearQuarantineFn` are **not** called; install still succeeds.
-- **`InstallViaUserOpen=true`:** after place, order is
-  clear quarantine → register → open → `VerifyInstalled`. Both hooks called
-  **exactly once** with `appPath == Result.AppPath` (ends with `iTerm.app`).
+  `ClearQuarantineFn` are **not** called; place + register + verify succeeds.
+- **`InstallViaUserOpen=true`:** no place/register/clear; `Open` once on staged
+  extract path (`Result.AppPath` ends with `iTerm.app`, not Home Applications).
 - **`InstallViaUserOpen=true` + Open error:** InstallLatest returns non-nil
-  error; ClearQuarantineFn may still have been called (clear before open).
+  error; ClearCalls empty; RegisterCalls 0; staged AppPath may still be set.
 
 ## Decision Tree
 
@@ -175,9 +173,9 @@ shell/iterm2/install/tests/
 | 15 | `verify-scriptable/runner-success` | VerifyScriptable | Injected runner returns version | RED |
 | 16 | `verify-scriptable/runner-fail` | VerifyScriptable | Injected runner fails → error | RED |
 | 17 | `install-latest/pipeline-fake-http` | InstallLatest | Full pipeline with fake HTTP zip under Home Applications | GREEN* |
-| 18 | `install-latest/via-user-open/flag-false-no-hooks` | InstallLatest | InstallViaUserOpen=false → Open/ClearQuarantineFn not called | RED |
-| 19 | `install-latest/via-user-open/flag-true-calls-hooks` | InstallLatest | InstallViaUserOpen=true → both hooks once with AppPath | RED |
-| 20 | `install-latest/via-user-open/flag-true-open-fails` | InstallLatest | Open fails → InstallLatest error; clear may have run | RED |
+| 18 | `install-latest/via-user-open/flag-false-no-hooks` | InstallLatest | InstallViaUserOpen=false → Open/Clear not called; place path | GREEN |
+| 19 | `install-latest/via-user-open/flag-true-calls-hooks` | InstallLatest | InstallViaUserOpen=true → Open staged once; no place/clear/register | GREEN |
+| 20 | `install-latest/via-user-open/flag-true-open-fails` | InstallLatest | Open fails → InstallLatest error; no clear/register | GREEN |
 
 \*Existing pipeline leaf remains valid against current production; new via-user-open
 leaves expect RED until InstallViaUserOpen / Open / ClearQuarantineFn land.

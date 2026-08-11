@@ -1,8 +1,13 @@
 // Package install installs the official iTerm2 stable build without Homebrew.
 //
-// Default pipeline: resolve latest zip URL → download → extract iTerm.app →
-// install under ~/Applications (or an injected target) → optional Launch
-// Services register → VerifyInstalled → optional scriptable version check.
+// Full place pipeline (InstallViaUserOpen=false): resolve → download → extract →
+// place under ~/Applications (or TargetApp) → register → VerifyInstalled →
+// optional scriptable check.
+//
+// User-open pipeline (InstallViaUserOpen=true): resolve → download → extract →
+// open the staged (unzipped) iTerm.app → stop. Does not place into Applications,
+// clear quarantine, or lsregister — the user finishes install (Gatekeeper /
+// drag to Applications). Staging defaults to os.MkdirTemp under /tmp.
 //
 // All filesystem roots and HTTP are injectable for parallel-safe tests.
 package install
@@ -82,14 +87,16 @@ type InstallOpts struct {
 	SkipScriptable bool
 	// RequireHostArch enables an optional host-arch check after extract (best-effort).
 	RequireHostArch bool
-	// InstallViaUserOpen, when true, runs user-driven finalization after place:
-	// clear quarantine → register → open → VerifyInstalled.
-	// When false, ClearQuarantineFn and Open are never invoked.
+	// InstallViaUserOpen, when true: after extract, open the staged iTerm.app and
+	// stop (no InstallApp place, no ClearQuarantineFn, no Register).
+	// When false: place → Register → VerifyInstalled; Open and ClearQuarantineFn
+	// are never invoked.
 	InstallViaUserOpen bool
-	// ClearQuarantineFn clears the macOS quarantine attribute; nil →
-	// xattr -dr com.apple.quarantine. Only used when InstallViaUserOpen is true.
+	// ClearQuarantineFn is retained for injectables/tests. Not used when
+	// InstallViaUserOpen is true (user-open no longer strips quarantine).
+	// When false (place path), ClearQuarantineFn is never invoked.
 	ClearQuarantineFn func(appPath string) error
-	// Open launches the app for the user; nil → exec open appPath.
+	// Open launches the staged app for the user; nil → exec open appPath.
 	// Only used when InstallViaUserOpen is true. Failure aborts InstallLatest.
 	Open func(appPath string) error
 }
@@ -304,9 +311,12 @@ func VerifyScriptable(opts VerifyScriptableOpts) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// InstallLatest runs the full resolve → download → extract → install →
-// register → verify pipeline. When InstallViaUserOpen is true, after place the
-// order is clear quarantine → register → open → VerifyInstalled.
+// InstallLatest runs resolve → download → extract, then either:
+//   - InstallViaUserOpen: VerifyInstalled(staged) → open(staged) → stop
+//   - else: InstallApp place → Register → VerifyInstalled → optional scriptable
+//
+// Empty CacheDir uses os.MkdirTemp (typically under /tmp) for the short-lived
+// zip + extract tree.
 func InstallLatest(ctx context.Context, opts InstallOpts) (Result, error) {
 	var result Result
 
@@ -353,6 +363,27 @@ func InstallLatest(ctx context.Context, opts InstallOpts) (Result, error) {
 		// Host-arch lipo checks are optional and skipped when tools are unavailable.
 	}
 
+	// User-open: hand off the unzipped app; do not place into Applications.
+	if opts.InstallViaUserOpen {
+		result.AppPath = extracted
+		if err := VerifyInstalled(extracted); err != nil {
+			return result, err
+		}
+		openFn := opts.Open
+		if openFn == nil {
+			openFn = defaultOpen
+		}
+		if err := openFn(extracted); err != nil {
+			return result, fmt.Errorf("install latest: open: %w", err)
+		}
+		if !opts.SkipScriptable {
+			if _, err := VerifyScriptable(VerifyScriptableOpts{Runner: opts.ScriptableRunner}); err != nil {
+				return result, err
+			}
+		}
+		return result, nil
+	}
+
 	target := opts.TargetApp
 	// Capture backup path after install by scanning siblings.
 	if err := InstallApp(extracted, target, InstallAppOpts{Home: opts.Home}); err != nil {
@@ -366,33 +397,12 @@ func InstallLatest(ctx context.Context, opts InstallOpts) (Result, error) {
 	result.AppPath = appPath
 	result.BackupPath = findBackupBeside(appPath)
 
-	// User-open path: clear quarantine before register/open.
-	if opts.InstallViaUserOpen {
-		clearFn := opts.ClearQuarantineFn
-		if clearFn == nil {
-			clearFn = defaultClearQuarantine
-		}
-		if err := clearFn(appPath); err != nil {
-			return result, fmt.Errorf("install latest: clear quarantine: %w", err)
-		}
-	}
-
 	register := opts.Register
 	if register == nil {
 		register = defaultRegister
 	}
 	if err := register(appPath); err != nil {
 		return result, fmt.Errorf("install latest: register: %w", err)
-	}
-
-	if opts.InstallViaUserOpen {
-		openFn := opts.Open
-		if openFn == nil {
-			openFn = defaultOpen
-		}
-		if err := openFn(appPath); err != nil {
-			return result, fmt.Errorf("install latest: open: %w", err)
-		}
 	}
 
 	if err := VerifyInstalled(appPath); err != nil {

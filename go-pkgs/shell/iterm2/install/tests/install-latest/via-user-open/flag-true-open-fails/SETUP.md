@@ -1,18 +1,14 @@
 # Scenario
 
-**Feature**: InstallViaUserOpen=true propagates Open failure
+**Feature**: InstallViaUserOpen=true + Open failure aborts without place
 
 ```
 InstallLatest(... InstallViaUserOpen=true, Open=error)
-  -> err != nil
-  -> ClearQuarantineFn may have been called (clear before open)
-  -> Open was called once and returned error
+  -> error
+  -> Open called once on staged path
+  -> no ClearQuarantineFn
+  -> no Register / no Applications place
 ```
-
-## Steps
-
-1. Set `InstallViaUserOpen=true`.
-2. Set `OpenShouldFail=true` so injected Open returns an error.
 
 ```go
 import (
