@@ -56,6 +56,23 @@ func (w *wsWriter) close(code int) error {
 	return w.conn.WriteControl(websocket.CloseMessage, msg, time.Time{})
 }
 
+func (w *wsWriter) writePing() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	// Short write deadline so a stuck peer cannot block the keepalive
+	// goroutine indefinitely; next tick will retry if the conn is still up.
+	deadline := time.Now().Add(time.Second)
+	return w.conn.WriteControl(websocket.PingMessage, nil, deadline)
+}
+
+// KeepAliveInterval is how often the attach client sends WebSocket Ping
+// frames while the bridge is open. Chosen below common reverse-proxy idle
+// timeouts (Cloudflare tunnel ≈ 100s) so idle prompts do not get dropped.
+const KeepAliveInterval = 60 * time.Second
+
+// keepAliveInterval is the effective Ping period. Tests may override.
+var keepAliveInterval = KeepAliveInterval
+
 // Attach connects to a terminal session. When Wait is true, requires an
 // interactive terminal on stdin and stdout and blocks until disconnect.
 func Attach(c *Client, opts ConnectOptions) (AttachResult, error) {
@@ -116,6 +133,13 @@ func AttachWithIO(c *Client, opts ConnectOptions, stdin io.Reader, stdout io.Wri
 func runBridge(conn *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 	writer := &wsWriter{conn: conn}
 
+	// Client-initiated Ping keeps reverse proxies from idle-closing the
+	// WebSocket when the remote shell is quiet (prompt idle). gorilla servers
+	// auto-reply with Pong; frames never appear as terminal output.
+	stopKeepAlive := make(chan struct{})
+	defer close(stopKeepAlive)
+	startKeepAlive(writer, keepAliveInterval, stopKeepAlive)
+
 	stdinFile, hasTTY := stdin.(*os.File)
 	var oldState *term.State
 	if hasTTY {
@@ -163,6 +187,28 @@ func runBridge(conn *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 
 	_ = writer.close(websocket.CloseNormalClosure)
 	return runErr
+}
+
+// startKeepAlive sends WebSocket Ping frames every interval until stop is
+// closed or a write fails. interval <= 0 disables the ticker (tests).
+func startKeepAlive(writer *wsWriter, interval time.Duration, stop <-chan struct{}) {
+	if interval <= 0 || writer == nil {
+		return
+	}
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				if err := writer.writePing(); err != nil {
+					return
+				}
+			}
+		}
+	}()
 }
 
 // readSessionID reads the server's session_id handshake frame. knownSessionID
