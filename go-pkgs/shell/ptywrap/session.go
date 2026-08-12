@@ -206,7 +206,10 @@ func (s *session) claimRole(attachMode string) attachRole {
 		return roleSnapshot
 	case "attach":
 		return roleAttacher
-	case "screen", "interactive", "":
+	// open: agent-run --open (OpenCloseExits). Writer lifecycle (bare close →
+	// stopChild) with attach-like raw scrollback first frame (see sendInitialFrame).
+	// screen/interactive/"": writer + live VT CUP snapshot for grid consumers.
+	case "open", "screen", "interactive", "":
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.writeClaimed || s.writerConn == nil {
@@ -255,9 +258,12 @@ func (s *session) unregisterConn(conn *websocket.Conn) {
 }
 
 func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
-	// screen = interactive/writer path; snapshot = read-only one-shot (does not claim writer).
-	// Both export the persistent live VT cells (source of truth), not a cold
-	// replay of the truncated scrollback ring.
+	// screen/snapshot: export the persistent live VT cells as a CUP frame
+	// (grid fidelity for tools/observers). Does not re-emit mouse/DEC modes.
+	//
+	// open/attach (and other modes): raw scrollback ring so TUI startup CSIs
+	// (alt-screen, mouse tracking, paste, …) reach the host. attach_mode=open
+	// pairs this frame with roleWriter (claimRole) for --open close-exits.
 	if attachMode == "screen" || attachMode == "snapshot" {
 		if snapshot, ok := s.exportLiveSnapshot(); ok {
 			conn.WriteMessage(websocket.BinaryMessage, snapshot)
@@ -270,7 +276,7 @@ func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
 		return
 	}
 
-	// Fallback: cold replay if live screen is unavailable (should be rare).
+	// Fallback for screen/snapshot only: cold replay if live screen unavailable.
 	if attachMode == "screen" || attachMode == "snapshot" {
 		if snapshot, ok := renderScreenSnapshot(scrollbackCopy, cols, rows); ok {
 			conn.WriteMessage(websocket.BinaryMessage, snapshot)
