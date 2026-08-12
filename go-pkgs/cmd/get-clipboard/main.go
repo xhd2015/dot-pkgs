@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -25,11 +26,17 @@ Read system clipboard content:
 Options:
   -o, --output FILE   output file path (by default a timestamped name with auto extension)
   -n, --name NAME     write under /tmp/NAME.<ext>; if exists, use NAME-1.<ext>, NAME-2.<ext>, ...
+      --open          after saving a file, run: open <path>
   -h, --help          show this help message
 `
 
 // maxNameAttempts caps collision suffixes when resolving --name paths.
 const maxNameAttempts = 10000
+
+// openCmd runs macOS open for a path. Overridable in tests.
+var openCmd = func(path string) error {
+	return exec.Command("open", path).Run()
+}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -45,8 +52,10 @@ func run(args []string) error {
 func runWithOutput(args []string, out io.Writer) error {
 	var output string
 	var name string
+	var doOpen bool
 	_, err := lessflags.String("-o,--output", &output).
 		String("-n,--name", &name).
+		Bool("--open", &doOpen).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -88,12 +97,12 @@ func runWithOutput(args []string, out io.Writer) error {
 		if err := os.WriteFile(filename, imgData, 0644); err != nil {
 			return fmt.Errorf("write image: %w", err)
 		}
-		fmt.Fprintln(out, filename)
-		return nil
+		return printAndMaybeOpen(out, filename, doOpen)
 	}
 
 	textData := clipboard.Read(clipboard.FmtText)
 	if len(textData) > 0 {
+		// --open is ignored for plain text (no file to open).
 		fmt.Fprint(out, string(textData))
 		return nil
 	}
@@ -129,8 +138,7 @@ func runWithOutput(args []string, out io.Writer) error {
 		if err := os.WriteFile(filename, writeData, 0644); err != nil {
 			return fmt.Errorf("write %s: %w", ext, err)
 		}
-		fmt.Fprintln(out, filename)
-		return nil
+		return printAndMaybeOpen(out, filename, doOpen)
 	}
 
 	names := make([]string, 0, len(fmts))
@@ -144,6 +152,18 @@ func runWithOutput(args []string, out io.Writer) error {
 		return fmt.Errorf("clipboard contains unsupported content (available: %s)", strings.Join(names, ", "))
 	}
 	return fmt.Errorf("clipboard contains unsupported content")
+}
+
+// printAndMaybeOpen prints the saved path, then optionally runs open <path>.
+func printAndMaybeOpen(out io.Writer, path string, doOpen bool) error {
+	fmt.Fprintln(out, path)
+	if !doOpen {
+		return nil
+	}
+	if err := openCmd(path); err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	return nil
 }
 
 var svgDataURIPattern = regexp.MustCompile(`^<img\s+[^>]*\bsrc="data:image/svg\+xml;base64,([^"]*)"[^>]*>$`)
