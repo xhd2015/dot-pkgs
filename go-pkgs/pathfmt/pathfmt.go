@@ -81,6 +81,26 @@ func ShortFrom(path, baseDir string) string {
 		}
 	}
 
+	return tildeHomeAbs(abs)
+}
+
+// TildeHome shortens path for human-readable display by replacing the
+// user home directory prefix with "~". It does not produce cwd-relative
+// forms. Display-only — do not use for file I/O or exec.Command.Dir.
+func TildeHome(path string) string {
+	if path == "" {
+		return path
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return tildeHomeAbs(abs)
+}
+
+// tildeHomeAbs applies home-tilde rules to an already-absolute path.
+// Returns "~", "~/...", or abs. Shared by TildeHome and ShortFrom.
+func tildeHomeAbs(abs string) string {
 	if home, err := os.UserHomeDir(); err == nil {
 		if abs == home {
 			return "~"
