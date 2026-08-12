@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -23,8 +24,12 @@ Read system clipboard content:
 
 Options:
   -o, --output FILE   output file path (by default a timestamped name with auto extension)
+  -n, --name NAME     write under /tmp/NAME.<ext>; if exists, use NAME-1.<ext>, NAME-2.<ext>, ...
   -h, --help          show this help message
 `
+
+// maxNameAttempts caps collision suffixes when resolving --name paths.
+const maxNameAttempts = 10000
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -39,11 +44,23 @@ func run(args []string) error {
 
 func runWithOutput(args []string, out io.Writer) error {
 	var output string
+	var name string
 	_, err := lessflags.String("-o,--output", &output).
+		String("-n,--name", &name).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
 		return err
+	}
+
+	if output != "" && name != "" {
+		return fmt.Errorf("--name and --output are mutually exclusive")
+	}
+	if name != "" {
+		name, err = validateName(name)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = clipboard.Init()
@@ -64,7 +81,10 @@ func runWithOutput(args []string, out io.Writer) error {
 		if ext == "" {
 			return fmt.Errorf("cannot determine image format (magic bytes unrecognized)")
 		}
-		filename := makeOutputPath(output, imgData, ext)
+		filename, err := makeOutputPath(output, name, imgData, ext)
+		if err != nil {
+			return err
+		}
 		if err := os.WriteFile(filename, imgData, 0644); err != nil {
 			return fmt.Errorf("write image: %w", err)
 		}
@@ -102,7 +122,10 @@ func runWithOutput(args []string, out io.Writer) error {
 			}
 		}
 
-		filename := makeOutputPath(output, writeData, ext)
+		filename, err := makeOutputPath(output, name, writeData, ext)
+		if err != nil {
+			return err
+		}
 		if err := os.WriteFile(filename, writeData, 0644); err != nil {
 			return fmt.Errorf("write %s: %w", ext, err)
 		}
@@ -172,11 +195,47 @@ func extFromMIME(mime string) string {
 	return "bin"
 }
 
-func makeOutputPath(output string, data []byte, ext string) string {
-	if output != "" {
-		return output + "." + ext
+func validateName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("--name must be a non-empty basename (no path separators)")
 	}
-	return "/tmp/" + generateFilename(data, ext)
+	if name == "." || name == ".." ||
+		strings.Contains(name, "/") || strings.Contains(name, "\\") ||
+		strings.Contains(name, string(filepath.Separator)) {
+		return "", fmt.Errorf("--name must be a non-empty basename (no path separators)")
+	}
+	return name, nil
+}
+
+func makeOutputPath(output, name string, data []byte, ext string) (string, error) {
+	if output != "" {
+		return output + "." + ext, nil
+	}
+	if name != "" {
+		return uniqueNamedPath("/tmp", name, ext)
+	}
+	return "/tmp/" + generateFilename(data, ext), nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// uniqueNamedPath returns dir/stem.ext, or dir/stem-1.ext, stem-2.ext, ... if taken.
+func uniqueNamedPath(dir, stem, ext string) (string, error) {
+	candidate := filepath.Join(dir, stem+"."+ext)
+	if !fileExists(candidate) {
+		return candidate, nil
+	}
+	for i := 1; i <= maxNameAttempts; i++ {
+		candidate = filepath.Join(dir, fmt.Sprintf("%s-%d.%s", stem, i, ext))
+		if !fileExists(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("could not find free path for --name %q under %s (tried up to -%d)", stem, dir, maxNameAttempts)
 }
 
 func detectImageFormat(data []byte) string {

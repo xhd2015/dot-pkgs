@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/base64"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -237,27 +239,143 @@ func TestMakeOutputPath(t *testing.T) {
 	ext := "png"
 
 	t.Run("with_output", func(t *testing.T) {
-		got := makeOutputPath("out", data, ext)
+		got, err := makeOutputPath("out", "", data, ext)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if got != "out.png" {
 			t.Errorf("makeOutputPath = %q, want %q", got, "out.png")
 		}
 	})
 
 	t.Run("with_output_path", func(t *testing.T) {
-		got := makeOutputPath("/some/dir/file", data, ext)
+		got, err := makeOutputPath("/some/dir/file", "", data, ext)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if got != "/some/dir/file.png" {
 			t.Errorf("makeOutputPath = %q, want %q", got, "/some/dir/file.png")
 		}
 	})
 
 	t.Run("without_output", func(t *testing.T) {
-		got := makeOutputPath("", data, ext)
+		got, err := makeOutputPath("", "", data, ext)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !strings.HasPrefix(got, "/tmp/") {
 			t.Errorf("makeOutputPath = %q, should start with /tmp/", got)
 		}
 		pattern := `^/tmp/\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-clipboard-[0-9a-f]{8}\.png$`
 		if !regexp.MustCompile(pattern).MatchString(got) {
 			t.Errorf("makeOutputPath = %q, does not match pattern %s", got, pattern)
+		}
+	})
+
+	t.Run("with_name_free", func(t *testing.T) {
+		dir := t.TempDir()
+		// uniqueNamedPath is used under /tmp; exercise via uniqueNamedPath directly
+		// and keep makeOutputPath name branch covered when /tmp is free enough.
+		got, err := uniqueNamedPath(dir, "some-meaningful", "png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(dir, "some-meaningful.png")
+		if got != want {
+			t.Errorf("uniqueNamedPath = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestValidateName(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr bool
+	}{
+		{name: "ok", in: "some-meaningful", want: "some-meaningful"},
+		{name: "trim", in: "  demo  ", want: "demo"},
+		{name: "empty", in: "", wantErr: true},
+		{name: "spaces", in: "   ", wantErr: true},
+		{name: "slash", in: "a/b", wantErr: true},
+		{name: "backslash", in: `a\b`, wantErr: true},
+		{name: "dot", in: ".", wantErr: true},
+		{name: "dotdot", in: "..", wantErr: true},
+		{name: "with_ext_as_stem", in: "foo.png", want: "foo.png"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateName(tt.in)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("validateName(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUniqueNamedPath(t *testing.T) {
+	dir := t.TempDir()
+	stem := "demo"
+	ext := "png"
+
+	t.Run("free", func(t *testing.T) {
+		got, err := uniqueNamedPath(dir, stem, ext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(dir, "demo.png")
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("base_taken", func(t *testing.T) {
+		base := filepath.Join(dir, "demo.png")
+		if err := os.WriteFile(base, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := uniqueNamedPath(dir, stem, ext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(dir, "demo-1.png")
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("base_and_1_taken", func(t *testing.T) {
+		if err := os.WriteFile(filepath.Join(dir, "demo-1.png"), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := uniqueNamedPath(dir, stem, ext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(dir, "demo-2.png")
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("jpg_ext", func(t *testing.T) {
+		got, err := uniqueNamedPath(dir, "shot", "jpg")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(dir, "shot.jpg")
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 }
