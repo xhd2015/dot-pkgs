@@ -27,7 +27,7 @@ type Result struct {
 // Config injects resolve/open hooks. Nil cfg or nil hooks use production defaults.
 type Config struct {
 	ResolveITerm func() string
-	OpenITerm    func(dir string) error
+	OpenITerm    func(dir string) error // nil → ForceNew window (not iterm2.Open / Smart)
 	OpenTerminal func(dir string) error
 	TerminalApp  string
 }
@@ -35,6 +35,11 @@ type Config struct {
 // Open is OpenConfig(dir, nil).
 func Open(dir string) (*Result, error) {
 	return OpenConfig(dir, nil)
+}
+
+// defaultOpenITerm always opens a new iTerm2 window (no tab reuse).
+func defaultOpenITerm(dir string) error {
+	return iterm2.OpenConfig(dir, &iterm2.Config{Mode: iterm2.ModeForceNew})
 }
 
 // OpenConfig validates dir, then opens iTerm2 or Terminal.app.
@@ -45,7 +50,7 @@ func OpenConfig(dir string, cfg *Config) (*Result, error) {
 	}
 
 	resolve := iterm2.ResolveAppPath
-	openITerm := iterm2.Open
+	openITerm := defaultOpenITerm
 	terminalApp := defaultTerminalApp
 	var openTerminal func(dir string) error
 	if cfg != nil {

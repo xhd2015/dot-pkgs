@@ -403,7 +403,6 @@ func BuildForceNewWindowScriptApp(appPath, dirPath string, followUps ...string) 
 	sessionCommandLines := buildSessionCommandLines(followUps)
 	lines := []string{
 		TellApplicationHeader(appPath),
-		`  activate`,
 		`  set targetDir to "` + escaped + `"`,
 		`  set newWindow to (create window with default profile)`,
 		`  tell current session of newWindow`,
@@ -412,6 +411,7 @@ func BuildForceNewWindowScriptApp(appPath, dirPath string, followUps ...string) 
 	lines = append(lines,
 		`      set variable named "`+KoolTargetDirVar+`" to targetDir`,
 		`  end tell`,
+		`  activate`,
 		`end tell`,
 	)
 	return strings.Join(lines, "\n")
@@ -420,7 +420,8 @@ func BuildForceNewWindowScriptApp(appPath, dirPath string, followUps ...string) 
 // BuildForceNewWindowScript returns AppleScript that opens a new iTerm2 window,
 // cds to dirPath, runs follow-up commands, and sets the koolTargetDir variable.
 // Unlike BuildScript and BuildReuseCurrentSessionScript, it skips session scanning
-// entirely — always creating a new window.
+// entirely — always creating a new window. Create happens before activate so the
+// window lands on the current Space instead of following an existing iTerm window.
 func BuildForceNewWindowScript(dirPath string, followUps ...string) string {
 	return BuildForceNewWindowScriptApp(ResolveAppPath(), dirPath, followUps...)
 }
