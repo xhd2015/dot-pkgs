@@ -232,7 +232,7 @@ func TestWorktreeBackDirtyFails(t *testing.T) {
 	}
 }
 
-func TestWorktreeBackUnmergedFails(t *testing.T) {
+func TestWorktreeBackUnmergedAutoYesSucceeds(t *testing.T) {
 	skipIfNoGit(t)
 	home := t.TempDir()
 	work := t.TempDir()
@@ -253,16 +253,55 @@ func TestWorktreeBackUnmergedFails(t *testing.T) {
 	runGit(t, wtDir, "add", "feature-work")
 	runGit(t, wtDir, "commit", "-m", "feature commit")
 
+	output := captureStdout(t, func() {
+		if err := cmdBack(wtDir); err != nil {
+			t.Fatalf("cmdBack: %v", err)
+		}
+	})
+	if !strings.Contains(output, "worktree removed:") {
+		t.Fatalf("expected 'worktree removed:' output, got: %s", output)
+	}
+	if pathExists(wtDir) {
+		t.Fatal("worktree should be deleted after auto-yes unmerged back")
+	}
+	if !pathExists(filepath.Join(mainRepo, "feature-work")) {
+		t.Fatal("feature commit should be merged into main")
+	}
+}
+
+func TestWorktreeBackUnmergedConfirmNonTTYFails(t *testing.T) {
+	skipIfNoGit(t)
+	home := t.TempDir()
+	work := t.TempDir()
+	t.Setenv("HOME", home)
+
+	mainRepo := filepath.Join(work, "main")
+	mustMkdirAll(t, mainRepo)
+	initGitRepo(t, mainRepo)
+
+	wtDir := filepath.Join(work, "feature")
+	if err := cmdWorktreeMove(mainRepo, wtDir); err != nil {
+		t.Fatalf("cmdWorktreeMove: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(wtDir, "feature-work"), []byte("work"), 0644); err != nil {
+		t.Fatalf("write feature-work: %v", err)
+	}
+	runGit(t, wtDir, "add", "feature-work")
+	runGit(t, wtDir, "commit", "-m", "feature commit")
+
+	forceConfirm = true
+	t.Cleanup(func() { forceConfirm = false })
+
 	err := cmdBack(wtDir)
 	if err == nil {
-		t.Fatal("expected error for unmerged branch on --back")
+		t.Fatal("expected error for --confirm on non-TTY")
 	}
 	if !strings.Contains(err.Error(), "stdin is not a terminal") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
 	if !pathExists(wtDir) {
-		t.Fatal("worktree should not be deleted when unmerged")
+		t.Fatal("worktree should not be deleted when --confirm cannot prompt")
 	}
 }
 
