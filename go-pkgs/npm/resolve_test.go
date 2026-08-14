@@ -4,7 +4,15 @@ import (
 	"testing"
 )
 
+func requireAvailable(t *testing.T, manager Manager) {
+	t.Helper()
+	if !Available(manager) {
+		t.Skipf("%s not available on PATH", manager)
+	}
+}
+
 func TestResolveExplicitPnpm(t *testing.T) {
+	requireAvailable(t, ManagerPnpm)
 	dir := setupProject(t, nil)
 	manager, err := Resolve(dir, "pnpm")
 	if err != nil {
@@ -16,6 +24,7 @@ func TestResolveExplicitPnpm(t *testing.T) {
 }
 
 func TestResolveAutoFromPackageManagerField(t *testing.T) {
+	requireAvailable(t, ManagerPnpm)
 	dir := setupProject(t, map[string]string{
 		"package.json": `{"name":"demo","packageManager":"pnpm@11.10.0"}`,
 	})

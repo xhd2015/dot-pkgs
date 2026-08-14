@@ -68,7 +68,14 @@ func TestBuildScriptHandlesSpacesAndSingleQuotes(t *testing.T) {
 	}
 }
 
+func forceDarwin(t *testing.T) {
+	t.Helper()
+	SetGOOSForTest("darwin")
+	t.Cleanup(func() { SetGOOSForTest("") })
+}
+
 func TestOpenConfigRejectsNonDirectory(t *testing.T) {
+	forceDarwin(t)
 	file := filepath.Join(t.TempDir(), "file.txt")
 	if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
 		t.Fatal(err)
@@ -82,6 +89,7 @@ func TestOpenConfigRejectsNonDirectory(t *testing.T) {
 }
 
 func TestOpenConfigUsesInjectedOsascript(t *testing.T) {
+	forceDarwin(t)
 	dir := t.TempDir()
 	var gotScript string
 	err := OpenConfig(dir, &Config{
@@ -107,6 +115,7 @@ func TestOpenConfigUsesInjectedOsascript(t *testing.T) {
 }
 
 func TestOpenConfigNotInstalled(t *testing.T) {
+	forceDarwin(t)
 	err := OpenConfig(t.TempDir(), &Config{
 		Installed: func() bool { return false },
 	})
