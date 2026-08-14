@@ -174,6 +174,24 @@ func LoadUnpacked(ctx context.Context, opts LoadUnpackedOpts) (LoadUnpackedResul
 	return loadUnpacked(ctx, opts)
 }
 
+// RemoveOlder removes same-name unpacked cards on chrome://extensions (no load).
+// Empty VerifyVersion removes every matching card, including the last.
+func RemoveOlder(ctx context.Context, opts LoadUnpackedOpts) (int, error) {
+	if strings.TrimSpace(opts.AppName) == "" {
+		opts.AppName = DefaultAppName
+	}
+	if strings.TrimSpace(opts.VerifyName) == "" {
+		opts.VerifyName = "Browser Agent"
+	}
+	if opts.Stdout == nil {
+		opts.Stdout = os.Stdout
+	}
+	if opts.Stderr == nil {
+		opts.Stderr = os.Stderr
+	}
+	return removeOlderExtensions(ctx, opts)
+}
+
 func normalizeOpts(opts LoadUnpackedOpts) (LoadUnpackedOpts, error) {
 	if strings.TrimSpace(opts.ExtensionDir) == "" {
 		return opts, fmt.Errorf("chrome: ExtensionDir is required")
