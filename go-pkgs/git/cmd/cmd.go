@@ -43,9 +43,15 @@ func RunOptional(ctx context.Context, dir string, args ...string) (string, bool,
 }
 
 func RunCombined(ctx context.Context, dir string, args ...string) (string, error) {
+	return RunEnv(ctx, dir, nil, args...)
+}
+
+// RunEnv is like RunCombined but appends extra env vars on this invocation only.
+func RunEnv(ctx context.Context, dir string, extraEnv []string, args ...string) (string, error) {
 	var buf bytes.Buffer
+	env := append([]string{"GIT_OPTIONAL_LOCKS=0"}, extraEnv...)
 	err := xgocmd.Dir(dir).
-		Env([]string{"GIT_OPTIONAL_LOCKS=0"}).
+		Env(env).
 		Stdout(&buf).
 		Stderr(&buf).
 		Run("git", args...)
