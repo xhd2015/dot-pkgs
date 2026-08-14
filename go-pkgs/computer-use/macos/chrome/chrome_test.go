@@ -52,6 +52,18 @@ func TestInferVersionFromDir(t *testing.T) {
 	}
 }
 
+func TestIsVersionLike(t *testing.T) {
+	if !IsVersionLike("1.0.12") {
+		t.Fatal("1.0.12")
+	}
+	if !IsVersionLike("  2.0  ") {
+		t.Fatal("2.0 padded")
+	}
+	if IsVersionLike("Browser Agent") || IsVersionLike("v1.0.12") || IsVersionLike("") {
+		t.Fatal("non-versions")
+	}
+}
+
 func TestRemoveOlderEnabled(t *testing.T) {
 	if !removeOlderEnabled(LoadUnpackedOpts{}) {
 		t.Fatal("default should enable remove older")

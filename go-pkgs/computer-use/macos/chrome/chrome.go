@@ -148,6 +148,12 @@ func InferVersionFromDir(extensionDir string) string {
 	return base
 }
 
+// IsVersionLike reports whether s itself looks like an extension version.
+func IsVersionLike(s string) bool {
+	s = strings.TrimSpace(s)
+	return s != "" && InferVersionFromDir(s) == s
+}
+
 // ExtensionDirOK reports whether path looks like an unpacked Chrome extension.
 func ExtensionDirOK(path string) bool {
 	path = strings.TrimSpace(path)
