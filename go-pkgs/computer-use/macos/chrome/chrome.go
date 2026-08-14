@@ -4,6 +4,10 @@
 // Behavior is a Go port of the rule-driven script at
 // working/ai/computer-use/mlx-use-example/load_chrome_extension.py (no LLM).
 //
+// A Swift port of the same steps (in-process for a GUI host) lives in
+// swift/ChromeLoadUnpacked.swift. Marcus.app copies that file; edit the Swift
+// there, not the Marcus tree.
+//
 // Requirements (darwin):
 //   - Google Chrome installed
 //   - Accessibility trust for the process running this package
