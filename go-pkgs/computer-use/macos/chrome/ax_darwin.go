@@ -251,6 +251,180 @@ static int ax_count_named_in_pid(pid_t pid, const char *want) {
 	CFRelease(app);
 	return n;
 }
+
+typedef struct {
+	char version[64];
+	double cx;
+	double cy;
+} ax_ext_card;
+
+static int ax_is_version_like(const char *s) {
+	if (!s || !*s) return 0;
+	if (s[0] < '0' || s[0] > '9') return 0;
+	for (const char *p = s; *p; p++) {
+		if ((*p < '0' || *p > '9') && *p != '.') return 0;
+	}
+	return 1;
+}
+
+static int ax_text_is(const char *a, const char *b) {
+	return a && b && a[0] && strcmp(a, b) == 0;
+}
+
+static int ax_is_remove_button(AXUIElementRef el) {
+	char title[256], desc[256], role[128], value[256];
+	title[0] = desc[0] = role[0] = value[0] = 0;
+	ax_copy_str(el, 0, title, sizeof(title));
+	ax_copy_str(el, 1, desc, sizeof(desc));
+	ax_copy_str(el, 2, role, sizeof(role));
+	ax_copy_str(el, 3, value, sizeof(value));
+	int named = ax_text_is(title, "Remove") || ax_text_is(title, "Remove from Chrome") ||
+		ax_text_is(desc, "Remove") || ax_text_is(desc, "Remove from Chrome") ||
+		ax_text_is(value, "Remove") || ax_text_is(value, "Remove from Chrome");
+	if (!named) return 0;
+	return strstr(role, "Button") != NULL || strstr(role, "button") != NULL;
+}
+
+static void ax_walk_cards(AXUIElementRef el, const char *verify, int depth, int *budget,
+	int *pendingName, char *pendingVer, size_t verCap, ax_ext_card *out, int maxn, int *n) {
+	if (!el || !verify || depth < 0 || !budget || *budget <= 0 || !out || !n || *n >= maxn) return;
+	(*budget)--;
+	int interactive = 0;
+	if (ax_name_matches(el, verify, &interactive)) {
+		*pendingName = 1;
+		pendingVer[0] = 0;
+	} else if (*pendingName) {
+		char title[256], desc[256], value[256];
+		title[0] = desc[0] = value[0] = 0;
+		ax_copy_str(el, 0, title, sizeof(title));
+		ax_copy_str(el, 1, desc, sizeof(desc));
+		ax_copy_str(el, 3, value, sizeof(value));
+		if (ax_is_version_like(title)) {
+			strncpy(pendingVer, title, verCap - 1);
+			pendingVer[verCap - 1] = 0;
+		} else if (ax_is_version_like(desc)) {
+			strncpy(pendingVer, desc, verCap - 1);
+			pendingVer[verCap - 1] = 0;
+		} else if (ax_is_version_like(value)) {
+			strncpy(pendingVer, value, verCap - 1);
+			pendingVer[verCap - 1] = 0;
+		}
+	}
+	if (*pendingName && ax_is_remove_button(el)) {
+		double cx = 0, cy = 0;
+		if (ax_frame_center(el, &cx, &cy) == 0 && cx > 1 && cy > 1) {
+			strncpy(out[*n].version, pendingVer, sizeof(out[*n].version) - 1);
+			out[*n].version[sizeof(out[*n].version) - 1] = 0;
+			out[*n].cx = cx;
+			out[*n].cy = cy;
+			(*n)++;
+		}
+		*pendingName = 0;
+		pendingVer[0] = 0;
+		return;
+	}
+	CFTypeRef kidsRef = NULL;
+	if (AXUIElementCopyAttributeValue(el, kAXChildrenAttribute, &kidsRef) != kAXErrorSuccess || !kidsRef) {
+		return;
+	}
+	if (CFGetTypeID(kidsRef) == CFArrayGetTypeID()) {
+		CFArrayRef kids = (CFArrayRef)kidsRef;
+		CFIndex nk = CFArrayGetCount(kids);
+		for (CFIndex i = 0; i < nk && *budget > 0 && *n < maxn; i++) {
+			AXUIElementRef child = (AXUIElementRef)CFArrayGetValueAtIndex(kids, i);
+			ax_walk_cards(child, verify, depth - 1, budget, pendingName, pendingVer, verCap, out, maxn, n);
+		}
+	}
+	CFRelease(kidsRef);
+}
+
+static int ax_collect_named_cards_in_pid(pid_t pid, const char *verify, ax_ext_card *out, int maxn) {
+	if (!verify || !*verify || !out || maxn <= 0) return -1;
+	AXUIElementRef app = ax_app(pid);
+	if (!app) return -1;
+	int budget = 8000;
+	int n = 0;
+	int pendingName = 0;
+	char pendingVer[64];
+	pendingVer[0] = 0;
+	ax_walk_cards(app, verify, 28, &budget, &pendingName, pendingVer, sizeof(pendingVer), out, maxn, &n);
+	CFRelease(app);
+	return n;
+}
+
+static void ax_walk_remove_centers(AXUIElementRef el, int depth, int *budget, double *xs, double *ys, int maxn, int *n) {
+	if (!el || depth < 0 || !budget || *budget <= 0 || !xs || !ys || !n || *n >= maxn) return;
+	(*budget)--;
+	if (ax_is_remove_button(el)) {
+		double cx = 0, cy = 0;
+		if (ax_frame_center(el, &cx, &cy) == 0 && cx > 1 && cy > 1) {
+			xs[*n] = cx;
+			ys[*n] = cy;
+			(*n)++;
+		}
+	}
+	CFTypeRef kidsRef = NULL;
+	if (AXUIElementCopyAttributeValue(el, kAXChildrenAttribute, &kidsRef) != kAXErrorSuccess || !kidsRef) {
+		return;
+	}
+	if (CFGetTypeID(kidsRef) == CFArrayGetTypeID()) {
+		CFArrayRef kids = (CFArrayRef)kidsRef;
+		CFIndex nk = CFArrayGetCount(kids);
+		for (CFIndex i = 0; i < nk && *budget > 0 && *n < maxn; i++) {
+			AXUIElementRef child = (AXUIElementRef)CFArrayGetValueAtIndex(kids, i);
+			ax_walk_remove_centers(child, depth - 1, budget, xs, ys, maxn, n);
+		}
+	}
+	CFRelease(kidsRef);
+}
+
+static int ax_collect_remove_centers_in_pid(pid_t pid, double *xs, double *ys, int maxn) {
+	if (!xs || !ys || maxn <= 0) return -1;
+	AXUIElementRef app = ax_app(pid);
+	if (!app) return -1;
+	int budget = 8000;
+	int n = 0;
+	ax_walk_remove_centers(app, 28, &budget, xs, ys, maxn, &n);
+	CFRelease(app);
+	return n;
+}
+
+static int ax_front_window_frame_in_pid(pid_t pid, double *x, double *y, double *w, double *h) {
+	if (!x || !y || !w || !h) return -1;
+	AXUIElementRef app = ax_app(pid);
+	if (!app) return -1;
+	CFTypeRef winRef = NULL;
+	if (AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute, &winRef) != kAXErrorSuccess || !winRef) {
+		if (winRef) CFRelease(winRef);
+		winRef = NULL;
+		if (AXUIElementCopyAttributeValue(app, kAXMainWindowAttribute, &winRef) != kAXErrorSuccess || !winRef) {
+			if (winRef) CFRelease(winRef);
+			CFRelease(app);
+			return -1;
+		}
+	}
+	AXUIElementRef win = (AXUIElementRef)winRef;
+	CFTypeRef posRef = NULL, sizeRef = NULL;
+	int ok = -1;
+	if (AXUIElementCopyAttributeValue(win, kAXPositionAttribute, &posRef) == kAXErrorSuccess && posRef &&
+	    AXUIElementCopyAttributeValue(win, kAXSizeAttribute, &sizeRef) == kAXErrorSuccess && sizeRef) {
+		CGPoint p;
+		CGSize s;
+		if (AXValueGetValue((AXValueRef)posRef, kAXValueCGPointType, &p) &&
+		    AXValueGetValue((AXValueRef)sizeRef, kAXValueCGSizeType, &s)) {
+			*x = p.x;
+			*y = p.y;
+			*w = s.width;
+			*h = s.height;
+			ok = 0;
+		}
+	}
+	if (posRef) CFRelease(posRef);
+	if (sizeRef) CFRelease(sizeRef);
+	CFRelease(winRef);
+	CFRelease(app);
+	return ok;
+}
 */
 import "C"
 
@@ -344,5 +518,87 @@ func axCountNamed(appName, name string) int {
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
 	return int(C.ax_count_named_in_pid(C.pid_t(pid), cname))
+}
+
+type axExtCard struct {
+	Version string
+	CX, CY  float64
+}
+
+func axCollectNamedCards(appName, verifyName string) []axExtCard {
+	if !axIsTrusted() {
+		return nil
+	}
+	pid, err := chromePID(appName)
+	if err != nil {
+		return nil
+	}
+	cname := C.CString(verifyName)
+	defer C.free(unsafe.Pointer(cname))
+	var buf [16]C.ax_ext_card
+	n := int(C.ax_collect_named_cards_in_pid(C.pid_t(pid), cname, &buf[0], 16))
+	if n <= 0 {
+		return nil
+	}
+	out := make([]axExtCard, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, axExtCard{
+			Version: C.GoString(&buf[i].version[0]),
+			CX:      float64(buf[i].cx),
+			CY:      float64(buf[i].cy),
+		})
+	}
+	return out
+}
+
+func axQuartzClick(x, y float64) {
+	C.quartz_click(C.double(x), C.double(y))
+}
+
+func axClickTopRightRemove(appName string) bool {
+	if !axIsTrusted() {
+		return false
+	}
+	pid, err := chromePID(appName)
+	if err != nil {
+		return false
+	}
+	var xs, ys [32]C.double
+	n := int(C.ax_collect_remove_centers_in_pid(C.pid_t(pid), &xs[0], &ys[0], 32))
+	if n <= 0 {
+		return false
+	}
+	bestI := 0
+	var wx, wy, ww, wh C.double
+	if C.ax_front_window_frame_in_pid(C.pid_t(pid), &wx, &wy, &ww, &wh) == 0 {
+		upper := float64(wy) + float64(wh)*0.4
+		midX := float64(wx) + float64(ww)/2
+		found := -1
+		bestX := 0.0
+		for i := 0; i < n; i++ {
+			x, y := float64(xs[i]), float64(ys[i])
+			if y < upper && x > midX && (found < 0 || x > bestX) {
+				found = i
+				bestX = x
+			}
+		}
+		if found >= 0 {
+			bestI = found
+		} else {
+			for i := 1; i < n; i++ {
+				if xs[i] > xs[bestI] {
+					bestI = i
+				}
+			}
+		}
+	} else {
+		for i := 1; i < n; i++ {
+			if xs[i] > xs[bestI] {
+				bestI = i
+			}
+		}
+	}
+	axQuartzClick(float64(xs[bestI]), float64(ys[bestI]))
+	return true
 }
 
