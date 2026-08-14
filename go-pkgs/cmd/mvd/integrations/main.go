@@ -96,6 +96,7 @@ func main() {
 		{"TestWorktreeNonGitSrc", testWorktreeNonGitSrc},
 		{"TestWorktreeBackDirty", testWorktreeBackDirty},
 		{"TestWorktreeBackUnmerged", testWorktreeBackUnmerged},
+		{"TestWorktreeBackUnmergedConfirm", testWorktreeBackUnmergedConfirm},
 		{"TestWorktreeBackSuccess", testWorktreeBackSuccess},
 		{"TestWorktreeBranchCollision", testWorktreeBranchCollision},
 		{"TestMoveWorktreeWithoutWFlagShouldDoSimpleMove", testMoveWorktreeWithoutWFlagShouldDoSimpleMove},

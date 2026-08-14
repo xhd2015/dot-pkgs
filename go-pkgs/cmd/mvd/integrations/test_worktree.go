@@ -71,8 +71,29 @@ func testWorktreeBackUnmerged(t *T) {
 	runGit(t, wtDir, "add", "feature-work")
 	runGit(t, wtDir, "commit", "-m", "feature work")
 
-	out := runMvdErr(t, "--back", wtDir)
-	assertContains(t, out, "not merged")
+	out := runMvdOk(t, "--back", wtDir)
+	assertContains(t, out, "worktree removed:")
+	assertFileNotExists(t, wtDir)
+	assertFileExists(t, filepath.Join(mainRepo, "feature-work"))
+}
+
+func testWorktreeBackUnmergedConfirm(t *T) {
+	skipIfNoGit(t)
+	work := testDir(t, "work")
+
+	mainRepo := filepath.Join(work, "main")
+	assertNoErr(t, os.MkdirAll(mainRepo, 0755))
+	initGitRepo(t, mainRepo)
+
+	wtDir := filepath.Join(work, "feature")
+	runMvdOk(t, "-w", mainRepo, wtDir)
+
+	writeFile(t, filepath.Join(wtDir, "feature-work"), "work")
+	runGit(t, wtDir, "add", "feature-work")
+	runGit(t, wtDir, "commit", "-m", "feature work")
+
+	out := runMvdErr(t, "--confirm", "--back", wtDir)
+	assertContains(t, out, "stdin is not a terminal")
 	assertFileExists(t, wtDir)
 }
 
