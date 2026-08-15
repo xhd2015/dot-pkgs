@@ -31,9 +31,10 @@ caller title + target + ITERM_SESSION_ID -> SetTitle / GetTitle -> error or valu
 import (
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.SessionID == "" {
 		req.SessionID = defaultTitleSessionID
 	}

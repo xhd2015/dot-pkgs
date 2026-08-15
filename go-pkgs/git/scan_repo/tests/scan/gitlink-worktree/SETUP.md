@@ -15,9 +15,10 @@ wtDir/.git file (gitdir:) -> RepoTypeWorktree, GitDir resolves to main/.git
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	mainDir := filepath.Join(root, "main")
 	wtDir := filepath.Join(root, "feature-a")

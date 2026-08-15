@@ -29,9 +29,13 @@ that breaks multi-poll waitForPrompt + inject (CSI Down / Enter / /status).
 Production `ttywatch.ReadSnapshot` must use `attach_mode=snapshot`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	base, cleanup := startTestServer(t)
 	t.Cleanup(cleanup)
 	req.ServerBase = base

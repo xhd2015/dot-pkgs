@@ -18,9 +18,10 @@ dirty feat -> stash push -> rebase deletes file -> stash apply -> modify/delete 
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := req.MainRepo
 
 	// On main: delete README.md (diverges with feature which still has it)

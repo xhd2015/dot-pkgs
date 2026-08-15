@@ -19,9 +19,10 @@ FindLocalMainByGitHub(roots, owner, repo) -> first main match, skip worktrees
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if !gitAvailable(t) {
 		return nil
 	}

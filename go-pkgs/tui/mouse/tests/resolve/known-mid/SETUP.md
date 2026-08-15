@@ -19,9 +19,13 @@ localY = absY - 6  # absY 9 → 3 (add), absY 10 → 4 (gen)
 2. Leaf chooses AbsY 9 or 10 on the run X column.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	oy := 6
 	req.OriginY = &oy

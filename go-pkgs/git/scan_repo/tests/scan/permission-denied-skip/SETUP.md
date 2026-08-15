@@ -18,9 +18,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod permission fixture requires unix")
 	}

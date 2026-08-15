@@ -12,9 +12,13 @@ RunCLI --help -> top-level usage -> stdout
 1. Set `req.Args` to `["--help"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"--help"}
 	return nil
 }

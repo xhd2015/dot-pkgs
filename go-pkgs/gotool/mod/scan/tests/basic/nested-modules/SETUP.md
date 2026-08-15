@@ -15,7 +15,9 @@ root + app/go.mod + nested/service/go.mod -> scan.Scan -> [. , app, nested/servi
 3. Set `req.RootDir` (operation `scan` is set by the `basic/` grouping Setup).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initBasicWorkspace(t, "example.com/root")
 
 	writeModule(t, filepath.Join(ws, "app"), "example.com/root/app")

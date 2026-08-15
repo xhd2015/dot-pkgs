@@ -18,9 +18,10 @@ The plain move should skip the worktree and find the main repo's current locatio
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	repo := filepath.Join(req.WorkRoot, "repo")
@@ -30,7 +31,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 1: move repo → mid
 	mid := filepath.Join(req.WorkRoot, "mid")
 	req.Args = []string{repo, mid}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -41,7 +42,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 2: create worktree from mid
 	wt := filepath.Join(req.WorkRoot, "wt")
 	req.Args = []string{"-w", mid, wt}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

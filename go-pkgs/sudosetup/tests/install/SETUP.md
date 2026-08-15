@@ -12,9 +12,13 @@ Manager.EnsureInstalled -> [visudo + install] -> manifest JSON
 1. Set `Request.Operation = "install"`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Operation = "install"
 	return nil
 }

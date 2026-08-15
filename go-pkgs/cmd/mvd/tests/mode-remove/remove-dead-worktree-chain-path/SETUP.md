@@ -14,9 +14,10 @@ Chain: root → wt1 → dst → wt2 where wt2 is dead (dst remains alive).
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	wt1 := filepath.Join(req.WorkRoot, "feature-a")
 	dst := filepath.Join(req.WorkRoot, "repo-moved")

@@ -25,9 +25,13 @@ Attach(a.example.com)
   `cloudflared tunnel route dns --overwrite-dns <tunnel> <hostname>`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "dns-route")
 	req.Domain = "a.example.com"

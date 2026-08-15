@@ -16,9 +16,10 @@ Walk skips node_modules/ -> hidden-repo/.git not discovered
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	hidden := filepath.Join(root, "node_modules", "hidden-repo")
 	mkdirAll(t, hidden)

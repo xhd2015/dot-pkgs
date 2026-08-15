@@ -11,9 +11,10 @@ mvd no-such-dir dst → error → does not exist
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	nonexistent := filepath.Join(req.WorkRoot, "no-such-dir")
 	dst := filepath.Join(req.WorkRoot, "dst")
 	mkdirAll(t, dst)

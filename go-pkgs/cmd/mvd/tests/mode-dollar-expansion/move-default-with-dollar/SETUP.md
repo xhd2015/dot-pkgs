@@ -13,9 +13,10 @@ mvd $X/myproject dst → [(projects/myproject), (dst/myproject)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	homeDir := filepath.Join(req.WorkRoot, ".lls-home")
 	configDir := filepath.Join(homeDir, "Library", "Application Support", "lls")
 	mkdirAll(t, configDir)
@@ -27,7 +28,7 @@ func Setup(t *testing.T, req *Request) error {
 	writeFile(t, filepath.Join(dir, "f.txt"), "hello")
 
 	req.Args = []string{"--add", "$X/myproject"}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

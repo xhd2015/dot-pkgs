@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
 var buildOnce sync.Once
@@ -46,12 +47,12 @@ func findModuleRoot(dir string) string {
 	}
 }
 
-func getMvdBin(t *testing.T) string {
+func getMvdBin(t *testing.T, d *session.Doctest) string {
 	t.Helper()
 	buildOnce.Do(func() {
-		modRoot := filepath.Dir(filepath.Dir(DOCTEST_ROOT))
+		modRoot := filepath.Dir(filepath.Dir(d.DOCTEST_ROOT))
 		if modRoot == "" {
-			modRoot = findModuleRoot(DOCTEST_ROOT)
+			modRoot = findModuleRoot(d.DOCTEST_ROOT)
 		}
 		tmpDir, err := os.MkdirTemp("", "mvd-doc-test")
 		if err != nil {
@@ -105,8 +106,8 @@ type HistoryFile struct {
 	Projects map[string]ProjectEntry `json:"projects"`
 }
 
-func runMvd(t *testing.T, req *Request) (*Response, error) {
-	bin := getMvdBin(t)
+func runMvd(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
+	bin := getMvdBin(t, d)
 	cmd := exec.Command(bin, req.Args...)
 	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
 	out, err := cmd.CombinedOutput()
@@ -121,7 +122,7 @@ func runMvd(t *testing.T, req *Request) (*Response, error) {
 	return &Response{Output: string(out), ExitCode: exitCode}, nil
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.WorkRoot = t.TempDir()
 	req.ConfigHome = filepath.Join(req.WorkRoot, ".mvd-config")
 	ensureHelpersUsed()

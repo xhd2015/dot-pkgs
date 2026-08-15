@@ -25,6 +25,7 @@ import (
 	"go/token"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/typeassertignoreok"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/govet/types"
 )
@@ -37,7 +38,7 @@ type Response struct {
 	Violations []types.Violation
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "fixture.go", req.Src, parser.ParseComments)
 	if err != nil {

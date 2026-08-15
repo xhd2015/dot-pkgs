@@ -12,9 +12,13 @@ plain temp dir (no .git) -> Run(rev-parse HEAD) -> error
 2. Run `rev-parse HEAD`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Dir = t.TempDir()
 	req.Args = []string{"rev-parse", "HEAD"}
 	return nil

@@ -25,9 +25,13 @@ Attach(a.example.com)
   `tunnel --config <path> run <name>` (alternate arg order also acceptable).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "connector-run")
 	req.Domain = "a.example.com"

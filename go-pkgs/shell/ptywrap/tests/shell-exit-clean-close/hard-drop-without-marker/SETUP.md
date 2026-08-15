@@ -31,9 +31,13 @@ MECE complement to `server-initiated-on-shell-exit/marker-without-close`:
 Confirms status-first success is keyed off the exit marker, not “any EOF is OK”.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Hard-drop path: mock peer only; Phase is the harness selector.
 	if req.Phase == "" {
 		req.Phase = "shell-exit-hard-drop-without-marker"

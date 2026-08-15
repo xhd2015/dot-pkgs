@@ -11,9 +11,13 @@ OriginFromCPR(26, 20) -> (6, true)
 1. Set Row1=26, ViewLines=20 (mid-pane paint: cursor on last of 20 lines).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Row1 = 26
 	req.ViewLines = 20

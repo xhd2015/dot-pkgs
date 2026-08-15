@@ -15,9 +15,10 @@ main repo + wt1; mvd -w wt1 wt2 → [(wt1), (wt2 w:wt2)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	mkdirAll(t, mainRepo)
 	initGitRepo(t, mainRepo)

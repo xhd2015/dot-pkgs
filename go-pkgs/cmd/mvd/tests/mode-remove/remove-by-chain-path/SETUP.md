@@ -16,9 +16,10 @@ mvd --rm dst/repo → [{repo}]   (moved path removed, root preserved)
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	repo := filepath.Join(req.WorkRoot, "repo")
 	d1 := filepath.Join(req.WorkRoot, "d1")
 	mkdirAll(t, repo)
@@ -26,7 +27,7 @@ func Setup(t *testing.T, req *Request) error {
 
 	// add repo
 	req.Args = []string{"--add", repo}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -36,7 +37,7 @@ func Setup(t *testing.T, req *Request) error {
 
 	// move repo -> d1/repo (creates chain: repo -> d1/repo)
 	req.Args = []string{repo, d1}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

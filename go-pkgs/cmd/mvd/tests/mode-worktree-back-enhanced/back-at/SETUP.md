@@ -14,7 +14,9 @@ mvd --back wt → auto-yes plan confirm → remove wt + splice later entries
 - The enhanced CASE B / CASE C behaviors apply; default auto-yes (no `--confirm` required for success paths).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Logf("variant: cmdWorktreeBackAt (non-last entry)")
 	return nil
 }

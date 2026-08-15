@@ -18,9 +18,10 @@ DeltaAge = 30s
 import (
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Consume = false
 	req.BudgetOnly = true
 	req.DeltaAge = 30 * time.Second

@@ -12,9 +12,13 @@ Walk finds no .git -> empty []Repo
 2. Set `req.Roots` to the workspace.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	req.Roots = []string{root}
 	return nil

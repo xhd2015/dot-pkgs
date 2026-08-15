@@ -21,9 +21,13 @@ worktree B + replace => sibling worktree A/external/mydep -> extra-repo issue
 3. Call `replace.CheckLocalReplaces(consumer-b)`.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	consumerA, externalPath := setupWrkExternalConsumer(t, req.RootDir)
 	consumerB := filepath.Join(req.RootDir, "consumer-b")
 	mkdirWrkExternal(t, consumerB)

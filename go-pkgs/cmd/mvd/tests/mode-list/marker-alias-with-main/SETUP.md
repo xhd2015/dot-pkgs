@@ -14,9 +14,10 @@ markers → (main, aliases: al)
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	wt := filepath.Join(req.WorkRoot, "feature")
 	mkdirAll(t, root)

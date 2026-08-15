@@ -12,9 +12,13 @@ RunCLI repo nope -> unrecognized repo command -> stderr
 1. Set `req.Args` to `["repo", "nope"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"repo", "nope"}
 	return nil
 }

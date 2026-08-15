@@ -17,7 +17,9 @@ multiple go.mod files -> scan each module -> check replaces independently -> all
 1. Write multiple go.mod files as specified by the leaf case.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// leaf cases write specific go.mod files
 	return nil
 }

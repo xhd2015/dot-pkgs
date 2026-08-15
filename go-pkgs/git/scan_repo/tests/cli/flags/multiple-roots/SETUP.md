@@ -15,9 +15,10 @@
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	parent := t.TempDir()
 	rootA := filepath.Join(parent, "scan-a")
 	rootB := filepath.Join(parent, "scan-b")

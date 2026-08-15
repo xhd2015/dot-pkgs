@@ -10,9 +10,10 @@ git init -b master -> target label "master" in prompt and comments
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.DefaultBranch = "master"
 
 	mainRepo := filepath.Join(req.WorkRoot, "main")

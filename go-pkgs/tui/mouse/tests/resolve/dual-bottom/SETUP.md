@@ -19,9 +19,13 @@ OriginY nil, AbsY=24 -> bottom candidate LocalY=4 -> gen-commit-msg Kind=bottom
 1. Install dual hits; set AbsY so bottom localY lands on gen row (4+20=24).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.OriginY = nil
 	req.Hits = dualGenTagHits()

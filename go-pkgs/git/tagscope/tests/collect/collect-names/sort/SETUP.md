@@ -7,9 +7,13 @@ unordered tag names -> CollectFromNames -> Tags newest-first per scope
 ```
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Op != "collect-names" {
 		t.Fatalf("Op = %q, want collect-names", req.Op)
 	}

@@ -18,9 +18,13 @@ go.mod -> replace old => ../sub -> target still in same repo -> IsIntraRepo = tr
 2. Create `sibling/go.mod` as the target directory inside the same repo.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Root go.mod
 	if err := writeGoMod(req.RootDir, "go.mod", "module example.com/myrepo\n\ngo 1.22\n"); err != nil {
 		return err

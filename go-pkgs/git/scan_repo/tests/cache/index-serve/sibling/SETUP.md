@@ -29,9 +29,13 @@ parent/A and parent/B both present; cold seeded A
 1. Leaves cold-seed, plant siblings / set Roots, stash paths on Request.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.NoCache = false
 	req.Refresh = false
 	return nil

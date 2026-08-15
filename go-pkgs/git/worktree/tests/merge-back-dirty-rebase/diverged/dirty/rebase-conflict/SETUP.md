@@ -17,9 +17,10 @@ dirty feat -> tmp worktree -> rebase conflicts -> abort -> cleanup -> error
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// create a conflicting change on feature branch
 	conflictFile := filepath.Join(req.SourcePath, "shared.txt")
 	err := os.WriteFile(conflictFile, []byte("feature version\n"), 0644)

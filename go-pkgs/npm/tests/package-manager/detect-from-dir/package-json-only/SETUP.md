@@ -12,9 +12,13 @@ package.json only -> default npm
 1. Write bare `package.json`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.ProjectDir = writeProject(t, map[string]string{
 		"package.json": pkgJSONDemo,
 	})

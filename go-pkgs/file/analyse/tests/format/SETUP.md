@@ -16,9 +16,13 @@ constructed EntryResult / ScanSummary -> FormatEntryBlock / FormatSummaryLines -
 1. Leaves populate `req.Entry` or `req.Summary` with representative values.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Format leaves override Mode; default to entry-block for grouping descendants.
 	if req.Mode == "" || req.Mode == "scan" {
 		req.Mode = "format-entry"

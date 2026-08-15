@@ -22,9 +22,13 @@ configDir -> Join(configDir, "managed-tunnels")
 - Segment name is always `managed-tunnels` (not a product name).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Mode = "managed_root"
 	req.DecisionPath = append(req.DecisionPath, "root")

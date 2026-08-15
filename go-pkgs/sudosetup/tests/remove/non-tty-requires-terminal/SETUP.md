@@ -16,9 +16,13 @@
 1. Seed installed state with `StdinIsTerminal = false`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "remove_non_tty"
 	req.StdinIsTerminal = false
 	req.SeedSudoersLine = installedSeedLine("testuser", req.Rule.Command, "")

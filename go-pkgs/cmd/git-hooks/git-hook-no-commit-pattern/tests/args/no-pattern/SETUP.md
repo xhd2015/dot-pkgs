@@ -17,7 +17,9 @@ hook binary -> no patterns -> "at least one pattern required"
 1. Run the command with no positional arguments.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{}
 	return nil
 }

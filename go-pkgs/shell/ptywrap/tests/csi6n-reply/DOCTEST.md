@@ -124,6 +124,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/ptywrap"
 )
 
@@ -154,7 +155,7 @@ type Response struct {
 	WriteCalls int    // how many times write was invoked (maybe paths)
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	if req.DisableEnv {
 		t.Setenv("PTYWRAP_NO_DSR_REPLY", "1")
 	}

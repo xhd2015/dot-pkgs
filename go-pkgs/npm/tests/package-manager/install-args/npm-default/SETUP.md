@@ -15,10 +15,11 @@ Manager npm + FrozenLockfile false -> install --no-package-lock
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	npm "github.com/xhd2015/dot-pkgs/go-pkgs/npm"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Manager = npm.ManagerNpm
 	req.FrozenLockfile = false
 	return nil

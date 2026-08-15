@@ -15,9 +15,10 @@ mvd repo dst → plain move after worktree (from=root, to_type=main)
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	repo := filepath.Join(req.WorkRoot, "repo")
@@ -25,7 +26,7 @@ func Setup(t *testing.T, req *Request) error {
 	initGitRepo(t, repo)
 
 	req.Args = []string{"--add", repo}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -35,7 +36,7 @@ func Setup(t *testing.T, req *Request) error {
 
 	wt := filepath.Join(req.WorkRoot, "wt")
 	req.Args = []string{"-w", repo, wt}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

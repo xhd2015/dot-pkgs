@@ -13,9 +13,10 @@ mvd src d2 → [(src), (d1/src), (d2/src)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	src := filepath.Join(req.WorkRoot, "src")
 	d1 := filepath.Join(req.WorkRoot, "d1")
 	d2 := filepath.Join(req.WorkRoot, "d2")
@@ -24,7 +25,7 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, d2)
 
 	req.Args = []string{src, d1}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

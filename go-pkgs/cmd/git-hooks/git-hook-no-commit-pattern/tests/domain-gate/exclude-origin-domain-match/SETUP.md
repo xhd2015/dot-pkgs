@@ -18,7 +18,9 @@ hook binary --exclude-origin-domain github.com -> domain matches exclude -> exit
 3. Run the hook.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"--exclude-origin-domain", "github.com", "*.go"}
 	if err := writeAndStage(req.RepoDir, "main.go", "package main\n"); err != nil {
 		return err

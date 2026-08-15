@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 func skipIfNoGit(t *testing.T) {
@@ -144,7 +145,7 @@ func isAncestor(t *testing.T, repo, ancestor, descendant string) bool {
 	return err == nil
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 	req.WorkRoot = t.TempDir()
 	return nil

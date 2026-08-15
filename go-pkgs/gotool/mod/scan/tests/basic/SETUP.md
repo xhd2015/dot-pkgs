@@ -16,6 +16,8 @@ root + nested go.mod files -> scan.Scan -> sorted []Module
 ```go
 // initBasicWorkspace creates an isolated workspace with a root go.mod at modulePath,
 // inits it as a git repo, and returns the workspace dir. Shared by all basic leaves.
+import "github.com/xhd2015/doctest/session"
+
 func initBasicWorkspace(t *testing.T, modulePath string) string {
 	t.Helper()
 	ws := newWorkspace(t)
@@ -24,7 +26,7 @@ func initBasicWorkspace(t *testing.T, modulePath string) string {
 	return ws
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// basic leaves use the sorted-batch Scan path
 	req.Operation = "scan"
 	return nil

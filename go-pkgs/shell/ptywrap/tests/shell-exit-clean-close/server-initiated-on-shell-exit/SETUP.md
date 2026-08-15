@@ -38,9 +38,13 @@ Hard-drop **without** marker (must still error) is a sibling group, not this
 path. Client-initiated close-1000 churn is covered elsewhere (lifecycle trees).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Shared path: shell exit while attached; leaves choose Phase.
 	if len(req.Command) == 0 {
 		req.Command = []string{"sh", "-c", "sleep 1"}

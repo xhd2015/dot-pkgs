@@ -20,9 +20,10 @@ mvd --back wt → auto-yes rebase onto main → ff merge + remove wt → [repo, 
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	repo := filepath.Join(req.WorkRoot, "repo")
 	mkdirAll(t, repo)
 	initGitRepo(t, repo)
@@ -30,7 +31,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 1: plain move repo → mid
 	mid := filepath.Join(req.WorkRoot, "mid")
 	req.Args = []string{repo, mid}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -41,7 +42,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 2: create worktree from mid
 	wt := filepath.Join(req.WorkRoot, "wt")
 	req.Args = []string{"-w", mid, wt}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -52,7 +53,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 3: plain move mid → later (creates entry after the worktree)
 	later := filepath.Join(req.WorkRoot, "later")
 	req.Args = []string{mid, later}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

@@ -22,9 +22,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Add a commit on feature BEFORE diverging, so that after rebase
 	// the rebased commits include files that the pre-rebase index didn't have.
 	if err := os.WriteFile(filepath.Join(req.SourcePath, "extra-file.txt"), []byte("extra\n"), 0644); err != nil {

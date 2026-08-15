@@ -6,9 +6,10 @@
 import (
 	"os"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	data, err := os.ReadFile("fixture.go")
 	if err != nil {
 		return err

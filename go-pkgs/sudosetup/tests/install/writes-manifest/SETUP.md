@@ -19,10 +19,11 @@
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/sudosetup"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "writes_manifest"
 	req.Config.CacheDirName = "remote-agent"
 	req.Config.SudoersName = "remote-agent-sing-box"

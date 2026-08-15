@@ -27,9 +27,13 @@ TunnelState{Hosts}
 - Catch-all must be last; hostnames sorted for determinism (requirement 8–11).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Mode = "build_config"
 	req.DecisionPath = append(req.DecisionPath, "build-config")

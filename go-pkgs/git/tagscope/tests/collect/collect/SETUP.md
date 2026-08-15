@@ -11,9 +11,13 @@ git tag -l in repoRoot -> Collect -> CollectedTags
 1. Set `req.Op` to `"collect"`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "collect"
 	return nil
 }

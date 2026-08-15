@@ -11,9 +11,13 @@ https://github.com/owner/repo.git -> ParseRemoteOwnerRepo -> owner, repo, ok=tru
 1. Set `req.ParseURL` to `https://github.com/golang/go.git`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.ParseURL = "https://github.com/golang/go.git"
 	return nil
 }

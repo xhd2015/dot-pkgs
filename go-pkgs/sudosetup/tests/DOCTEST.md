@@ -102,6 +102,7 @@ doctest test ./go-pkgs/sudosetup/tests/detect/fully-installed
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/sudosetup/sudosetuptest"
 )
 
@@ -110,7 +111,7 @@ type Response = sudosetuptest.Response
 type ManifestSeed = sudosetuptest.ManifestSeed
 type RunnerCall = sudosetuptest.RunnerCall
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	return sudosetuptest.Run(t, req)
 }
 ```

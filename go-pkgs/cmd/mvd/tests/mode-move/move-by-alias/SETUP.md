@@ -17,9 +17,10 @@ mvd al dst → [(src), (dst/src)]
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	projectRoot := filepath.Join(req.WorkRoot, "projects")
 	src := filepath.Join(projectRoot, "kool")
 	dst1 := filepath.Join(req.WorkRoot, "scratch")
@@ -29,7 +30,7 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, dst2)
 
 	req.Args = []string{src, dst1}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -38,7 +39,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{"--add-alias", "kk", "kool"}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

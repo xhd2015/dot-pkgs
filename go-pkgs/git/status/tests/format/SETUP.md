@@ -15,10 +15,11 @@ Counts -> Format(FormatBackup) -> clean | dirty (N modified, ...)
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/status"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "format"
 	req.Style = status.FormatBackup
 	return nil

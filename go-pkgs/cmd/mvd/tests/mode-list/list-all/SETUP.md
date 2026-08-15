@@ -13,16 +13,17 @@ mvd --list → shows both
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	s1 := filepath.Join(req.WorkRoot, "proj1")
 	s2 := filepath.Join(req.WorkRoot, "proj2")
 	mkdirAll(t, s1)
 	mkdirAll(t, s2)
 
 	req.Args = []string{"--add", s1}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -31,7 +32,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{"--add", s2}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

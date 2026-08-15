@@ -11,9 +11,13 @@ RunCLI --unknown -> flag parse error on stderr
 1. Pass an unknown flag without `--root`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"--unknown"}
 	return nil
 }

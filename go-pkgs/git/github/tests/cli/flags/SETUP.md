@@ -21,9 +21,13 @@ RunCLI repo list --flag -> ListRepos with options -> mock gh argv/output
 - `--search-description` triggers `gh search repos` instead of repo list.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Args == nil {
 		req.Args = []string{"repo", "list"}
 	}

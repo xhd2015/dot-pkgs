@@ -13,9 +13,13 @@ RunCLI repo list --owner alice -> alice/alpha\towned lines
 2. Set `req.Args` to `["repo", "list", "--owner", "alice"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"repo", "list", "--owner", "alice"}
 	req.GhBin = writeOwnedOnlyGh(t, "alice", "testdata/repos.json")
 	return nil

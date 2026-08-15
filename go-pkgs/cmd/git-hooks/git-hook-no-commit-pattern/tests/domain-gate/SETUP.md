@@ -17,7 +17,9 @@ hook binary --origin-domain X -> origin URL check -> skip (exit 0) | run (check 
 2. Run the hook binary with the domain filter applied.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = nil // leaf cases set domain filter flags
 	return nil
 }

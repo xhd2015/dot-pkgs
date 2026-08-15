@@ -20,9 +20,10 @@ caller --root [...] [flags] -> RunCLI -> Scan -> tab-separated lines
 import (
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Flags branch uses default lines output — strip --json if present upstream.
 	var filtered []string
 	for _, arg := range req.Args {

@@ -18,9 +18,13 @@ Detect -> Installed=false
 2. Seed manifest with a different command path.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "manifest_mismatch_command"
 	req.SeedSudoersLine = installedSeedLine("testuser", req.Rule.Command, "")
 	req.SeedManifest = installedManifestSeed("testuser", "/other/path/hello.sh", "")

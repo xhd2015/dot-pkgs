@@ -19,9 +19,10 @@ Before the fix, this fails because --back tries to move another onto target (whi
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	repo := filepath.Join(req.WorkRoot, "base")
@@ -31,7 +32,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 1: create worktree from base
 	wt := filepath.Join(req.WorkRoot, "target")
 	req.Args = []string{"-w", repo, wt}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -42,7 +43,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 2: plain move base → another
 	another := filepath.Join(req.WorkRoot, "another")
 	req.Args = []string{repo, another}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

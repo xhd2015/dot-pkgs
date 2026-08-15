@@ -21,7 +21,9 @@ worktree + external linked wt + abs replace -> CheckLocalReplaces -> 0 blocking 
 3. Call `replace.CheckLocalReplaces(worktree)`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	consumerTop, externalPath := setupWrkExternalConsumer(t, req.RootDir)
 	writeConsumerReplace(t, consumerTop, externalPath)
 	req.RootDir = consumerTop

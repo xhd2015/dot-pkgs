@@ -16,9 +16,13 @@ Detect -> Installed=false, verdict password required
 1. Leave FS seeds empty (defaults).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "no_drop_in_no_manifest"
 	return nil
 }

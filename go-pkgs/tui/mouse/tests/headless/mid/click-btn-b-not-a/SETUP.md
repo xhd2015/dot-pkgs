@@ -12,9 +12,13 @@ fixture mid -> click localY=4 col=5 -> HIT id=btn-b localY=4
 1. Set Action click, LocalY=4, WantHitID=btn-b.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Action = "click"
 	req.LocalY = 4

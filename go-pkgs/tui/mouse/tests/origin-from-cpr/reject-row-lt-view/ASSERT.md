@@ -8,9 +8,13 @@
 - Accepting row1 < viewLines as origin 0 would mark a stale probe as top-anchored.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("OriginFromCPR: %v", err)
 	}

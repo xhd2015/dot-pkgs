@@ -17,9 +17,10 @@ testdata/05-status-fields.snapshot.txt -> DetectFileType -> isBinary=false
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Relative to the leaf directory (doctest cwd).
 	req.Path = filepath.Join("testdata", "05-status-fields.snapshot.txt")
 	return nil

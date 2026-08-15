@@ -14,9 +14,13 @@ ListRepos Owners=[] -> EnsureAuthenticated login=alice -> gh repo list alice
 3. Keep `req.Owners` nil (inherited).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.GhBin = writeInferOwnerGh(t, "testdata/repos.json")
 	return nil
 }

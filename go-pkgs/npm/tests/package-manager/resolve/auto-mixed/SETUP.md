@@ -17,10 +17,11 @@ all lockfiles -> candidate pnpm first -> Manager pnpm
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	npm "github.com/xhd2015/dot-pkgs/go-pkgs/npm"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	requireManagerOnPath(t, npm.ManagerPnpm)
 	req.ProjectDir = writeProject(t, map[string]string{
 		"package.json":       pkgJSONNpmPM,

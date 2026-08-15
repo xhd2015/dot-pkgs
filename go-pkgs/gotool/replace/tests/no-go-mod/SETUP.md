@@ -16,7 +16,9 @@ top -> scan -> no modules -> nil issues
 1. Leave the repo empty (no go.mod files).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// repo is empty (git init already done by root SETUP), no go.mod files
 	return nil
 }

@@ -13,9 +13,13 @@ OnCPR(26,1) -> Known, OriginY=6
 2. Apply CPR row1=26 col1=1 (cursor on last painted line).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.TrackerSteps = []TrackerStep{
 		{Kind: "frame-suffix", Height: 26, ViewLines: 20},

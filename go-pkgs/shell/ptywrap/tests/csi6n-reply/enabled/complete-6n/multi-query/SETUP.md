@@ -14,9 +14,13 @@ Data = ESC[6n + ESC[6n, Row=4, Col=8
 2. Set cursor to `(4,8)`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Data = []byte("\x1b[6n\x1b[6n")
 	req.Row = 4
 	req.Col = 8

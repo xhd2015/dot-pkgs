@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
 
@@ -86,7 +87,7 @@ func coldSeedScan(t *testing.T, roots []string, cacheRoot string) {
 	}
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CacheRoot = t.TempDir()
 	req.NoCache = false
 	req.Debug = false

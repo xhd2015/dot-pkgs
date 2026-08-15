@@ -13,9 +13,13 @@ ListRepos owners=[alice] -> gh repo list alice -> 2 repos -> matched_by owned
 2. Set `req.Owners` to `["alice"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Owners = []string{"alice"}
 	req.GhBin = writeOwnedOnlyGh(t, "alice", "testdata/repos.json")
 	return nil

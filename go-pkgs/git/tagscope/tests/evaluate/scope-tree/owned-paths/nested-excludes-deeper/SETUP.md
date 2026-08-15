@@ -12,9 +12,13 @@ sub/ scope + paths under sub/nested/ -> only direct sub/ paths owned
 2. Set `ScopePrefix` to `sub/` and `AllPaths` spanning both levels.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Names = []string{"sub/v0.2.1", "sub/nested/v0.1.1"}
 	req.ScopePrefix = "sub/"
 	req.AllPaths = []string{

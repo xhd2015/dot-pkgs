@@ -17,6 +17,8 @@ root + nested go.mod files -> scan.ScanStream -> per-module fn in walk order
 ```go
 // initStreamWorkspace creates an isolated workspace with a root go.mod at modulePath,
 // inits it as a git repo, and returns the workspace dir. Shared by all stream leaves.
+import "github.com/xhd2015/doctest/session"
+
 func initStreamWorkspace(t *testing.T, modulePath string) string {
 	t.Helper()
 	ws := newWorkspace(t)
@@ -25,7 +27,7 @@ func initStreamWorkspace(t *testing.T, modulePath string) string {
 	return ws
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// stream leaves use the ScanStream (walk-order, unsorted) path
 	req.Operation = "stream"
 	return nil

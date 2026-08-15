@@ -185,6 +185,7 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
 type Request struct {
@@ -200,8 +201,8 @@ type Response struct {
 	ExitCode int
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
-	bin := getMvdBin(t)
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
+	bin := getMvdBin(t, d)
 
 	var cmdArgs []string
 	var cmdName string

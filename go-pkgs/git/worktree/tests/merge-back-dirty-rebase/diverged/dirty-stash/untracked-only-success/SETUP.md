@@ -18,9 +18,10 @@ dirty feat (untracked only) -> stash push -u -> rebase -> stash apply clean -> m
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := req.MainRepo
 
 	// Create untracked files (NOT staged, NOT committed)

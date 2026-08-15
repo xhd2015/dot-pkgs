@@ -24,9 +24,13 @@ Negative control for the dual contract: only marker / clean close codes
 normalize to nil — bare drop still surfaces as attach failure.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "shell-exit-hard-drop-without-marker"
 	return nil
 }

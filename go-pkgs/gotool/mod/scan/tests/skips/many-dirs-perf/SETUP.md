@@ -26,9 +26,10 @@ When the fix is applied (removing the per-directory `CheckIgnore` call, which
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initSkipRoot(t, "example.com/root")
 
 	// Create 100 subdirectories to simulate a realistic Go project structure.

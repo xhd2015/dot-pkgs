@@ -25,9 +25,13 @@ PTYWRAP_NO_DSR_REPLY unset/not-1
 Default production path for headless tty-watch and doctest PTYs.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.DisableEnv = false
 	return nil
 }

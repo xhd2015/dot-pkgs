@@ -12,7 +12,9 @@ mvd --grep '' -> non-zero; error requires non-empty pattern
 1. Run `mvd --grep` with an empty string value (flag present, value empty).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"--grep", ""}
 	return nil
 }

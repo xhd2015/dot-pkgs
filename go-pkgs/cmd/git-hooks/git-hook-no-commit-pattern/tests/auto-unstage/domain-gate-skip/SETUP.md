@@ -18,7 +18,9 @@
 2. Run the hook with `--auto-unstage --origin-domain other.com *.go`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := writeAndStage(req.RepoDir, "main.go", "package main\n"); err != nil {
 		return err
 	}
