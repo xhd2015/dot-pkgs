@@ -28,9 +28,13 @@ Stop last remaining domain
 - Partial-then-last (scenario 2) is a separate leaf from alone Stop (scenario 3).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "last-host")
 	if req.TunnelName == "" {

@@ -35,6 +35,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
 var (
@@ -43,14 +44,14 @@ var (
 	buildErr  error
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	return nil
 }
 
-func getBinPath(t *testing.T) string {
+func getBinPath(t *testing.T, d *session.Doctest) string {
 	t.Helper()
 	buildOnce.Do(func() {
-		srcDir := filepath.Join(DOCTEST_ROOT, "..")
+		srcDir := filepath.Join(d.DOCTEST_ROOT, "..")
 		cachedBin = filepath.Join(os.TempDir(), "http-proxy-test")
 		buildCmd := exec.Command("go", "build", "-o", cachedBin, ".")
 		buildCmd.Dir = srcDir

@@ -433,6 +433,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
 
@@ -480,7 +481,7 @@ type Response struct {
 	Elapsed time.Duration
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	if req.CacheOp != "" {
 		return nil, fmt.Errorf("unknown/retired CacheOp %q (dense mirror store removed)", req.CacheOp)
 	}

@@ -33,9 +33,13 @@ Regression: live-screen changes must not make snapshot attach claim writer or
 `stopChild` on disconnect.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "live-screen-multi-snapshot-keeps-child"
 	req.AttachMode = "snapshot"
 	req.RepeatCount = 3

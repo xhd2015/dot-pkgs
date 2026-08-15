@@ -17,9 +17,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	wt1 := filepath.Join(req.WorkRoot, "feature-a")
 	dst := filepath.Join(req.WorkRoot, "repo-moved")
@@ -45,7 +46,7 @@ func Setup(t *testing.T, req *Request) error {
 	writeHistoryFile(t, req.ConfigHome, hf)
 
 	req.Args = []string{"--picker-list"}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

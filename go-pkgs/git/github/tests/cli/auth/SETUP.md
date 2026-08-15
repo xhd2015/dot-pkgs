@@ -20,9 +20,13 @@ RunCLI repo list -> EnsureAuthenticated fails -> stderr gh auth login hint
 - Error message must contain `gh auth login` for user remediation.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Args == nil {
 		req.Args = []string{"repo", "list"}
 	}

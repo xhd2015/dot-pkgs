@@ -6,7 +6,9 @@
 - After clearing, the history file contains no record of the project.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     t.Logf("mode: clear")
     return nil
 }

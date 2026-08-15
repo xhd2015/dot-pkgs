@@ -11,9 +11,13 @@ sub/v0.2.9 -> IncrementTag -> sub/v0.2.10
 1. Set `req.Tag` to `sub/v0.2.9`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Tag = "sub/v0.2.9"
 	return nil
 }

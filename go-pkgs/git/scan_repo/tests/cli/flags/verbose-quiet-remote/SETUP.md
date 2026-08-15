@@ -16,9 +16,10 @@ caller --root -> SkipDir on CloudStorage -> empty stderr
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	cloudStorageProvider(t, root, "GoogleDrive-user@example.com")
 	cloudRepo := filepath.Join(root, "Library", "CloudStorage", "GoogleDrive-user@example.com", "Projects", "cloud-app")

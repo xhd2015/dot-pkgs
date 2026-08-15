@@ -16,7 +16,9 @@ go.mod -> scan -> module -> local replace (NewVersion == "") -> print path -> ex
 1. Write go.mod with a local-path replace as specified by the leaf.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = nil // leaf cases write specific go.mod files
 	return nil
 }

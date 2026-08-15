@@ -7,9 +7,13 @@ caller dir -> BuildReuseCurrentSessionScript -> scan: path == targetDir OR user.
 ```
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Dir = absDir(t, "/tmp/iterm2-reuse-scan-user")
 	req.Mode = "reuse"
 	return nil

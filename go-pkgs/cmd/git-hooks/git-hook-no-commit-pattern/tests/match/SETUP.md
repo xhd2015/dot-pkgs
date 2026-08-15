@@ -18,7 +18,9 @@ staged files -> pattern match -> matched? -> (yes: print file + exit 1) | (no: e
 2. Run the hook binary with patterns provided by the leaf case.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = nil // leaf cases set args and stage files
 	return nil
 }

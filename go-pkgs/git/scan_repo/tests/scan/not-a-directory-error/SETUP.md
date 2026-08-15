@@ -14,9 +14,10 @@ root is a regular file -> RootErrors entry; err nil
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	filePath := filepath.Join(root, "not-a-dir")
 	writeFile(t, filePath, "content")

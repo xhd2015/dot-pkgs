@@ -13,9 +13,13 @@ gh repo list carol -> [] -> ListOwned returns []Repo{} nil error
 2. Set `req.Owners` to `["carol"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Owners = []string{"carol"}
 	req.GhBin = writeFakeGh(t, `if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "carol" ]; then
   echo '[]'

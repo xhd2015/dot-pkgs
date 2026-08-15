@@ -7,7 +7,9 @@
 - Some tests document currently-broken behavior (stale worktree .git files after parent moves, position mismatch blocking --back on non-last worktree).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     skipIfNoGit(t)
     t.Logf("mode: safety")
     return nil

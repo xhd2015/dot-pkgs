@@ -24,9 +24,13 @@ ListOwned -> gh repo list <owner> -> JSON array -> []Repo sorted by FullName
 - URL fields from `gh` may be SSH or https; implementation normalizes to https.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Limit == 0 {
 		req.Limit = 100
 	}

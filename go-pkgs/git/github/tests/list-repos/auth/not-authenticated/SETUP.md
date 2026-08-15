@@ -13,9 +13,13 @@ EnsureAuthenticated -> gh api user -> exit 4 -> error contains gh auth login
 2. Leave `req.Owners` empty (inherited nil).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.GhBin = writeAuthFailGh(t)
 	return nil
 }

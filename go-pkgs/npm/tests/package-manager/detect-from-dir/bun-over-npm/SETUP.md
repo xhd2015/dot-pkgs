@@ -12,9 +12,13 @@ bun.lock + package-lock.json -> Manager bun
 1. Write `bun.lock` and `package-lock.json` without package.json.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.ProjectDir = writeProject(t, map[string]string{
 		"bun.lock":          bunLockJSON,
 		"package-lock.json": packageLockJSON,

@@ -14,9 +14,13 @@ ListReposOptions.Limit=0 -> gh repo list ... --limit 30
 3. Mock auth and empty repo list response.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Limit = 0
 	req.Owners = []string{"alice"}
 	req.GhBin = writeLimitDefaultGh(t)

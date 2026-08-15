@@ -16,9 +16,10 @@ mvd --dry-run --back wt → prints 'would remove worktree'
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	mkdirAll(t, mainRepo)
@@ -27,7 +28,7 @@ func Setup(t *testing.T, req *Request) error {
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	// First create the worktree normally
 	req.Args = []string{"-w", mainRepo, wtDir}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil { return err }
 	if resp.ExitCode != 0 { t.Fatalf("worktree move: %s", resp.Output) }
 

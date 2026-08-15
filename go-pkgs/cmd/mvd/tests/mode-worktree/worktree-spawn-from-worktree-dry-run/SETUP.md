@@ -15,9 +15,10 @@ main repo + wt1; mvd --dry-run -w wt1 wt2 → prints 'would create worktree'
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	mkdirAll(t, mainRepo)
 	initGitRepo(t, mainRepo)

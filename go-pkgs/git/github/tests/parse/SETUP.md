@@ -23,9 +23,13 @@ owner + "/" + name -> FullName
 - `normalize-url` reads multiple cases from `testdata/cases.tsv`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Owners = nil
 	req.GhBin = ""
 	req.IncludeForks = true

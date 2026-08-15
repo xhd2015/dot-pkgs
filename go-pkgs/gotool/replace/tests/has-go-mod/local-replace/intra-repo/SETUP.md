@@ -16,7 +16,9 @@ local replace -> resolve target -> git toplevel == top -> IsIntraRepo = true
 1. Write go.mod with a local replace pointing to a directory inside the repo.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// leaf cases write specific local replace paths
 	return nil
 }

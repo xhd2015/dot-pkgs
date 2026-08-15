@@ -4,9 +4,13 @@
 - CONNECT succeeds with "200 Connection Established"
 
 ```go
-import "strings"
+import (
+	"strings"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

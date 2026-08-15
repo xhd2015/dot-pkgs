@@ -41,6 +41,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
 
@@ -124,7 +125,7 @@ func resultPaths(repos []scan_repo.Repo) map[string]struct{} {
 	return out
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CacheRoot = t.TempDir()
 	req.NoCache = false
 	req.Refresh = false

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/doctest/assert"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 )
@@ -35,7 +36,7 @@ func defaultBranchAt(t *testing.T, repo string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if resp == nil {
 		assertErrIsNil(t, err)
 		return

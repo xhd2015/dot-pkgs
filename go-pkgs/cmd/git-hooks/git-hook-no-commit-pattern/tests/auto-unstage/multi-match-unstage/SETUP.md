@@ -19,7 +19,9 @@ git add main.go test.go -> hook --auto-unstage "*.go" -> both match -> print bot
 3. Run the hook with `--auto-unstage *.go`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := initGitRepoWithCommit(req.RepoDir); err != nil {
 		return err
 	}

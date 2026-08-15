@@ -17,7 +17,9 @@ stage main.go test.go -> "*.go" -> main.go matches, test.go matches -> print bot
 2. Run the hook with pattern `*.go`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"*.go"}
 	if err := writeAndStage(req.RepoDir, "main.go", "package main\n"); err != nil {
 		return err

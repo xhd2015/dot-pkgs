@@ -12,9 +12,13 @@ ListRepos SearchDescription and/or SearchCode -> gh search repos/code -> matched
 1. Default owner `alice` when leaf does not set explicit owners.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if len(req.Owners) == 0 {
 		req.Owners = []string{"alice"}
 	}

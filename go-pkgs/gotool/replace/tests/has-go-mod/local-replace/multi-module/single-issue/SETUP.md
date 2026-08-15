@@ -19,9 +19,13 @@ root go.mod (clean) + sub/go.mod (replace ./local) -> 1 issue in sub
 3. Create the local target directory.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// root go.mod — no local replace
 	if err := writeGoMod(req.RootDir, "go.mod", "module example.com/myrepo\n\ngo 1.22\n\nrequire example.com/old v0.0.0\n\nreplace example.com/old v0.0.0 => example.com/new v1.0.0\n"); err != nil {
 		return err

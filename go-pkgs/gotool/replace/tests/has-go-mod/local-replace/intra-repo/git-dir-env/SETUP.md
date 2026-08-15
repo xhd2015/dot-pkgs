@@ -21,9 +21,13 @@ repo/.git exported as GIT_DIR -> go-pkgs/cmd/go.mod replace old => ../ -> target
 3. Call `replace.CheckLocalReplaces(repo)`.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := writeGoMod(req.RootDir, "go-pkgs/go.mod", "module github.com/xhd2015/dot-pkgs/go-pkgs\n\ngo 1.22\n"); err != nil {
 		return err
 	}

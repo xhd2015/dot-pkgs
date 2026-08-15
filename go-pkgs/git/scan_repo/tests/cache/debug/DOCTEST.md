@@ -84,6 +84,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
 
@@ -100,7 +101,7 @@ type Response struct {
 	Stderr     string // captured Options.Stderr during Scan
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	var stderrBuf bytes.Buffer
 	result, err := scan_repo.Scan(context.Background(), scan_repo.Options{
 		Roots:     req.Roots,

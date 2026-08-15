@@ -18,9 +18,10 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Universe = "home"
 	path := expectedRepoIndexPath(t, req.CacheRoot, req.Universe)
 	if _, err := os.Stat(path); err == nil {

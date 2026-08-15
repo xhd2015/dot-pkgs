@@ -13,9 +13,13 @@ gh repo list failuser -> exit 4 + auth stderr -> error hints gh auth login
 2. Set `req.Owners` to `["failuser"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Owners = []string{"failuser"}
 	req.GhBin = writeFakeGh(t, `if [ "$1" = "repo" ] && [ "$2" = "list" ]; then
   echo 'To authenticate, please run gh auth login' >&2

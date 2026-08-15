@@ -28,9 +28,10 @@ move target overlaps with an existing worktree path.
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	// Create repo1 (git repo) and repo2 (plain dir)
@@ -45,7 +46,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 1: create worktree from repo1
 	wt := filepath.Join(req.WorkRoot, "wt")
 	req.Args = []string{"-w", repo1, wt}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

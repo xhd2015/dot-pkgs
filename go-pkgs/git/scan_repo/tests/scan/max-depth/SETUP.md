@@ -16,9 +16,10 @@ root/level1/level2/deep-repo/.git at depth 3 -> MaxDepth=2 excludes it
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	deep := filepath.Join(root, "level1", "level2", "deep-repo")
 	mkdirAll(t, deep)

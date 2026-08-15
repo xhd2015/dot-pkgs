@@ -53,9 +53,13 @@ walk-log/     → walk.jsonl cold seal gen_end + consume + adaptive budget
 2. Clear enrichment / parse / find fields; leave `CacheOp` and `Roots` for descendants.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CacheRoot = t.TempDir()
 	req.ListRemotes = false
 	req.ListWorktrees = false

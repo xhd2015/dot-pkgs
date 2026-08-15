@@ -13,7 +13,9 @@ mvd --back al → [(src)]
 - Run `mvd --back opencode` from a separate working directory — this must resolve the alias to find the project in history.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     projectRoot := filepath.Join(req.WorkRoot, "projects")
     src := filepath.Join(projectRoot, "opencode-latest")
     dst := filepath.Join(req.WorkRoot, "scratch")
@@ -21,17 +23,17 @@ func Setup(t *testing.T, req *Request) error {
     mkdirAll(t, dst)
     
     req.Args = []string{"--add", src}
-    resp, err := runMvd(t, req)
+    resp, err := runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("add: %s", resp.Output) }
     
     req.Args = []string{"--add-alias", "opencode", "opencode-latest"}
-    resp, err = runMvd(t, req)
+    resp, err = runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("add-alias: %s", resp.Output) }
     
     req.Args = []string{"opencode", dst}
-    resp, err = runMvd(t, req)
+    resp, err = runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("move by alias: %s", resp.Output) }
     

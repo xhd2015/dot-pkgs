@@ -11,7 +11,9 @@ MergeBack DryRun=true -> printDryRun -> stdout command lines (no prompt header)
 - Set `DryRun=true`, `CapturePrompt=false`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.DryRun = true
 	req.CapturePrompt = false
 	return nil

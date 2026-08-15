@@ -21,10 +21,14 @@ hook binary --strict -> root clean + sub/go.mod (./sub intra-repo) -> exit 1
 4. Run the hook with `--strict`.
 
 ```go
-import "os"
+import (
+	"os"
+
+	"github.com/xhd2015/doctest/session"
+)
 import "path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"--strict"}
 	// root go.mod — no local replace
 	if err := os.WriteFile(filepath.Join(req.RepoDir, "go.mod"), []byte("module example.com/myrepo\n\ngo 1.22\n\nrequire example.com/old v0.0.0\n\nreplace example.com/old v0.0.0 => example.com/new v1.0.0\n"), 0o644); err != nil {

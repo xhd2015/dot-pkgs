@@ -97,6 +97,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	ghrepos "github.com/xhd2015/dot-pkgs/go-pkgs/git/github"
 )
 
@@ -111,7 +112,7 @@ type Response struct {
 	ExitCode int
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	if req.GhBin != "" {
 		t.Setenv("GH_BIN", req.GhBin)
 	} else {

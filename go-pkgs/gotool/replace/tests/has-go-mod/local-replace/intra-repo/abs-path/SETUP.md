@@ -17,9 +17,13 @@ go.mod -> replace old => <abs path in repo> -> target inside repo -> IsIntraRepo
 2. Create the target directory inside the repo.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	targetDir := filepath.Join(req.RootDir, "internal", "pkg")
 	if err := writeGoMod(req.RootDir, "internal/pkg/go.mod", "module example.com/internal-pkg\n\ngo 1.22\n"); err != nil {
 		return err

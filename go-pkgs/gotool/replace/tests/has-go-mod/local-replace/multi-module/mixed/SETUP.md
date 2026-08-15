@@ -19,9 +19,13 @@ root go.mod (intra-repo) + sub2/go.mod (extra-repo) -> 2 issues with mixed IsInt
 3. Create the `./sub/go.mod` target for the intra-repo case.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// root go.mod — intra-repo replace to ./sub
 	if err := writeGoMod(req.RootDir, "go.mod", "module example.com/myrepo\n\ngo 1.22\n\nrequire example.com/old v0.0.0\n\nreplace example.com/old => ./sub\n"); err != nil {
 		return err

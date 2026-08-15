@@ -20,9 +20,10 @@
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("ManagedTunnelsRoot error: %v", err)

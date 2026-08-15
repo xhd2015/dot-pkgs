@@ -54,6 +54,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
 
@@ -69,7 +70,7 @@ type Response struct {
 	RootErrors []scan_repo.RootError
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	result, err := scan_repo.Scan(context.Background(), scan_repo.Options{
 		Roots:     req.Roots,
 		CacheRoot: req.CacheRoot,

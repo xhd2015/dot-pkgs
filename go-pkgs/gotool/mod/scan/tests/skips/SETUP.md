@@ -20,6 +20,8 @@ untracked dir IS scanned). All leaves use the sorted-batch `Scan` path.
 ```go
 // initSkipRoot creates an isolated workspace with a root go.mod (modulePath) and inits it
 // as a git repo, returning the workspace dir. Used by skip leaves whose root is a git repo.
+import "github.com/xhd2015/doctest/session"
+
 func initSkipRoot(t *testing.T, modulePath string) string {
 	t.Helper()
 	ws := newWorkspace(t)
@@ -28,7 +30,7 @@ func initSkipRoot(t *testing.T, modulePath string) string {
 	return ws
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// all skip leaves use the sorted-batch Scan path
 	req.Operation = "scan"
 	return nil

@@ -50,6 +50,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd"
 )
 
@@ -62,7 +63,7 @@ type Response struct {
 	Output string
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	out, err := cmd.Run(context.Background(), req.Dir, req.Args...)
 	if err != nil {
 		return nil, err

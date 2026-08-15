@@ -17,9 +17,10 @@ dirty feat -> MergeBack(!Remove) -> tmp worktree -> rebase -> merge -> cleanup -
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	wrkHome := filepath.Join(req.WorkRoot, ".wrk")
 	if err := os.MkdirAll(wrkHome, 0755); err != nil {
 		return err

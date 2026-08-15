@@ -26,9 +26,10 @@ it was wrong during the time parent/ was at elsewhere/.
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	parent := filepath.Join(req.WorkRoot, "parent")
@@ -38,7 +39,7 @@ func Setup(t *testing.T, req *Request) error {
 
 	// Step 1: add and create worktree (same as Scenario A)
 	req.Args = []string{"--add", repo}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -48,7 +49,7 @@ func Setup(t *testing.T, req *Request) error {
 
 	wt := filepath.Join(parent, "wt")
 	req.Args = []string{"-w", repo, wt}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -59,7 +60,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 2: move parent → elsewhere
 	elsewhere := filepath.Join(req.WorkRoot, "elsewhere")
 	req.Args = []string{parent, elsewhere}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

@@ -25,9 +25,13 @@ Parallel to `PTYWRAP_NO_OSC_REPLY` for OSC. Independent: OSC replies still
 work when only DSR is disabled (not exercised in this pure tree).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.DisableEnv = true
 	req.Phase = "maybe"
 	return nil

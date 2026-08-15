@@ -11,16 +11,17 @@ mvd --dry-run --rebase tracked new → prints 'would rebase'
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	dir := filepath.Join(req.WorkRoot, "oldbase")
 	newDir := filepath.Join(req.WorkRoot, "newbase")
 	mkdirAll(t, dir)
 	mkdirAll(t, newDir)
 	// First add
 	req.Args = []string{"--add", dir}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil { return err }
 	if resp.ExitCode != 0 { t.Fatalf("add: %s", resp.Output) }
 

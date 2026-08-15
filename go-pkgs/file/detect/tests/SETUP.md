@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 func writeTempFile(t *testing.T, name string, data []byte) string {
@@ -37,7 +38,7 @@ func writeTempFile(t *testing.T, name string, data []byte) string {
 	return path
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	return nil
 }
 ```

@@ -16,9 +16,10 @@ caller --ignore-dir <abs>/scratch -> Walk skips scratch -> empty stdout
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	scratch := filepath.Join(root, "scratch")
 	hidden := filepath.Join(scratch, "hidden-repo")

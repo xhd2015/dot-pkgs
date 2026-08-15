@@ -22,7 +22,9 @@ stage go-pkgs/REQUIREMENT-DESIGN-wrk-status-compare.md
 2. Run the hook with pattern `REQUIREMENT-*.md`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"REQUIREMENT-*.md"}
 	if err := writeAndStage(req.RepoDir, "go-pkgs/REQUIREMENT-DESIGN-wrk-status-compare.md", "# design\n"); err != nil {
 		return err

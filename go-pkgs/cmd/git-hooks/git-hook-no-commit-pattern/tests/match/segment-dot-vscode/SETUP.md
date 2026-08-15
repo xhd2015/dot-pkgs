@@ -18,7 +18,9 @@ stage vendor/.vscode/extensions.json -> ".vscode" -> match -> exit 1
 2. Run the hook with pattern `.vscode`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{".vscode"}
 	if err := writeAndStage(req.RepoDir, "vendor/.vscode/extensions.json", "{}\n"); err != nil {
 		return err

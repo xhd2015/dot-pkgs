@@ -29,11 +29,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 const wrkExternalHookDepModule = "example.com/dep"
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = nil
 
 	depMain := filepath.Join(req.RepoDir, "dep-main")

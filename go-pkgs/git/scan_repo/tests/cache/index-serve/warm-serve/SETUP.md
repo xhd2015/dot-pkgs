@@ -21,9 +21,13 @@ cold Scan seeds home/repos.json
 2. Leaves plant workspace, cold-seed, set Roots.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.NoCache = false
 	req.Refresh = false
 	return nil

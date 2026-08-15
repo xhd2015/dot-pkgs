@@ -16,7 +16,9 @@ go.mod -> version replaces -> not local filesystem -> nil issues
 1. Write `go.mod` with a version-based replace directive.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	content := "module example.com/myrepo\n\ngo 1.22\n\nrequire example.com/old v0.0.0\n\nreplace example.com/old v0.0.0 => example.com/new v1.0.0\n"
 	return writeGoMod(req.RootDir, "go.mod", content)
 }

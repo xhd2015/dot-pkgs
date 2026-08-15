@@ -10,12 +10,14 @@ mvd --rm tracked → []  (removed)
 - Remove it with `--rm`. Since it has no movement history (only one location), the removal succeeds without requiring `--force`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     dir := filepath.Join(req.WorkRoot, "tracked")
     mkdirAll(t, dir)
     
     req.Args = []string{"--add", dir}
-    resp, err := runMvd(t, req)
+    resp, err := runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("add: %s", resp.Output) }
     

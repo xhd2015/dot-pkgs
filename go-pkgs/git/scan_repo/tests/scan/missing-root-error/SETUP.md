@@ -14,9 +14,10 @@ root path does not exist -> RootErrors entry; err nil
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 	req.Roots = []string{missing}
 	return nil

@@ -12,9 +12,13 @@ ListRepos SearchDescription="" SearchCode="" -> ListOwned per owner -> matched_b
 1. Clear search keywords for plain-mode leaves.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.SearchDescription = ""
 	req.SearchCode = ""
 	return nil

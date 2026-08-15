@@ -125,6 +125,7 @@ doctest test -v ./git/tagscope/tests/collect
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/tagscope"
 )
 
@@ -141,7 +142,7 @@ type Response struct {
 	Collected tagscope.CollectedTags
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	switch req.Op {
 	case "parse":
 		parsed, ok := tagscope.ParseTagName(req.Name)

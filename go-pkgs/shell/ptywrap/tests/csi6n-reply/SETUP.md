@@ -45,9 +45,13 @@ PTYWRAP_NO_DSR_REPLY=1 -> no write, nil partial
 - Mirror OSC rest cap (~64 trailing bytes) for pathological incomplete input.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Defaults: origin cursor, consume phase. Leaves override as needed.
 	if req.Row == 0 {
 		req.Row = 1

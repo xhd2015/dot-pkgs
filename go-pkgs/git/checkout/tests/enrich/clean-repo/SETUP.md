@@ -15,9 +15,10 @@ git init + commit on main -> Enrich -> branch, 7-char sha, msg, clean
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	repoDir := filepath.Join(root, "main")
 	gitInitRepo(t, repoDir)

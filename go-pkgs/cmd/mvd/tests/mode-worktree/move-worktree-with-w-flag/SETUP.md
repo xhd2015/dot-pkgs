@@ -12,9 +12,10 @@ mvd -w wt new-wt → [(wt), (new-wt w:new-wt)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	mkdirAll(t, mainRepo)
 	initGitRepo(t, mainRepo)

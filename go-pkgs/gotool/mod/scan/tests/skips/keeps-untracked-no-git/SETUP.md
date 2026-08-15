@@ -19,7 +19,9 @@ the name-based skips (`.git`/`vendor`/`testdata`) can prune it.
 4. Set `req.RootDir` (operation `scan` is set by the `skips/` grouping Setup).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Deliberately no git init (do NOT use initSkipRoot): root is not a git repo,
 	// so git-based skips are disabled and untracked/ must be scanned.
 	ws := newWorkspace(t)

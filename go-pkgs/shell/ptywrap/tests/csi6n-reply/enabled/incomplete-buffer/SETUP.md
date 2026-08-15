@@ -24,9 +24,13 @@ chunk2 completes ESC[6n -> write ESC[r;cR; partial cleared
 Mirrors OSC `maybeAutoReplyOSC` partial behavior (`osc_reply.go`).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "maybe-chunks"
 	// Known cursor for CPR once sequence completes.
 	req.Row = 3

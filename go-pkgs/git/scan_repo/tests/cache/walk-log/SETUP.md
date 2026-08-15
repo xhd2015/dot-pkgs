@@ -64,6 +64,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 func absPath(t *testing.T, p string) string {
@@ -120,7 +121,7 @@ func lastGenEnd(events []WalkEvent) (WalkEvent, bool) {
 	return WalkEvent{}, false
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CacheRoot = t.TempDir()
 	req.NoCache = false
 	req.Refresh = false

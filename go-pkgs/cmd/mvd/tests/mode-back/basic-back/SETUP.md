@@ -11,7 +11,9 @@ mvd --back dst/src → [(src)]
 - Run `mvd --back <moved-path>` to move the project back to its original location at `src`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     src := filepath.Join(req.WorkRoot, "src")
     dst := filepath.Join(req.WorkRoot, "dst")
     mkdirAll(t, src)
@@ -19,7 +21,7 @@ func Setup(t *testing.T, req *Request) error {
     writeFile(t, filepath.Join(src, "f.txt"), "hello")
     
     req.Args = []string{src, dst}
-    resp, err := runMvd(t, req)
+    resp, err := runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("move: %s", resp.Output) }
     

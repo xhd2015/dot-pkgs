@@ -15,9 +15,13 @@
 2. Write to a temp path and set `req.Path`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Sniff window is 512 bytes. Build content so a 3-byte UTF-8 sequence starts
 	// at offset 510 and is completed after the window (valid UTF-8 file overall).
 	//

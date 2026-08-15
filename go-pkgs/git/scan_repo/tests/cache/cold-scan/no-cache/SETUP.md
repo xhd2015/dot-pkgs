@@ -17,9 +17,13 @@ NoCache=true + CacheRoot set
 1. Force NoCache=true at grouping level.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.NoCache = true
 	return nil
 }

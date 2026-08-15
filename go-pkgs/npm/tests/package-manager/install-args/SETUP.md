@@ -13,9 +13,13 @@ Manager + FrozenLockfile -> InstallArgs -> argv slice
 2. `req.Op` is `install-args`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "install-args"
 	return nil
 }

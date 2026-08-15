@@ -17,7 +17,9 @@ go.mod files -> module list -> replace check -> local? -> print + exit 1 | exit 
 2. Run the hook binary with no domain filter.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = nil // no domain filter, scan all modules
 	return nil
 }

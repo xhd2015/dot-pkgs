@@ -18,9 +18,13 @@ ESC[41;1R + ESC[<0;67;25M
 1. Set Op demux and DemuxData to CPR + mouse SGR bytes.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Op = "demux"
 	req.DemuxHold = nil

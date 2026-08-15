@@ -28,9 +28,13 @@
 - Proves Detach does not wipe unrelated hosts when domain is absent.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "detach-noop")
 	req.AttachSequence = []attachStep{

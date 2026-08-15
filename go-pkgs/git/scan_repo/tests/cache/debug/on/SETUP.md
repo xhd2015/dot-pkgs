@@ -19,9 +19,13 @@ caller Debug=true + CacheRoot + roots
 1. Set `req.Debug=true` for all descendants.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Debug = true
 	return nil
 }

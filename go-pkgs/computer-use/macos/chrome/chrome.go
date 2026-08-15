@@ -4,6 +4,10 @@
 // Behavior is a Go port of the rule-driven script at
 // working/ai/computer-use/mlx-use-example/load_chrome_extension.py (no LLM).
 //
+// A Swift port of the same steps (in-process for a GUI host) lives in
+// swift/ChromeLoadUnpacked.swift. Marcus.app copies that file; edit the Swift
+// there, not the Marcus tree.
+//
 // Requirements (darwin):
 //   - Google Chrome installed
 //   - Accessibility trust for the process running this package
@@ -144,6 +148,12 @@ func InferVersionFromDir(extensionDir string) string {
 	return base
 }
 
+// IsVersionLike reports whether s itself looks like an extension version.
+func IsVersionLike(s string) bool {
+	s = strings.TrimSpace(s)
+	return s != "" && InferVersionFromDir(s) == s
+}
+
 // ExtensionDirOK reports whether path looks like an unpacked Chrome extension.
 func ExtensionDirOK(path string) bool {
 	path = strings.TrimSpace(path)
@@ -162,6 +172,24 @@ func ExtensionDirOK(path string) bool {
 // On non-darwin platforms it returns ErrUnsupported.
 func LoadUnpacked(ctx context.Context, opts LoadUnpackedOpts) (LoadUnpackedResult, error) {
 	return loadUnpacked(ctx, opts)
+}
+
+// RemoveOlder removes same-name unpacked cards on chrome://extensions (no load).
+// Empty VerifyVersion removes every matching card, including the last.
+func RemoveOlder(ctx context.Context, opts LoadUnpackedOpts) (int, error) {
+	if strings.TrimSpace(opts.AppName) == "" {
+		opts.AppName = DefaultAppName
+	}
+	if strings.TrimSpace(opts.VerifyName) == "" {
+		opts.VerifyName = "Browser Agent"
+	}
+	if opts.Stdout == nil {
+		opts.Stdout = os.Stdout
+	}
+	if opts.Stderr == nil {
+		opts.Stderr = os.Stderr
+	}
+	return removeOlderExtensions(ctx, opts)
 }
 
 func normalizeOpts(opts LoadUnpackedOpts) (LoadUnpackedOpts, error) {

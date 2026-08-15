@@ -11,9 +11,13 @@
 1. Set `req.Names` spanning root and `sub/` scopes.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Names = []string{"v0.0.1", "sub/v0.0.2"}
 	return nil
 }

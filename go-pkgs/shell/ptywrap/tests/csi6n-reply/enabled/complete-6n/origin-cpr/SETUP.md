@@ -15,9 +15,13 @@ Data=ESC[6n, Row=1, Col=1
 2. Set cursor to 1-based origin `(1,1)`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Data = []byte("\x1b[6n")
 	req.Row = 1
 	req.Col = 1

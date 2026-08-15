@@ -11,9 +11,13 @@ v0.0.1 -> ParseTagName -> numeric release at root scope
 1. Set `req.Name` to `v0.0.1`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Name = "v0.0.1"
 	return nil
 }

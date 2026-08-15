@@ -9,9 +9,10 @@
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	assertErrIsNil(t, err)
 	src := filepath.Join(req.WorkRoot, "projects", "kool")
 	scratch := filepath.Join(req.WorkRoot, "scratch", "kool")

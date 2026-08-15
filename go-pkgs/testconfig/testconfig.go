@@ -26,7 +26,7 @@ type Config struct {
 }
 
 // Load reads .test-config.json from the go-pkgs module root.
-// It calls t.Fatal with setup instructions if the file is missing.
+// It skips the test (with setup instructions) if the file is missing.
 func Load(t *testing.T) *Config {
 	t.Helper()
 
@@ -39,7 +39,7 @@ func Load(t *testing.T) *Config {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			t.Fatalf(`Test config file not found: %s
+			t.Skipf(`Test config file not found: %s
 
 Please create it with your API keys:
 

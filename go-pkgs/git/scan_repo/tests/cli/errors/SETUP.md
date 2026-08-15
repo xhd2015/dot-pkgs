@@ -18,9 +18,10 @@ caller bad argv -> RunCLI -> stderr error, non-zero exit
 import (
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Error leaves must not inherit a --root from an ancestor by accident.
 	var filtered []string
 	for i := 0; i < len(req.Args); i++ {

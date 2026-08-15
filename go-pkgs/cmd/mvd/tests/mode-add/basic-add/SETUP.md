@@ -11,9 +11,10 @@ mvd --add tracked → [(tracked)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	dir := filepath.Join(req.WorkRoot, "tracked")
 	mkdirAll(t, dir)
 	req.Args = []string{"--add", dir}

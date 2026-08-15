@@ -22,9 +22,10 @@
 import (
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	assertError(t, err)
 	if hasRunnerCall(resp.RunnerCalls, "sudo", "rm") {
 		t.Fatal("sudo rm must not run without interactive stdin")

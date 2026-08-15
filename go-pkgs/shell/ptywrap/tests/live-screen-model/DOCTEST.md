@@ -91,6 +91,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
 // Request configures a live-screen-model harness phase.
@@ -142,7 +143,7 @@ type Response struct {
 	PTYRows int
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	if req.ServerBase == "" {
 		return nil, fmt.Errorf("ServerBase not set; root Setup must start server")
 	}
@@ -161,7 +162,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 
 	switch req.Phase {
 	case "live-screen-sticky-after-dirty":
-		return runStickyScenario(t, req, stickyScenarioOpts{
+		return runStickyScenario(t, d, req, stickyScenarioOpts{
 			dirtyIters:     defaultPositive(req.DirtyIters, 30),
 			pressureBytes:  0,
 			repeatSnapshot: 1,
@@ -174,7 +175,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		if pressure <= 0 {
 			pressure = 256*1024 + 64*1024 // 320 KiB dirty payload
 		}
-		return runStickyScenario(t, req, stickyScenarioOpts{
+		return runStickyScenario(t, d, req, stickyScenarioOpts{
 			dirtyIters:     0,
 			pressureBytes:  pressure,
 			repeatSnapshot: 1,
@@ -182,7 +183,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 		})
 	case "live-screen-multi-snapshot-keeps-child":
 		n := defaultPositive(req.RepeatCount, 3)
-		return runStickyScenario(t, req, stickyScenarioOpts{
+		return runStickyScenario(t, d, req, stickyScenarioOpts{
 			dirtyIters:     defaultPositive(req.DirtyIters, 20),
 			pressureBytes:  0,
 			repeatSnapshot: n,
@@ -198,7 +199,7 @@ func Run(t *testing.T, req *Request) (*Response, error) {
 			rows = 30
 		}
 		req.ResizeCols, req.ResizeRows = cols, rows
-		return runStickyScenario(t, req, stickyScenarioOpts{
+		return runStickyScenario(t, d, req, stickyScenarioOpts{
 			dirtyIters:     defaultPositive(req.DirtyIters, 20),
 			pressureBytes:  0,
 			repeatSnapshot: 1,
@@ -230,11 +231,11 @@ type stickyScenarioOpts struct {
 // runStickyScenario starts the ANSI fixture TUI, optionally resizes, waits for
 // sticky (+ optional dirty completion marker), takes N snapshot attaches, and
 // reports WSOutput / ProcessAlive / SessionListed.
-func runStickyScenario(t *testing.T, req *Request, opts stickyScenarioOpts) (*Response, error) {
+func runStickyScenario(t *testing.T, d *session.Doctest, req *Request, opts stickyScenarioOpts) (*Response, error) {
 	t.Helper()
 	resp := &Response{}
 
-	script := fixtureScriptPath()
+	script := fixtureScriptPath(d)
 	if _, err := os.Stat(script); err != nil {
 		return nil, fmt.Errorf("fixture script: %w", err)
 	}
@@ -360,9 +361,8 @@ func runStickyScenario(t *testing.T, req *Request, opts stickyScenarioOpts) (*Re
 	return resp, nil
 }
 
-func fixtureScriptPath() string {
-	// Leaf packages run with working directory = leaf dir; DOCTEST_ROOT is tree root.
-	return filepath.Join(DOCTEST_ROOT, "testdata", "sticky_dirty_tui.py")
+func fixtureScriptPath(d *session.Doctest) string {
+	return filepath.Join(d.DOCTEST_ROOT, "testdata", "sticky_dirty_tui.py")
 }
 
 func fixtureDoneFile(token string) bool {

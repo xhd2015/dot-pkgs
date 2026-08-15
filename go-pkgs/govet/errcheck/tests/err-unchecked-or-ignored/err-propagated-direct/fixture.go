@@ -1,7 +1,6 @@
 package p
 
 import (
-	"fmt"
 	"os"
 )
 

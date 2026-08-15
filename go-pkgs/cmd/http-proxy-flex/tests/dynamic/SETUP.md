@@ -7,7 +7,9 @@
 - Testing dynamic upstream health monitoring: dead → available → dead transitions at runtime
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Log("entering dynamic health monitoring test mode")
 	return nil
 }

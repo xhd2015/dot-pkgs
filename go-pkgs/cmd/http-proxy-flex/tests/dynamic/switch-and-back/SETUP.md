@@ -22,10 +22,11 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
-	binPath := getBinPath(t)
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
+	binPath := getBinPath(t, d)
 
 	// Reserve upstream port but keep it closed at startup.
 	reserved, err := net.Listen("tcp", "127.0.0.1:0")

@@ -16,9 +16,10 @@ clean feat -> MergeBack(!Remove) -> rebase in source -> merge -> source rebased
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// set WRK_HOME so we can assert no tmp was created
 	wrkHome := filepath.Join(req.WorkRoot, ".wrk")
 	if err := os.MkdirAll(wrkHome, 0755); err != nil {

@@ -11,9 +11,13 @@ Resolve known: absY=9 -> LocalY=3 -> Hit.ID add-changes, Kind known
 1. Set AbsY to 9 (local row of add-changes chip).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.AbsY = 9
 	return nil

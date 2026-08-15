@@ -8,7 +8,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.25.0
+      image: golang:1.25.10
+    env:
+      # golang container: git status is untrusted (safe.directory), so
+      # -buildvcs=auto fails. wrk/doctest avoid this by running on the VM.
+      GOFLAGS: -buildvcs=false
     steps:
       - uses: actions/checkout@v4
       - name: Go test go-pkgs/cloudflare/tests

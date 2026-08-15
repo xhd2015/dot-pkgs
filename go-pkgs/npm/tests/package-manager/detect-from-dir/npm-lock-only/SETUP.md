@@ -12,9 +12,13 @@ package-lock.json -> Signal npm -> Manager npm
 1. Write `package.json` and `package-lock.json`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.ProjectDir = writeProject(t, map[string]string{
 		"package.json":      pkgJSONDemo,
 		"package-lock.json": packageLockJSON,

@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 )
 
@@ -96,7 +97,7 @@ func shortPath(t *testing.T, abs string) string {
 	return pathfmt.Short(p)
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 	req.WorkRoot = t.TempDir()
 	return nil

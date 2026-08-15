@@ -17,9 +17,13 @@ Real `gh search code --json repository` emits repository objects via gh CLI's
 2. Point `req.GhBin` at mock `gh` serving `testdata/search-code.json`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.SearchCode = "doctest"
 	req.GhBin = writeSearchCodeGh(t, "testdata/search-code.json")
 	return nil

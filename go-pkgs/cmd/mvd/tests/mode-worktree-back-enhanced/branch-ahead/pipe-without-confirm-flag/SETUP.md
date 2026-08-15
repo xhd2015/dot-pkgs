@@ -17,16 +17,17 @@ mvd --back wt (piped stdin, no flags) → exit 0; ff-merge + remove
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	mkdirAll(t, mainRepo)
 	initGitRepo(t, mainRepo)
 
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	req.Args = []string{"-w", mainRepo, wtDir}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

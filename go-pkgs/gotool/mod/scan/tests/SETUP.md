@@ -36,10 +36,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 // Setup verifies tooling. Leaf Setup functions build fixtures and set req fields.
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("go not found in PATH: %w", err)
 	}

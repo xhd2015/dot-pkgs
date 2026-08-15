@@ -16,9 +16,10 @@ mvd src dst → error → ambiguous
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	first := filepath.Join(req.WorkRoot, "projects", "kool")
 	second := filepath.Join(req.WorkRoot, "projects", "v2", "kool")
 	dst := filepath.Join(req.WorkRoot, "dst")
@@ -27,7 +28,7 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, dst)
 
 	req.Args = []string{"--add", first}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -36,7 +37,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{"--add", second}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

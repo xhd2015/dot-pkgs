@@ -14,10 +14,11 @@ path present only in new tree -> DiffOwnedTrees -> true
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/tagscope"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.OldTree = tagscope.OwnedTree{}
 	req.NewTree = tagscope.OwnedTree{"README": "100644 aaa"}
 	return nil

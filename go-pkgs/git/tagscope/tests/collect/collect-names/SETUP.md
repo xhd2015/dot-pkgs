@@ -11,9 +11,13 @@ tag name list -> CollectFromNames -> CollectedTags
 1. Set `req.Op` to `"collect-names"`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "collect-names"
 	return nil
 }

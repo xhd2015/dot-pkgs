@@ -157,6 +157,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/cloudflare"
 	"gopkg.in/yaml.v3"
 )
@@ -249,7 +250,7 @@ type Response struct {
 	DNS *fakeDNSDeleter
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Helper()
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
