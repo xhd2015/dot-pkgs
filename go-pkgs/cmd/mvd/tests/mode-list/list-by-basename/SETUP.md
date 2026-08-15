@@ -13,15 +13,16 @@ mvd --list proj → shows by basename
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	projectRoot := filepath.Join(req.WorkRoot, "projects")
 	dir := filepath.Join(projectRoot, "myproject")
 	mkdirAll(t, dir)
 
 	req.Args = []string{"--add", dir}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

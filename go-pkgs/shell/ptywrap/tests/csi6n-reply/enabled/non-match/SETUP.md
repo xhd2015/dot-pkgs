@@ -25,9 +25,13 @@ Seals: only plain `ESC[6n` is a cursor query. DEC private `?` and DSR status
 `5n` must not be mistaken for CPR requests.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "consume"
 	req.Row = 2
 	req.Col = 2

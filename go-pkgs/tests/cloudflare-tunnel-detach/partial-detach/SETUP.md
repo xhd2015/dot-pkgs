@@ -28,9 +28,13 @@ Attach(A), Attach(B); Stop(A)
 - Requirement scenario 1: Attach A+B, Stop(A) → only B remains; connector still up.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "partial-detach")
 	if req.TunnelName == "" {

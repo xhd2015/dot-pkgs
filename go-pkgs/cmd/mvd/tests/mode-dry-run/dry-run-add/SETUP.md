@@ -11,9 +11,10 @@ mvd --dry-run --add tracked → prints 'would add'
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	dir := filepath.Join(req.WorkRoot, "myproject")
 	mkdirAll(t, dir)
 	req.Args = []string{"--dry-run", "--add", dir}

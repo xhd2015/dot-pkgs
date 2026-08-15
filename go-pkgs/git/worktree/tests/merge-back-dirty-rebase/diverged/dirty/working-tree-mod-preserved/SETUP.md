@@ -19,9 +19,10 @@ dirty feat -> tmp rebase -> merge -> reset --mixed -> user modification preserve
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Make a tracked-file modification that conflicts with what the rebase
 	// would produce. README.md was created at "init" and modified by main's
 	// diverging commit to "# updated\n". We write different content.

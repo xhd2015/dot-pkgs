@@ -12,9 +12,13 @@ RunCLI repo -> repo-level usage (list; points to repo list --help) -> stdout, ex
 1. Set `req.Args` to `["repo"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"repo"}
 	return nil
 }

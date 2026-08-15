@@ -49,23 +49,24 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
-func sessionCacheDir() string {
-	return filepath.Join(os.TempDir(), "mouse-headless-doctest-"+DOCTEST_SESSION_ID)
+func sessionCacheDir(d *session.Doctest) string {
+	return filepath.Join(os.TempDir(), "mouse-headless-doctest-"+d.DOCTEST_SESSION_ID)
 }
 
-func moduleRoot() string {
+func moduleRoot(d *session.Doctest) string {
 	// headless -> tests -> mouse -> tui -> go-pkgs
-	return filepath.Clean(filepath.Join(DOCTEST_ROOT, "..", "..", "..", ".."))
+	return filepath.Clean(filepath.Join(d.DOCTEST_ROOT, "..", "..", "..", ".."))
 }
 
-func ttyWatchSrcDir() string {
+func ttyWatchSrcDir(d *session.Doctest) string {
 	if d := os.Getenv("TTY_WATCH_DIR"); d != "" {
 		return d
 	}
 	// go-pkgs is external/dot-pkgs-.../go-pkgs; tty-watch is sibling external/tty-watch-...
-	return filepath.Clean(filepath.Join(moduleRoot(), "..", "..", "tty-watch-master-2026-07-19"))
+	return filepath.Clean(filepath.Join(moduleRoot(d), "..", "..", "tty-watch-master-2026-07-19"))
 }
 
 func withFileLock(lockPath string, fn func() error) error {
@@ -91,7 +92,7 @@ func fileExists(p string) bool {
 
 // resolveTTYWatchBin: TTY_WATCH_BIN → PATH → go build from TTY_WATCH_DIR / sibling tree.
 // Never imports the tty-watch Go module (binary dependency only).
-func resolveTTYWatchBin(cache string) (string, error) {
+func resolveTTYWatchBin(d *session.Doctest, cache string) (string, error) {
 	if p := os.Getenv("TTY_WATCH_BIN"); p != "" {
 		if fileExists(p) {
 			return p, nil
@@ -105,7 +106,7 @@ func resolveTTYWatchBin(cache string) (string, error) {
 	if fileExists(outBin) {
 		return outBin, nil
 	}
-	twSrc := ttyWatchSrcDir()
+	twSrc := ttyWatchSrcDir(d)
 	if st, err := os.Stat(filepath.Join(twSrc, "cmd", "tty-watch")); err != nil || !st.IsDir() {
 		return "", fmt.Errorf("tty-watch not on PATH and no source at %s (set TTY_WATCH_BIN or TTY_WATCH_DIR)", twSrc)
 	}
@@ -117,9 +118,9 @@ func resolveTTYWatchBin(cache string) (string, error) {
 	return outBin, nil
 }
 
-func ensureBins(t *testing.T) (fixtureBin, ttyWatchBin string, err error) {
+func ensureBins(t *testing.T, d *session.Doctest) (fixtureBin, ttyWatchBin string, err error) {
 	t.Helper()
-	cache := sessionCacheDir()
+	cache := sessionCacheDir(d)
 	if err := os.MkdirAll(cache, 0o755); err != nil {
 		return "", "", err
 	}
@@ -129,14 +130,14 @@ func ensureBins(t *testing.T) (fixtureBin, ttyWatchBin string, err error) {
 
 	err = withFileLock(lock, func() error {
 		if !fileExists(fixtureBin) {
-			mod := moduleRoot()
+			mod := moduleRoot(d)
 			cmd := exec.Command("go", "build", "-o", fixtureBin, "./tui/mouse/cmd/fixture-inline")
 			cmd.Dir = mod
 			if out, e := cmd.CombinedOutput(); e != nil {
 				return fmt.Errorf("build fixture-inline: %w\n%s", e, out)
 			}
 		}
-		tw, e := resolveTTYWatchBin(cache)
+		tw, e := resolveTTYWatchBin(d, cache)
 		if e != nil {
 			return e
 		}
@@ -149,12 +150,12 @@ func ensureBins(t *testing.T) (fixtureBin, ttyWatchBin string, err error) {
 	return fixtureBin, ttyWatchBin, err
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	if req == nil {
 		return fmt.Errorf("nil request")
 	}
-	fixBin, twBin, err := ensureBins(t)
+	fixBin, twBin, err := ensureBins(t, d)
 	if err != nil {
 		return err
 	}

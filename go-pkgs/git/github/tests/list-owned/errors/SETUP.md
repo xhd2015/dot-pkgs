@@ -22,9 +22,13 @@ ListOwned -> validate Options OR exec gh -> error returned to caller
 - Gh error leaves use mock scripts that exit non-zero or print invalid JSON.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.Limit == 0 {
 		req.Limit = 100
 	}

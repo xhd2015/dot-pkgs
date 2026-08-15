@@ -11,9 +11,13 @@ pkg/api/v1.0.0-dev -> ParseTagName -> PathPrefix=pkg/api/, Prerelease=dev
 1. Set `req.Name` to `pkg/api/v1.0.0-dev`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Name = "pkg/api/v1.0.0-dev"
 	return nil
 }

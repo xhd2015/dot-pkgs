@@ -17,7 +17,9 @@ stage README.md -> patterns "REQUIREMENT-*" "*.md" -> *.md matches README.md -> 
 2. Run the hook with two patterns: `REQUIREMENT-*` and `*.md`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"REQUIREMENT-*", "*.md"}
 	if err := writeAndStage(req.RepoDir, "README.md", "# Readme\n"); err != nil {
 		return err

@@ -21,9 +21,13 @@ ListOwned -> gh exits non-zero or prints invalid JSON -> error
 - Auth failure uses exit code 4 per gh conventions.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if len(req.Owners) == 0 {
 		req.Owners = []string{"failuser"}
 	}

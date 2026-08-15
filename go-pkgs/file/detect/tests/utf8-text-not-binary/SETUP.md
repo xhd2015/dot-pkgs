@@ -19,9 +19,13 @@ path -> DetectFileType -> isBinary false for text; true when content has NUL
 3. Assert checks `IsBinary` and that text cases are not described as `"binary file"`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	// Isolate branch: clear Path so each leaf must set its own input.
 	req.Path = ""

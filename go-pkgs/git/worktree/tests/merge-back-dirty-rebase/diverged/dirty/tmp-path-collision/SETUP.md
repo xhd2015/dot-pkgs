@@ -18,9 +18,10 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	wrkHome := filepath.Join(req.WorkRoot, ".wrk")
 	worktreesDir := filepath.Join(wrkHome, "worktrees")
 	if err := os.MkdirAll(worktreesDir, 0755); err != nil {

@@ -13,9 +13,13 @@ ListRepos owners=[alice,bob] -> gh repo list x2 -> merge sort -> owned tags
 2. Mock per-owner fixtures from `testdata/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Owners = []string{"alice", "bob"}
 	req.GhBin = writeMultiOwnerGh(t, map[string]string{
 		"alice": "testdata/alice.json",

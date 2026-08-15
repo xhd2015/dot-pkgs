@@ -13,9 +13,13 @@ exec tty-watch send --query-cursor --json -> row/col near last UI line
 1. Set Action to query-cursor (no click).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Action = "query-cursor"
 	return nil

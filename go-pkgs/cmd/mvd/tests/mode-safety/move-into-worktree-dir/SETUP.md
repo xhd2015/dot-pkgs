@@ -25,9 +25,10 @@ correctly moves the repo and updates the worktree .git.
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	repo := filepath.Join(req.WorkRoot, "repo")
@@ -37,7 +38,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 1: create worktree
 	wt := filepath.Join(req.WorkRoot, "wt")
 	req.Args = []string{"-w", repo, wt}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

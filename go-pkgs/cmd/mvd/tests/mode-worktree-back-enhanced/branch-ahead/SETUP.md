@@ -19,7 +19,9 @@ mvd --back --confirm [--confirm-from-stdin] wt → Proceed? → merge or abort
 - Non-TTY / piped stdin without `--confirm` still succeed (auto-yes).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Logf("branch: ahead (ff possible)")
 	return nil
 }

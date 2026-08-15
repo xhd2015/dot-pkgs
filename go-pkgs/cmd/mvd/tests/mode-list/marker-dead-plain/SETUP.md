@@ -12,9 +12,10 @@ dead plain entry → (dead)
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := filepath.Join(req.WorkRoot, "repo")
 	moved := filepath.Join(req.WorkRoot, "repo-moved")
 	mkdirAll(t, root)

@@ -20,9 +20,10 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	repoA := filepath.Join(root, "repo-a")
 	repoB := filepath.Join(root, "repo-b")

@@ -18,10 +18,14 @@ go.mod -> scan -> replace old => ./local -> intra-repo -> no output -> exit 0
 2. Create the `./local/go.mod` so the scan doesn't error on the directory.
 
 ```go
-import "os"
+import (
+	"os"
+
+	"github.com/xhd2015/doctest/session"
+)
 import "path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := os.WriteFile(filepath.Join(req.RepoDir, "go.mod"), []byte("module example.com/myrepo\n\ngo 1.22\n\nrequire example.com/old v0.0.0\n\nreplace example.com/old => ./local\n"), 0o644); err != nil {
 		return err
 	}

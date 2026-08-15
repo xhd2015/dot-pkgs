@@ -13,7 +13,9 @@ dirty feat -> MergeBack(!Remove) -> create tmp worktree -> rebase there -> merge
 2. Each sub-scenario exercises a different outcome of the tmp-worktree flow.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	makeDirty(t, req.SourcePath)
 	req.Remove = false
 	req.MakeDirty = true

@@ -88,6 +88,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/mod/scan"
 )
 
@@ -108,7 +109,7 @@ type Response struct {
 // resp.Streamed in emission order, then ALSO calls scan.Scan into resp.Modules so
 // the leaf can contrast sorted vs. unsorted. Both call into the not-yet-implemented
 // scan package, so leaves stay RED until the implementer lands scan.go.
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp := &Response{}
 
 	switch req.Operation {

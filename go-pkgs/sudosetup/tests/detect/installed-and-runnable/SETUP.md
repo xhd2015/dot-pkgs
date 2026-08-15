@@ -18,9 +18,13 @@ Detect -> Installed=true, CanRunNonInteractive=true
 2. Enable `SudoNCommandOK` with sample output.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "installed_and_runnable"
 	req.SeedSudoersLine = installedSeedLine("testuser", req.Rule.Command, "")
 	req.SeedManifest = installedManifestSeed("testuser", req.Rule.Command, "")

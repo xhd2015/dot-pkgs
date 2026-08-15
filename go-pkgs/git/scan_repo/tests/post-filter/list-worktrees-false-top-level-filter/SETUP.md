@@ -36,9 +36,10 @@ Scan(Roots=[A], ListWorktrees=false, NoCache=false)
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	parent := t.TempDir()
 	a := filepath.Join(parent, "A")
 	b := filepath.Join(parent, "B")

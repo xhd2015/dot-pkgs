@@ -20,9 +20,13 @@ caller roots + CacheRoot + NoCache=false -> Scan
 1. Leave CacheOp empty; NoCache=false by default for write-enabled Scans.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CacheOp = ""
 	req.NoCache = false
 	req.ListRemotes = false

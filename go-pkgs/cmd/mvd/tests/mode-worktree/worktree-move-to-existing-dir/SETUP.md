@@ -14,9 +14,10 @@ mvd -w repo existing-dir → [(repo), (existing-dir/repo w:existing-dir/repo)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	srcRepo := filepath.Join(req.WorkRoot, "main")
 	existingDir := filepath.Join(req.WorkRoot, "existing-dir")
 	mkdirAll(t, srcRepo)

@@ -16,7 +16,9 @@ hook binary --flag -> parseArgs -> result
 1. Run the hook binary with specific argument flags.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = nil // leaf cases set specific args
 	return nil
 }

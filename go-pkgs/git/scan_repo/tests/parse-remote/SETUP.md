@@ -16,9 +16,13 @@ remote URL string -> ParseRemoteOwnerRepo -> owner, repo, ok
 1. Clear scan-related fields so only the parser path runs.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Roots = nil
 	req.ListRemotes = false
 	req.ListWorktrees = false

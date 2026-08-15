@@ -12,13 +12,14 @@ import (
 	"net"
 	"os/exec"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	upstreamPort := reserveTCPPort(t)
 	proxyPort := reserveTCPPort(t)
 
-	binPath := getBinPath(t)
+	binPath := getBinPath(t, d)
 	cmd := exec.Command(binPath,
 		"--upstream-proxy", fmt.Sprintf("http://127.0.0.1:%d", upstreamPort),
 

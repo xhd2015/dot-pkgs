@@ -18,7 +18,9 @@ hook binary --origin-domain other.example.com -> domain mismatch -> exit 0, no o
 3. Run the hook.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"--origin-domain", "other.example.com", "*.go"}
 	if err := writeAndStage(req.RepoDir, "main.go", "package main\n"); err != nil {
 		return err

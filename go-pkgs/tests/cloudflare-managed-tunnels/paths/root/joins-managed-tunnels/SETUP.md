@@ -22,9 +22,13 @@ configDir=/tmp/cf
 - Requirement scenario 1: exact join result.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "joins-managed-tunnels")
 	req.ConfigDir = "/tmp/cf"

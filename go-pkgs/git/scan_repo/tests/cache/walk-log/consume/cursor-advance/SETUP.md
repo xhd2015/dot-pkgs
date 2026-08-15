@@ -19,9 +19,10 @@ cold -> walk.cursor.json offset = len(walk.jsonl) = ColdCursorOffset
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	mkdirAll(t, filepath.Join(root, "notes"))
 	alpha := filepath.Join(root, "projects", "alpha")

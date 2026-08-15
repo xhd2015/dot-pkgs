@@ -16,9 +16,13 @@
 1. Set `StdinIsTerminal = false`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "non_tty_requires_terminal"
 	req.StdinIsTerminal = false
 	return nil

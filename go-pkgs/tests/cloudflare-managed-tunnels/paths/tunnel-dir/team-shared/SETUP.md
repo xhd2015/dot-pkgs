@@ -22,9 +22,13 @@ configDir=/tmp/cf-home, tunnelName=team-shared
 - Requirement scenario 4: full path under managed-tunnels.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "team-shared")
 	req.ConfigDir = "/tmp/cf-home"

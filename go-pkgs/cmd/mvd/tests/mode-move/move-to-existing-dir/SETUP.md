@@ -13,9 +13,10 @@ mvd mysrc existing-dir → [(mysrc), (existing-dir/mysrc)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	src := filepath.Join(req.WorkRoot, "mysrc")
 	dst := filepath.Join(req.WorkRoot, "existing-dir")
 	mkdirAll(t, src)

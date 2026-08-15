@@ -12,7 +12,9 @@ ReadBranch(targetAbs) -> prompt question + fast-forward comment
 Leaves under this node override `DefaultBranch`, `TargetPath`, and fixture layout.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CapturePrompt = true
 	req.DryRun = false
 	return nil

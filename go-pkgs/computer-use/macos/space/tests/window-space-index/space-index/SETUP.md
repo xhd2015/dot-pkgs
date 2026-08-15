@@ -21,6 +21,10 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "space-index-for-window"
+	// L2 inject tests exercise the darwin path; platform/non-darwin sets linux.
+	if req.ForceGOOS == "" {
+		req.ForceGOOS = "darwin"
+	}
 	return nil
 }
 ```

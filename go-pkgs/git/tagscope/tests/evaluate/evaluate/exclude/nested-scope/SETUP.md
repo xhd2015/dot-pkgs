@@ -15,10 +15,11 @@ sub/ and sub/nested/ both diff -> independent NextTag per scope
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/tagscope"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Names = []string{"sub/v0.2.3", "sub/nested/v0.1.1"}
 	req.HeadCommit = "head8888"
 	req.ReleaseCommits = map[tagscope.TagScopeKey]string{

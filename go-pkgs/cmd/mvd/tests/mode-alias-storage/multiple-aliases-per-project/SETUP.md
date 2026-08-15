@@ -12,14 +12,15 @@ mvd --add repo; --add-alias repo a1; --add-alias repo a2 → [(repo)]  (2 aliase
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	projDir := filepath.Join(req.WorkRoot, "projects", "myproj")
 	mkdirAll(t, projDir)
 
 	req.Args = []string{"--add", projDir}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -28,7 +29,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{"--add-alias", "mp", "myproj"}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -37,7 +38,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{"--add-alias", "myproj-alias", "myproj"}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 const wrkExternalDepModule = "example.com/dep"
@@ -99,7 +100,7 @@ func runWrkExternalGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	return nil
 }
 

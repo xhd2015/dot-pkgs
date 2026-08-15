@@ -9,7 +9,9 @@
 - Without the `-w` flag, mvd does a plain `os.Rename` even for worktree directories (but updates child worktree `.git` files).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     skipIfNoGit(t)
     t.Logf("mode: worktree")
     return nil

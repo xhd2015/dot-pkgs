@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 type jsonRepo struct {
@@ -22,7 +23,7 @@ type jsonRepo struct {
 	RepoType string `json:"RepoType"`
 }
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,9 +12,13 @@ caller dir + follow-ups -> BuildScript -> AppleScript (structure + write text li
 2. Set `req.Dir` to an absolute fixture path.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "build-script"
 	return nil
 }

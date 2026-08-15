@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"github.com/xhd2015/doctest/session"
 )
 
 // padDirCount is large enough that an unbounded unit rewalk with cache writes
@@ -35,7 +36,7 @@ import (
 // keeps a safe margin above the 2s Assert wall cap if a mid-unit budget is missing.
 const padDirCount = 2000
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	unitA := filepath.Join(root, "unit-a")
 	known := filepath.Join(unitA, "known-repo")

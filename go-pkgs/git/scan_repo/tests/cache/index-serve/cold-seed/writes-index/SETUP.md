@@ -21,9 +21,10 @@ workspace/alpha + workspace/zebra  (fake .git)
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	for _, name := range []string{"alpha", "zebra"} {
 		dir := filepath.Join(root, name)

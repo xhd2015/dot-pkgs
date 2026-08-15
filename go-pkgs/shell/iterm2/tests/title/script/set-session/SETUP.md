@@ -12,9 +12,13 @@ BuildSetTitleScript(sessionID, session, "Hello Tab")
 1. Phase build-set-title; target session; title Hello Tab.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "build-set-title"
 	req.Target = "session"
 	req.Title = "Hello Tab"

@@ -29,9 +29,10 @@ Now func() time.Time   # inject fixed clock
 ```go
 import (
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Budget group: keep cache on; children set BudgetOnly / DeltaAge / clocks.
 	req.NoCache = false
 	req.Refresh = false

@@ -14,9 +14,10 @@ mvd al dst → [(repo), (dst/repo)]  (alias preserved)
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	projDir := filepath.Join(req.WorkRoot, "projects", "myproj")
 	otherDir := filepath.Join(req.WorkRoot, "projects", "other")
 	scratch := filepath.Join(req.WorkRoot, "scratch")
@@ -25,7 +26,7 @@ func Setup(t *testing.T, req *Request) error {
 	mkdirAll(t, scratch)
 
 	req.Args = []string{"--add", projDir}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -34,7 +35,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{"--add", otherDir}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -43,7 +44,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{"--add-alias", "mp", "myproj"}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -52,7 +53,7 @@ func Setup(t *testing.T, req *Request) error {
 	}
 
 	req.Args = []string{otherDir, scratch}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

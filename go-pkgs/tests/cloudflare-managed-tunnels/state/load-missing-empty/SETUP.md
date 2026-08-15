@@ -23,9 +23,13 @@ dir without state.json
 - Requirement scenario 7: prefer empty+nil over ErrNotExist for attach ease.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "load-missing-empty")
 	req.Mode = "load_missing"

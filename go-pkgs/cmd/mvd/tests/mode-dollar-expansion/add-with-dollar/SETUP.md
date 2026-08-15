@@ -12,9 +12,10 @@ mvd --add $X/myproject → [(projects/myproject)]
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	homeDir := filepath.Join(req.WorkRoot, ".lls-home")
 	configDir := filepath.Join(homeDir, "Library", "Application Support", "lls")
 	mkdirAll(t, configDir)

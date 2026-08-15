@@ -11,9 +11,13 @@ scan_repo.Result -> Build(rel) -> Snapshot
 1. Group leaves by input source (live scan vs manual result).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if req.BaseDir == "" {
 		req.BaseDir = t.TempDir()
 	}

@@ -16,6 +16,7 @@ ListWorktrees=false on fake .git -> scan succeeds without git binary
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 func fakeGitRepo(t *testing.T, dir string) {
@@ -34,7 +35,7 @@ func fakeGitWorktree(t *testing.T, mainDir, wtDir string) {
 	writeFile(t, filepath.Join(wtDir, ".git"), "gitdir: "+absWtGitDir+"\n")
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.ListWorktrees = false
 	root := t.TempDir()
 	mainDir := filepath.Join(root, "main")

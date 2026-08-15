@@ -28,9 +28,13 @@
 - Logging of warning is soft (not asserted); API success + host removal + attempt count are hard.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "delete-fails-ok")
 	req.AttachSequence = []attachStep{

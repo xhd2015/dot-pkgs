@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/tui/mouse"
 )
 
@@ -66,7 +67,7 @@ func dualGenTagHits() []mouse.Hit {
 	}
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	// Root only supplies helpers; branches set Op and inputs.
 	if req == nil {

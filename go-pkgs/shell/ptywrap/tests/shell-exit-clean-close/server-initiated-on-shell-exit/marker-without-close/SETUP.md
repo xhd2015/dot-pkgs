@@ -27,9 +27,13 @@ close is lost or never sent. Negative control (hard drop without marker still
 errors) lives under `hard-drop-without-marker/`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "shell-exit-marker-without-close"
 	return nil
 }

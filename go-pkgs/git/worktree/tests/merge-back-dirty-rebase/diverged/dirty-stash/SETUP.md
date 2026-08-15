@@ -14,7 +14,9 @@ dirty feat -> stash push -> stash apply on tmp -> detect conflict or apply clean
 2. The rebase target (main) makes a conflicting change.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Remove = false
 	req.MakeDirty = true
 	return nil

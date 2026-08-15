@@ -32,7 +32,9 @@ order.
 4. Set `req.RootDir` (operation `stream` is set by the `stream/` grouping Setup).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initStreamWorkspace(t, "example.com/root")
 
 	// a/ is a plain intermediate dir (no go.mod); the module lives at a/b.

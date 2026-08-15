@@ -11,9 +11,13 @@ root + sub/ + sub/nested/ tags -> Children map with nested hierarchy
 1. Set tag names spanning three nested scopes.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Names = []string{"v0.0.1", "sub/v0.2.1", "sub/nested/v0.1.1"}
 	return nil
 }

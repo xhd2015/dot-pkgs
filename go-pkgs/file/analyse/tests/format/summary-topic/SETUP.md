@@ -15,10 +15,11 @@ FormatSummaryLines -> codex sessions/skills when HasCodex; no grok lines when Ha
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/file/analyse"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Mode = "format-summary"
 	req.Summary = analyse.ScanSummary{
 		Home:          "/tmp/home",

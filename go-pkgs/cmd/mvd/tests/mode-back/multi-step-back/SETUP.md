@@ -15,7 +15,9 @@ mvd --back d1/src → [(src)]
 - Run `mvd --back src` — the project is already at origin, so this should be a no-op.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     src := filepath.Join(req.WorkRoot, "src")
     d1 := filepath.Join(req.WorkRoot, "d1")
     d2 := filepath.Join(req.WorkRoot, "d2")
@@ -24,24 +26,24 @@ func Setup(t *testing.T, req *Request) error {
     mkdirAll(t, d2)
     
     req.Args = []string{src, d1}
-    resp, err := runMvd(t, req)
+    resp, err := runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("move 1: %s", resp.Output) }
     p1 := filepath.Join(d1, "src")
     
     req.Args = []string{p1, d2}
-    resp, err = runMvd(t, req)
+    resp, err = runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("move 2: %s", resp.Output) }
     p2 := filepath.Join(d2, "src")
     
     req.Args = []string{"--back", p2}
-    resp, err = runMvd(t, req)
+    resp, err = runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("back p2: %s", resp.Output) }
     
     req.Args = []string{"--back", p1}
-    resp, err = runMvd(t, req)
+    resp, err = runMvd(t, d, req)
     if err != nil { return err }
     if resp.ExitCode != 0 { t.Fatalf("back p1: %s", resp.Output) }
     

@@ -21,9 +21,10 @@ checkout (as `wrk --status` and `wrk --done` need).
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	consumerMain := filepath.Join(root, "consumer-main")
 	consumerWt := filepath.Join(root, "consumer-wt")

@@ -33,9 +33,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.RootDir = t.TempDir()
 	if err := runGit(req.RootDir, "init"); err != nil {
 		return err

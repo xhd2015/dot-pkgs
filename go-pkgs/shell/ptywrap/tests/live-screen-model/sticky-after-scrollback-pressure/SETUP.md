@@ -35,9 +35,13 @@ update the active region. Live iTerm keeps chrome in its cell buffer; truncated
 scrollback replay does not.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "live-screen-sticky-after-scrollback-pressure"
 	req.AttachMode = "snapshot"
 	req.StickyMarker = "STICKY_FOOTER"

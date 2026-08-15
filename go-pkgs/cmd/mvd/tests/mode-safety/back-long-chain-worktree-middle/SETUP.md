@@ -25,9 +25,10 @@ in resolveMoveSource that fails when absSrc is neither root nor last.
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	repo := filepath.Join(req.WorkRoot, "repo")
@@ -37,7 +38,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 1: create worktree from repo
 	wt := filepath.Join(req.WorkRoot, "wt")
 	req.Args = []string{"-w", repo, wt}
-	resp, err := runMvd(t, req)
+	resp, err := runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -48,7 +49,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 2: repo → A (plain move from root; absSrc=root passes position check)
 	A := filepath.Join(req.WorkRoot, "A")
 	req.Args = []string{repo, A}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}
@@ -59,7 +60,7 @@ func Setup(t *testing.T, req *Request) error {
 	// Step 3: A → B (plain move from last entry; absSrc=last passes position check)
 	B := filepath.Join(req.WorkRoot, "B")
 	req.Args = []string{A, B}
-	resp, err = runMvd(t, req)
+	resp, err = runMvd(t, d, req)
 	if err != nil {
 		return err
 	}

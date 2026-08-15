@@ -13,9 +13,13 @@ RunCLI repo list -> gh api user exit 4 -> stderr hint
 2. Set `req.Args` to `["repo", "list"]` (infer owner path).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"repo", "list"}
 	req.GhBin = writeAuthFailGh(t)
 	return nil

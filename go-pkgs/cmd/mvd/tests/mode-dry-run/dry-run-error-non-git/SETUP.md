@@ -11,9 +11,10 @@ mvd --dry-run -w plain-dir wt → error → not a git repository
 ```go
 import (
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	nonGit := filepath.Join(req.WorkRoot, "not-a-repo")
 	mkdirAll(t, nonGit)
 	dst := filepath.Join(req.WorkRoot, "feature")

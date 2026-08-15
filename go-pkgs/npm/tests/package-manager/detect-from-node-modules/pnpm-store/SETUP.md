@@ -16,9 +16,10 @@ node_modules/.pnpm -> Signal pnpm -> Manager pnpm
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	projectDir := writeProject(t, map[string]string{
 		"package.json": pkgJSONDemo,
 	})

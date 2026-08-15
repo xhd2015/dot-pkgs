@@ -11,9 +11,13 @@ Collected.Scopes -> BuildScopeTree -> Children map
 1. Set `req.Op` to `"build-scope-tree"`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "build-scope-tree"
 	return nil
 }

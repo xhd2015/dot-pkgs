@@ -20,9 +20,13 @@ Abs + OriginY? + Hits -> Resolve -> {OK, Hit, LocalY, Kind}
 3. Leaves set AbsX/AbsY and assert Hit ID + Kind.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Op = "resolve"
 	return nil

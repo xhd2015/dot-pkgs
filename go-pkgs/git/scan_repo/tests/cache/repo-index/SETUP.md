@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 func absPath(t *testing.T, p string) string {
@@ -55,7 +56,7 @@ func fakeGitRepo(t *testing.T, dir string) {
 	mkdirAll(t, filepath.Join(gitDir, "objects"))
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CacheRoot = t.TempDir()
 	return nil
 }

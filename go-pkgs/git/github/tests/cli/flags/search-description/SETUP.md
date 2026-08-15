@@ -13,9 +13,13 @@ RunCLI repo list --search-description widget -> gh search repos -> description l
 2. Set `req.Args` to `["repo", "list", "--search-description", "widget"]`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"repo", "list", "--search-description", "widget"}
 	req.GhBin = writeSearchReposGh(t, "testdata/search-repos.json")
 	return nil

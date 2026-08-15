@@ -17,9 +17,13 @@ go.mod -> replace old => /tmp/outside -> target outside repo -> IsIntraRepo = fa
 2. Create the target directory at an external location.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	extDir := filepath.Join(t.TempDir(), "outside-pkg")
 	if err := writeGoMod(extDir, "go.mod", "module example.com/outside\n\ngo 1.22\n"); err != nil {
 		return err

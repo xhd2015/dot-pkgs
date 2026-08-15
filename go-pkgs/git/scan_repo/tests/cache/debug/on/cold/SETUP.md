@@ -25,9 +25,10 @@ workspace/my-repo/.git + fresh CacheRoot (no entry.json)
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	repoDir := filepath.Join(root, "my-repo")
 	mkdirAll(t, repoDir)

@@ -11,9 +11,13 @@ Resolve known: absY=10 -> LocalY=4 -> Hit.ID gen-commit-msg, Kind known
 1. Set AbsY to 10 (local row of gen-commit-msg chip).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.AbsY = 10
 	return nil

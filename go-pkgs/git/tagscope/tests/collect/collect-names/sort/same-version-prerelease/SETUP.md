@@ -11,9 +11,13 @@
 1. Set `req.Names` with same version release and prereleases.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Names = []string{"v0.0.1-beta", "v0.0.1", "v0.0.1-alpha"}
 	return nil
 }

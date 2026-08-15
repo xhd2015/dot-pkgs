@@ -20,6 +20,7 @@ Scan results -> lines (default) or JSON (--json) on stdout
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
 func multiRepoWorkspace(t *testing.T) string {
@@ -33,7 +34,7 @@ func multiRepoWorkspace(t *testing.T) string {
 	return root
 }
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Output branch leaves set --root via multiRepoWorkspace or empty temp dir.
 	if len(rootsFromArgs(req.Args)) == 0 {
 		req.Args = append(req.Args, "--root", multiRepoWorkspace(t))

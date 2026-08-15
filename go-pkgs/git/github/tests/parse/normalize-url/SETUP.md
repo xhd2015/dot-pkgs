@@ -19,9 +19,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.NormalizeOwner = "o"
 	req.NormalizeName = "r"
 	f, err := os.Open("testdata/cases.tsv")

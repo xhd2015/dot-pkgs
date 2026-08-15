@@ -12,9 +12,13 @@ empty dir -> Manager unknown
 1. Create an empty temp project directory.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.ProjectDir = writeProject(t, nil)
 	return nil
 }```

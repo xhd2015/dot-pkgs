@@ -13,9 +13,13 @@ OnCPR(9,1) -> Failed, OriginY nil, OnCPR returns false
 2. Apply bad CPR row1=9 (less than viewLines).
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.TrackerSteps = []TrackerStep{
 		{Kind: "frame-suffix", Height: 26, ViewLines: 20},

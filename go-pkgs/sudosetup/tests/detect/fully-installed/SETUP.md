@@ -16,9 +16,13 @@ Detect -> Installed=true
 1. Seed drop-in line and manifest JSON for testuser + hello.sh.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "fully_installed"
 	req.SeedSudoersLine = installedSeedLine("testuser", req.Rule.Command, "")
 	req.SeedManifest = installedManifestSeed("testuser", req.Rule.Command, "")

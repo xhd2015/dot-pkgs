@@ -59,6 +59,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/checkout"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/status"
 )
@@ -74,7 +75,7 @@ type Response struct {
 	Meta checkout.Meta
 }
 
-func Run(t *testing.T, req *Request) (*Response, error) {
+func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	opts := checkout.Options{}
 	if req.ShortSHALength > 0 {
 		opts.ShortSHALength = req.ShortSHALength

@@ -13,9 +13,13 @@ node_modules path -> DetectFromNodeModules -> Trace.Manager + HasPackageJSON
 2. `req.Op` is `detect-node-modules`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "detect-node-modules"
 	return nil
 }

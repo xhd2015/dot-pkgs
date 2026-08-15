@@ -12,9 +12,13 @@ title with quotes/backslashes -> EscapePathForAppleScript (or title escaper)
 1. Phase escape-title for descendants.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Phase = "escape-title"
 	return nil
 }

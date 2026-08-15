@@ -15,9 +15,13 @@ explanation: detach PTY + SGR click; btn-b exclusivity
 - No HIT line.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Assert(t *testing.T, req *Request, resp *Response, err error) {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if err != nil {
 		t.Fatalf("click-btn-b-not-a: %v", err)
 	}

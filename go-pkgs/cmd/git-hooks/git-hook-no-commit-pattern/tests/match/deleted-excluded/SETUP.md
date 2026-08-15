@@ -17,7 +17,9 @@ stage main.go -> git rm main.go -> pattern "*.go" -> deleted excluded -> exit 0
 2. Run the hook with pattern `*.go`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"*.go"}
 	// Create and commit main.go so we can delete it
 	if err := writeAndStage(req.RepoDir, "main.go", "package main\n"); err != nil {

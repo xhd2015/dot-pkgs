@@ -24,9 +24,13 @@ Attach(A, :6321) then Attach(A, :6322)
 - Requirement scenario 3: update same host LocalURL.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.DecisionPath = append(req.DecisionPath, "update-url")
 	return nil

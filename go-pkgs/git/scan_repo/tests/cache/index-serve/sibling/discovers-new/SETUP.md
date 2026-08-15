@@ -20,9 +20,10 @@ then mkdir workspace/B + fake .git  (sibling of A; never in cold index)
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	a := filepath.Join(root, "A")
 	mkdirAll(t, a)

@@ -24,7 +24,9 @@ nested-gitignore handling.
 5. Set `req.RootDir` (operation `scan` is set by the `skips/` grouping Setup).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initSkipRoot(t, "example.com/root")
 	writeFile(t, filepath.Join(ws, ".gitignore"), "*.log\n")
 	writeFile(t, filepath.Join(ws, "sub", ".gitignore"), "build/\n")

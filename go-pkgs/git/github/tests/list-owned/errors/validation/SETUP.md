@@ -17,9 +17,13 @@ ListOwned opts.Owners invalid -> error (gh never spawned)
 2. Leaf `Setup` sets invalid `req.Owners`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.GhBin = writeTrapGh(t)
 	return nil
 }```

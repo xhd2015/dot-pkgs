@@ -18,9 +18,13 @@ Detect -> Installed=false, detail mentions orphaned drop-in
 2. Do not seed manifest.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Action = "drop_in_without_manifest"
 	req.SeedSudoersLine = installedSeedLine("testuser", req.Rule.Command, "")
 	return nil

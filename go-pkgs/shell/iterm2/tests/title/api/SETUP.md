@@ -12,9 +12,13 @@ SetTitle / GetTitle without ITERM_SESSION_ID or with empty title -> error
 1. API leaves set Phase and ClearSessionEnv / Title as needed.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Leaves set Phase (set-title | get-title) and error conditions.
 	if req.Target == "" {
 		req.Target = "session"

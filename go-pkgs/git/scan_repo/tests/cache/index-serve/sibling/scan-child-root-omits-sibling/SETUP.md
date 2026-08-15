@@ -30,9 +30,10 @@ parent/B/.git  present (sibling of A; outside absRoot=A)
 import (
 	"path/filepath"
 	"testing"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	parent := t.TempDir()
 	a := filepath.Join(parent, "A")
 	b := filepath.Join(parent, "B")

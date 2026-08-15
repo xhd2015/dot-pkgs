@@ -17,7 +17,9 @@ without being publishable modules themselves.
 3. Set `req.RootDir`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initSkipRoot(t, "example.com/root")
 	boundary := filepath.Join(ws, "boundary")
 	if err := os.MkdirAll(boundary, 0o755); err != nil {

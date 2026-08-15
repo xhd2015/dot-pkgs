@@ -11,7 +11,9 @@ MergeBack NeedsConfirm -> Confirm captures FormatPlanPrompt -> abort (no git mut
 - Set `CapturePrompt` and `DryRun=false`.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.CapturePrompt = true
 	req.DryRun = false
 	return nil

@@ -11,9 +11,10 @@ main + feature worktree at same HEAD -> relation ancestor/same
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	if err := os.MkdirAll(mainRepo, 0755); err != nil {
 		return err

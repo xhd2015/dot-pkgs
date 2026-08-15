@@ -7,7 +7,9 @@
 - With a SRC argument, only that specific project's history is shown, including markers for "(original)" and the current location.
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Logf("mode: list")
 	return nil
 }

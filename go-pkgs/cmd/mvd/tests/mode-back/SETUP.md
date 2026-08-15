@@ -6,7 +6,9 @@
 - For worktree-backed entries, the back operation removes the git worktree and branch (after verifying clean/merged status).
 
 ```go
-func Setup(t *testing.T, req *Request) error {
+import "github.com/xhd2015/doctest/session"
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     t.Logf("mode: back")
     return nil
 }

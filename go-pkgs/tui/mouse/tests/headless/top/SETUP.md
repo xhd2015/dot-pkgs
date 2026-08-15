@@ -12,9 +12,13 @@ fixture --anchor=top -> ORIGIN≈0 -> click localY=3 -> HIT btn-a
 1. Set `req.Anchor = "top"`.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.Anchor = "top"
 	return nil

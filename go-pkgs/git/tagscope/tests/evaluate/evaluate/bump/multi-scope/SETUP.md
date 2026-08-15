@@ -15,10 +15,11 @@ root v0.0.2 + sub/v0.2.3 both diff -> v0.0.3 and sub/v0.2.4
 import (
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/tagscope"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Names = []string{"v0.0.2", "sub/v0.2.3"}
 	req.HeadCommit = "head6666"
 	req.ReleaseCommits = map[tagscope.TagScopeKey]string{

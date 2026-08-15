@@ -12,9 +12,13 @@ Options.Limit=42 -> gh repo list ... --limit 42
 1. Set `req.Limit` to 42.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Limit = 42
 	return nil
 }```

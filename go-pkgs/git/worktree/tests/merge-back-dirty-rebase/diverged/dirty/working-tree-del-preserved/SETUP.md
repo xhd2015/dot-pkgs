@@ -20,9 +20,10 @@ dirty feat -> tmp rebase -> merge -> reset --mixed -> user deletion preserved
 import (
 	"os"
 	"path/filepath"
+	"github.com/xhd2015/doctest/session"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mainRepo := req.MainRepo
 
 	// Create a tracked file on feature branch

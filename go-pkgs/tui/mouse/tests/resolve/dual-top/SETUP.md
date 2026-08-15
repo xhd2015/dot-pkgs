@@ -20,9 +20,13 @@ AbsY=4 (gen local row), Height=40 ViewLines=20
 2. Click abs (65, 4) on the gen chip under top anchoring.
 
 ```go
-import "testing"
+import (
+	"testing"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
 	req.OriginY = nil
 	req.Hits = dualGenTagHits()

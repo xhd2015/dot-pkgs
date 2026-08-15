@@ -7,9 +7,13 @@
 - Testing `--upstream-proxy` behavior: accessible vs unreachable at startup, default flex vs `--no-fallback-direct`
 
 ```go
-import "net"
+import (
+	"net"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Log("entering upstream proxy test mode")
 	return nil
 }

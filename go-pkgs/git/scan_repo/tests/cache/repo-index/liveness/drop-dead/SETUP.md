@@ -21,10 +21,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/scan_repo"
 )
 
-func Setup(t *testing.T, req *Request) error {
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	root := t.TempDir()
 	live := filepath.Join(root, "live-repo")
 	dead := filepath.Join(root, "dead-repo")

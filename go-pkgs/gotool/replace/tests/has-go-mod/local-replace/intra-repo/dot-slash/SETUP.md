@@ -18,9 +18,13 @@ go.mod -> replace old => ./sub -> target inside repo -> IsIntraRepo = true
 2. Create the `./sub/go.mod` target directory inside the repo.
 
 ```go
-import "path/filepath"
+import (
+	"path/filepath"
 
-func Setup(t *testing.T, req *Request) error {
+	"github.com/xhd2015/doctest/session"
+)
+
+func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	content := "module example.com/myrepo\n\ngo 1.22\n\nrequire example.com/old v0.0.0\n\nreplace example.com/old => ./sub\n"
 	if err := writeGoMod(req.RootDir, "go.mod", content); err != nil {
 		return err
