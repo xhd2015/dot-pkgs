@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/detect"
 )
 
 // LoginEnvOptions configures Resolve*LoginEnv(s).
@@ -14,6 +16,9 @@ type LoginEnvOptions struct {
 	Timeout  time.Duration
 	RunLogin func(shell, command string, env []string) (stdout string, err error)
 	ShellBin string // empty → "bash" or "zsh" by function
+	// DetectShell, when non-nil, returns "bash"|"zsh"|"" (or other → unknown).
+	// nil → detect.Shell() from $SHELL basename.
+	DetectShell func() string
 }
 
 const envDumpCommand = "env -0"
@@ -40,6 +45,67 @@ func ResolveBashLoginEnv(name string, opts LoginEnvOptions) (string, error) {
 // Empty name → error. Unset or empty value → ("", nil). Run failure → error.
 func ResolveZshLoginEnv(name string, opts LoginEnvOptions) (string, error) {
 	return resolveLoginEnv(name, "zsh", opts)
+}
+
+// ResolveLoginEnvs dumps login environ for the detected shell.
+// bash/zsh: dump that shell only. Unknown ("" or other): try bash, then zsh
+// when bash errors or returns empty envs. Never mutates process env/cwd.
+func ResolveLoginEnvs(opts LoginEnvOptions) (shell string, envs []string, err error) {
+	detectFn := opts.DetectShell
+	if detectFn == nil {
+		detectFn = detect.Shell
+	}
+	name := detectFn()
+
+	switch name {
+	case "bash", "zsh":
+		envs, err := resolveLoginEnvs(name, opts)
+		return name, envs, err
+	}
+
+	// Unknown: cascade bash → zsh until a non-empty dump succeeds.
+	bashEnvs, bashErr := resolveLoginEnvs("bash", opts)
+	if bashErr == nil && len(bashEnvs) > 0 {
+		return "bash", bashEnvs, nil
+	}
+	zshEnvs, zshErr := resolveLoginEnvs("zsh", opts)
+	if zshErr == nil && len(zshEnvs) > 0 {
+		return "zsh", zshEnvs, nil
+	}
+	// Prefer last error; if zsh only empty (no err), surface bash error if any.
+	if zshErr != nil {
+		return "", nil, zshErr
+	}
+	if bashErr != nil {
+		return "", nil, bashErr
+	}
+	return "", nil, fmt.Errorf("lookpath: empty login envs from bash and zsh")
+}
+
+// MergeEnvs merges KEY=value environ slices. Later slices win on the same key
+// (including empty values). Within a slice, last occurrence wins. Key order is
+// first-seen: overwrites update in place; new keys append. Nil slices skipped.
+func MergeEnvs(envs ...[]string) []string {
+	var out []string
+	idx := make(map[string]int)
+	for _, slice := range envs {
+		if slice == nil {
+			continue
+		}
+		for _, e := range slice {
+			key, _, ok := strings.Cut(e, "=")
+			if !ok {
+				continue
+			}
+			if i, exists := idx[key]; exists {
+				out[i] = e
+				continue
+			}
+			idx[key] = len(out)
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func resolveLoginEnvs(defaultShell string, opts LoginEnvOptions) ([]string, error) {
