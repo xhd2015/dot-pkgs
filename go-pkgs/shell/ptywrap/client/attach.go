@@ -1,7 +1,9 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -127,8 +129,18 @@ func AttachWithIO(c *Client, opts ConnectOptions, stdin io.Reader, stdout io.Wri
 
 	defer conn.Close()
 	runErr := runBridge(conn, stdin, stdout)
+	if errors.Is(runErr, errDetachKeep) {
+		result.Detached = true
+		return result, nil
+	}
 	return result, runErr
 }
+
+// errDetachKeep is returned when the user presses Ctrl-] to leave
+// without stopping the remote shell.
+var errDetachKeep = errors.New("detach keep")
+
+const detachKey byte = 0x1d // Ctrl-]
 
 func runBridge(conn *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 	writer := &wsWriter{conn: conn}
@@ -180,7 +192,9 @@ func runBridge(conn *websocket.Conn, stdin io.Reader, stdout io.Writer) error {
 		// success even if a later close would have been 1006.
 		runErr = normalizeTerminalReadError(err)
 	case err := <-stdinErrCh:
-		if err != nil && err != io.EOF {
+		if errors.Is(err, errDetachKeep) {
+			runErr = errDetachKeep
+		} else if err != nil && err != io.EOF {
 			runErr = err
 		}
 	}
@@ -307,7 +321,9 @@ func terminalWebSocketURL(base string, opts ConnectOptions) (string, error) {
 	if strings.TrimSpace(opts.SessionID) != "" {
 		q.Set("session_id", opts.SessionID)
 	}
-	if opts.AttachSnapshot {
+	if mode := strings.TrimSpace(opts.AttachMode); mode != "" {
+		q.Set("attach_mode", mode)
+	} else if opts.AttachSnapshot {
 		q.Set("attach_mode", "screen")
 	}
 	if strings.TrimSpace(opts.Name) != "" {
@@ -333,7 +349,19 @@ func forwardTerminalInput(writer *wsWriter, stdin io.Reader) error {
 	for {
 		n, err := stdin.Read(buf)
 		if n > 0 {
-			if writeErr := writer.writeMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
+			data := buf[:n]
+			if i := bytes.IndexByte(data, detachKey); i >= 0 {
+				if i > 0 {
+					if writeErr := writer.writeMessage(websocket.BinaryMessage, data[:i]); writeErr != nil {
+						return writeErr
+					}
+				}
+				if writeErr := writer.writeJSON(controlMessage{Type: "detach_keep"}); writeErr != nil {
+					return writeErr
+				}
+				return errDetachKeep
+			}
+			if writeErr := writer.writeMessage(websocket.BinaryMessage, data); writeErr != nil {
 				return writeErr
 			}
 		}

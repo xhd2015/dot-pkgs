@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -258,10 +259,20 @@ func (s *session) unregisterConn(conn *websocket.Conn) {
 }
 
 func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
+	// attach: in-place join. Send only the current prompt line (CR + text),
+	// never 1049l / CUP home / 2J — those jump the local TTY to line 1.
+	// A zero-byte first frame looks like a hung attach (no snapshot, no prompt).
+	if attachMode == "attach" {
+		if prompt := s.exportInPlacePrompt(); len(prompt) > 0 {
+			conn.WriteMessage(websocket.BinaryMessage, prompt)
+		}
+		return
+	}
+
 	// screen/snapshot: export the persistent live VT cells as a CUP frame
 	// (grid fidelity for tools/observers). Does not re-emit mouse/DEC modes.
 	//
-	// open/attach (and other modes): raw scrollback ring so TUI startup CSIs
+	// open (and other modes): raw scrollback ring so TUI startup CSIs
 	// (alt-screen, mouse tracking, paste, …) reach the host. attach_mode=open
 	// pairs this frame with roleWriter (claimRole) for --open close-exits.
 	if attachMode == "screen" || attachMode == "snapshot" {
@@ -296,6 +307,53 @@ func (s *session) sendInitialFrame(conn *websocket.Conn, attachMode string) {
 // exportLiveSnapshot walks the persistent live VT cells into the CUP frame
 // format used by consumers. Holds session.mu so resize/output cannot race
 // with the export walk.
+// exportInPlacePrompt is the current prompt as plain text after CR.
+// No alt-screen toggle, no CUP, no erase — the local cursor stays put.
+func (s *session) exportInPlacePrompt() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.screen != nil {
+		cols := s.cols
+		if cols <= 0 {
+			cols = 80
+		}
+		s.screen.Lock()
+		cur := s.screen.Cursor()
+		line := renderSnapshotLine(s.screen, cols, cur.Y)
+		if line == "" {
+			for y := cur.Y - 1; y >= 0; y-- {
+				line = renderSnapshotLine(s.screen, cols, y)
+				if line != "" {
+					break
+				}
+			}
+		}
+		s.screen.Unlock()
+		if line != "" {
+			return []byte("\r" + line)
+		}
+	}
+	return lastPlainScrollbackLine(s.scrollback)
+}
+
+func lastPlainScrollbackLine(scrollback []byte) []byte {
+	if len(scrollback) == 0 {
+		return nil
+	}
+	s := string(scrollback)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	parts := strings.Split(s, "\n")
+	for i := len(parts) - 1; i >= 0; i-- {
+		line := strings.TrimRight(parts[i], " \t")
+		if line == "" || strings.Contains(line, "[Terminal exited]") {
+			continue
+		}
+		return []byte("\r" + line)
+	}
+	return nil
+}
+
 func (s *session) exportLiveSnapshot() ([]byte, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
