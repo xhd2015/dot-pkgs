@@ -85,6 +85,9 @@ type Config struct {
 	FollowUpCommands []string
 	// Mode defaults to ModeSmart when zero.
 	Mode OpenMode
+	// SafeInputIgnore prefixes each session write text with Ctrl-U (ASCII 21)
+	// so leftover keystrokes stolen by a newly focused window are discarded.
+	SafeInputIgnore bool
 }
 
 // ResolveAppPathOpts injects env/home/IsApp for parallel-safe resolve tests.
@@ -230,12 +233,21 @@ func EscapeCommandForAppleScript(command string) string {
 	return applescript.EscapeString(command)
 }
 
-func buildSessionCommandLines(followUpCommands []string) []string {
+func buildSessionCommandLines(followUpCommands []string, safeInputIgnore bool) []string {
+	cd := `"cd " & quoted form of targetDir`
+	if safeInputIgnore {
+		cd = `(ASCII character 21) & ` + cd
+	}
 	lines := []string{
-		`        write text ("cd " & quoted form of targetDir)`,
+		`        write text (` + cd + `)`,
 	}
 	for _, command := range followUpCommands {
-		lines = append(lines, fmt.Sprintf(`        write text "%s"`, EscapeCommandForAppleScript(command)))
+		escaped := EscapeCommandForAppleScript(command)
+		if safeInputIgnore {
+			lines = append(lines, fmt.Sprintf(`        write text ((ASCII character 21) & "%s")`, escaped))
+		} else {
+			lines = append(lines, fmt.Sprintf(`        write text "%s"`, escaped))
+		}
 	}
 	return lines
 }
@@ -269,8 +281,12 @@ func BuildPathScanSmokeScript() string {
 
 // BuildScriptApp returns smart-open AppleScript targeting appPath and cds to dirPath.
 func BuildScriptApp(appPath, dirPath string, followUps ...string) string {
+	return buildScriptApp(appPath, dirPath, false, followUps)
+}
+
+func buildScriptApp(appPath, dirPath string, safeInputIgnore bool, followUps []string) string {
 	escaped := EscapePathForAppleScript(dirPath)
-	sessionCommandLines := buildSessionCommandLines(followUps)
+	sessionCommandLines := buildSessionCommandLines(followUps, safeInputIgnore)
 	lines := []string{
 		TellApplicationHeader(appPath),
 		`  activate`,
@@ -330,14 +346,18 @@ func BuildScriptApp(appPath, dirPath string, followUps ...string) string {
 
 // BuildScript returns AppleScript that smart-opens iTerm2 and cds to dirPath.
 func BuildScript(dirPath string, followUps ...string) string {
-	return BuildScriptApp(ResolveAppPath(), dirPath, followUps...)
+	return buildScriptApp(ResolveAppPath(), dirPath, false, followUps)
 }
 
 // BuildReuseCurrentSessionScript returns AppleScript that scans session paths like smart-open.
 // On match it focuses the tab/session at targetDir without cd; on miss it creates a window and cds.
 func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string {
+	return buildReuseCurrentSessionScript(dirPath, false, followUps)
+}
+
+func buildReuseCurrentSessionScript(dirPath string, safeInputIgnore bool, followUps []string) string {
 	escaped := EscapePathForAppleScript(dirPath)
-	sessionCommandLines := buildSessionCommandLines(followUps)
+	sessionCommandLines := buildSessionCommandLines(followUps, safeInputIgnore)
 	lines := []string{
 		tellHeaderResolved(),
 		`  activate`,
@@ -399,8 +419,12 @@ func BuildReuseCurrentSessionScript(dirPath string, followUps ...string) string 
 
 // BuildForceNewWindowScriptApp returns force-new-window AppleScript targeting appPath.
 func BuildForceNewWindowScriptApp(appPath, dirPath string, followUps ...string) string {
+	return buildForceNewWindowScriptApp(appPath, dirPath, false, followUps)
+}
+
+func buildForceNewWindowScriptApp(appPath, dirPath string, safeInputIgnore bool, followUps []string) string {
 	escaped := EscapePathForAppleScript(dirPath)
-	sessionCommandLines := buildSessionCommandLines(followUps)
+	sessionCommandLines := buildSessionCommandLines(followUps, safeInputIgnore)
 	lines := []string{
 		TellApplicationHeader(appPath),
 		`  set targetDir to "` + escaped + `"`,
@@ -423,7 +447,7 @@ func BuildForceNewWindowScriptApp(appPath, dirPath string, followUps ...string) 
 // entirely — always creating a new window. Create happens before activate so the
 // window lands on the current Space instead of following an existing iTerm window.
 func BuildForceNewWindowScript(dirPath string, followUps ...string) string {
-	return BuildForceNewWindowScriptApp(ResolveAppPath(), dirPath, followUps...)
+	return buildForceNewWindowScriptApp(ResolveAppPath(), dirPath, false, followUps)
 }
 
 func normalizeTargetDirectory(dirPath string) (string, error) {
@@ -472,19 +496,21 @@ func OpenConfig(dir string, cfg *Config) error {
 
 	var followUps []string
 	mode := ModeSmart
+	var safeInputIgnore bool
 	if cfg != nil {
 		if len(cfg.FollowUpCommands) > 0 {
 			followUps = cfg.FollowUpCommands
 		}
 		mode = cfg.Mode
+		safeInputIgnore = cfg.SafeInputIgnore
 	}
 	var script string
 	if mode == ModeReuseCurrent {
-		script = BuildReuseCurrentSessionScript(target, followUps...)
+		script = buildReuseCurrentSessionScript(target, safeInputIgnore, followUps)
 	} else if mode == ModeForceNew {
-		script = BuildForceNewWindowScript(target, followUps...)
+		script = buildForceNewWindowScriptApp(ResolveAppPath(), target, safeInputIgnore, followUps)
 	} else {
-		script = BuildScript(target, followUps...)
+		script = buildScriptApp(ResolveAppPath(), target, safeInputIgnore, followUps)
 	}
 	if err := osascriptRunner(cfg)(script); err != nil {
 		return fmt.Errorf("iterm2: osascript: %w", err)
