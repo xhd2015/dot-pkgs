@@ -106,11 +106,39 @@ type HistoryFile struct {
 	Projects map[string]ProjectEntry `json:"projects"`
 }
 
+func mergeEnv(base, extra []string) []string {
+	var order []string
+	m := map[string]string{}
+	add := func(e string) {
+		k, v, ok := strings.Cut(e, "=")
+		if !ok {
+			return
+		}
+		if _, exists := m[k]; !exists {
+			order = append(order, k)
+		}
+		m[k] = v
+	}
+	for _, e := range base {
+		add(e)
+	}
+	for _, e := range extra {
+		add(e)
+	}
+	out := make([]string, 0, len(order)+1)
+	for _, k := range order {
+		out = append(out, k+"="+m[k])
+	}
+	return out
+}
+
 func runMvd(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	bin := getMvdBin(t, d)
 	cmd := exec.Command(bin, req.Args...)
-	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
-	cmd.Env = append(cmd.Env, req.ExtraEnv...)
+	if req.WorkRoot != "" {
+		cmd.Dir = req.WorkRoot
+	}
+	cmd.Env = mergeEnv(os.Environ(), append([]string{"MVD_DEBUG_CONFIG_HOME=" + req.ConfigHome}, req.ExtraEnv...))
 	out, err := cmd.CombinedOutput()
 	exitCode := 0
 	if err != nil {

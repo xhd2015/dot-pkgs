@@ -130,15 +130,26 @@ func seedEntryOrderEntries(t *testing.T, home string) {
 	writeText(t, home, "zzz-last/omega.txt", "z\n")
 }
 
-func seedFileLinesEntries(t *testing.T, home string) {
+func fixtureFile(d *session.Doctest, rel string) string {
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	base := d.DOCTEST_CASE
+	if base == "" || !filepath.IsAbs(base) {
+		base = filepath.Join(d.DOCTEST_ROOT, base)
+	}
+	return filepath.Join(base, rel)
+}
+
+func seedFileLinesEntries(t *testing.T, d *session.Doctest, home string) {
 	t.Helper()
-	notes, err := os.ReadFile("testdata/notes.txt")
+	notes, err := os.ReadFile(fixtureFile(d, "testdata/notes.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary, err := os.ReadFile("testdata/binary.dat")
-	if err != nil {
-		t.Fatal(err)
+	binary := []byte{0x00, 0xff, 0x00, 0xff}
+	if data, err := os.ReadFile(fixtureFile(d, "testdata/binary.dat")); err == nil {
+		binary = data
 	}
 	writeFile(t, home, "notes.txt", notes)
 	writeFile(t, home, "binary.dat", binary)
@@ -157,7 +168,7 @@ func seedOnEntryEntries(t *testing.T, home string) {
 	writeText(t, home, "zzz-last/omega.txt", "z\n")
 }
 
-func seedHome(t *testing.T, home, profile string) {
+func seedHome(t *testing.T, d *session.Doctest, home, profile string) {
 	t.Helper()
 	switch profile {
 	case "basic":
@@ -166,7 +177,7 @@ func seedHome(t *testing.T, home, profile string) {
 		seedCodexTree(t, home)
 		seedPlainDir(t, home)
 	case "file-lines":
-		seedFileLinesEntries(t, home)
+		seedFileLinesEntries(t, d, home)
 	case "git-dirs":
 		if !gitAvailable(t) {
 			return

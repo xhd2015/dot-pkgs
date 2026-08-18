@@ -46,6 +46,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -157,6 +158,9 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	}
 	fixBin, twBin, err := ensureBins(t, d)
 	if err != nil {
+		if strings.Contains(err.Error(), "tty-watch not on PATH") {
+			t.Skip(err.Error())
+		}
 		return err
 	}
 	req.FixtureBin = fixBin

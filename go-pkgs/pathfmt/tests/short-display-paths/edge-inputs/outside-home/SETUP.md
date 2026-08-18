@@ -22,9 +22,11 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	chdirTo(t, t.TempDir())
+	req.BaseDir = t.TempDir()
+	req.Op = "short-from"
 	outside := filepath.Join(os.TempDir(), "doctest-display-outside-home")
 	mkdirAll(t, outside)
 	req.Path = outside
 	return nil
-}```
+}
+```

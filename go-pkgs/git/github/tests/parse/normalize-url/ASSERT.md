@@ -34,7 +34,7 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 		t.Fatalf("expected first normalized URL https://github.com/o/r, got %q", resp.Normalized)
 	}
 
-	f, err := os.Open("testdata/cases.tsv")
+	f, err := os.Open(fixtureFile(d, "testdata/cases.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,7 +22,7 @@ import (
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.SearchDescription = ""
 	req.SearchCode = "handler"
-	req.GhBin = writeSearchCodeGh(t, "testdata/search-code.json")
+	req.GhBin = writeSearchCodeGh(t, fixtureFile(d, "testdata/search-code.json")
 	return nil
 }
 ```

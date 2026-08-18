@@ -218,8 +218,10 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	}
 
 	cmd := exec.Command(cmdName, cmdArgs...)
-	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
-	cmd.Env = append(cmd.Env, req.ExtraEnv...)
+	if req.WorkRoot != "" {
+		cmd.Dir = req.WorkRoot
+	}
+	cmd.Env = mergeEnv(os.Environ(), append([]string{"MVD_DEBUG_CONFIG_HOME=" + req.ConfigHome}, req.ExtraEnv...))
 
 	if req.StdinInput != "" {
 		stdin, err := cmd.StdinPipe()

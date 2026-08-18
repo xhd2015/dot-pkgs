@@ -139,7 +139,7 @@ type Response struct {
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		cwd = req.BaseDir
 	}
 	var display string
 	switch req.Op {

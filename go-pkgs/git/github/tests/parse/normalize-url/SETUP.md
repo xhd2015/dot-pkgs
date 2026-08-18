@@ -25,7 +25,7 @@ import (
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.NormalizeOwner = "o"
 	req.NormalizeName = "r"
-	f, err := os.Open("testdata/cases.tsv")
+	f, err := os.Open(fixtureFile(d, "testdata/cases.tsv"))
 	if err != nil {
 		return err
 	}

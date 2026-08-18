@@ -31,11 +31,11 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	saveAndRestoreCwd(t)
 	projRoot := t.TempDir()
 	mkdirAll(t, filepath.Join(projRoot, "child"))
 	mkdirAll(t, filepath.Join(projRoot, "a", "b", "c"))
 	req.Path = projRoot
-	chdirTo(t, projRoot)
+	req.BaseDir = projRoot
+	req.Op = "short-from"
 	return nil
 }```

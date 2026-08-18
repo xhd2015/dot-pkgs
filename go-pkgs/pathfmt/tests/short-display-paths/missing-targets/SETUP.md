@@ -34,10 +34,10 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	saveAndRestoreCwd(t)
 	projRoot := t.TempDir()
 	req.Path = projRoot
-	chdirTo(t, projRoot)
+	req.BaseDir = projRoot
+	req.Op = "short-from"
 	return nil
 }
 ```

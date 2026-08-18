@@ -39,7 +39,9 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	nested := filepath.Join(base, "nested")
 	mkdirAll(t, nested)
 	t.Cleanup(func() { _ = os.RemoveAll(base) })
-	chdirTo(t, nested)
+	req.BaseDir = nested
+	req.Op = "short-from"
 	req.Path = base
 	return nil
-}```
+}
+```

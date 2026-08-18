@@ -26,7 +26,8 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chdirTo(t, absRoot)
+	req.BaseDir = absRoot
+	req.Op = "short-from"
 	req.Path = filepath.Join(projRoot, ".codex", "hooks.json")
 	return nil
 }

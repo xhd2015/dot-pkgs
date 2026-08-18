@@ -22,7 +22,11 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	// Relative to the leaf directory (doctest cwd).
-	req.Path = filepath.Join("testdata", "05-status-fields.snapshot.txt")
+	caseDir := d.DOCTEST_CASE
+	if caseDir == "" || !filepath.IsAbs(caseDir) {
+		caseDir = filepath.Join(d.DOCTEST_ROOT, caseDir)
+	}
+	req.Path = filepath.Join(caseDir, "testdata", "05-status-fields.snapshot.txt")
 	return nil
 }
 ```

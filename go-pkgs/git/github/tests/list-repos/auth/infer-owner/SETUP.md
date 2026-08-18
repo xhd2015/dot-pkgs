@@ -21,7 +21,7 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	req.GhBin = writeInferOwnerGh(t, "testdata/repos.json")
+	req.GhBin = writeInferOwnerGh(t, fixtureFile(d, "testdata/repos.json")
 	return nil
 }
 ```

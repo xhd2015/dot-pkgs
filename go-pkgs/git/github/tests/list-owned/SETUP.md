@@ -61,9 +61,20 @@ func writeFakeGh(t *testing.T, body string) string {
 	return ghPath
 }
 
-func writeFakeGhFromFixture(t *testing.T, fixtureRelPath string) string {
+func fixtureFile(d *session.Doctest, rel string) string {
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	base := d.DOCTEST_CASE
+	if base == "" || !filepath.IsAbs(base) {
+		base = filepath.Join(d.DOCTEST_ROOT, base)
+	}
+	return filepath.Join(base, rel)
+}
+
+func writeFakeGhFromFixture(t *testing.T, d *session.Doctest, fixtureRelPath string) string {
 	t.Helper()
-	data, err := os.ReadFile(fixtureRelPath)
+	data, err := os.ReadFile(fixtureFile(d, fixtureRelPath))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,11 +97,11 @@ exit 99
 `)
 }
 
-func writeOwnerFixtureGh(t *testing.T, ownerToFixture map[string]string) string {
+func writeOwnerFixtureGh(t *testing.T, d *session.Doctest, ownerToFixture map[string]string) string {
 	t.Helper()
 	body := ""
 	for owner, fixture := range ownerToFixture {
-		data, err := os.ReadFile(fixture)
+		data, err := os.ReadFile(fixtureFile(d, fixture))
 		if err != nil {
 			t.Fatal(err)
 		}

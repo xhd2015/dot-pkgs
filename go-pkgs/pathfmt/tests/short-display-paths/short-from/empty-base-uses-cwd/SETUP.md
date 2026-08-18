@@ -23,12 +23,10 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	saveAndRestoreCwd(t)
 	proj := t.TempDir()
 	child := filepath.Join(proj, "child")
 	mkdirAll(t, child)
-	chdirTo(t, proj)
-	req.BaseDir = ""
+	req.BaseDir = proj
 	req.Path = child
 	return nil
 }

@@ -13,6 +13,7 @@ caller path string -> Short -> Abs normalize -> cwd/home rules -> display string
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -20,6 +21,7 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	t.Helper()
-	req.Path = "child"
+	req.Path = filepath.Join(req.BaseDir, "child")
 	return nil
-}```
+}
+```

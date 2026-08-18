@@ -22,8 +22,8 @@ import (
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Owners = []string{"alice", "bob"}
 	req.GhBin = writeMultiOwnerGh(t, map[string]string{
-		"alice": "testdata/alice.json",
-		"bob":   "testdata/bob.json",
+		"alice": fixtureFile(d, "testdata/alice.json"),
+		"bob":   fixtureFile(d, "testdata/bob.json"),
 	})
 	return nil
 }

@@ -42,6 +42,17 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	return nil
 }
 
+func fixtureFile(d *session.Doctest, rel string) string {
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	base := d.DOCTEST_CASE
+	if base == "" || !filepath.IsAbs(base) {
+		base = filepath.Join(d.DOCTEST_ROOT, base)
+	}
+	return filepath.Join(base, rel)
+}
+
 const mockGhHeader = `#!/bin/sh
 set -eu
 dir=$(dirname "$0")

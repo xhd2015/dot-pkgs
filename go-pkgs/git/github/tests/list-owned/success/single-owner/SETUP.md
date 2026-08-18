@@ -21,6 +21,6 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Owners = []string{"alice"}
-	req.GhBin = writeFakeGhFromFixture(t, "testdata/repos.json")
+	req.GhBin = writeFakeGhFromFixture(t, d, "testdata/repos.json")
 	return nil
 }```

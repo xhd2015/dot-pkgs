@@ -22,7 +22,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	home := t.TempDir()
 	req.Home = home
 	req.SeedProfile = "basic"
-	seedHome(t, home, req.SeedProfile)
+	seedHome(t, d, home, req.SeedProfile)
 	return nil
 }
 ```
