@@ -15,6 +15,11 @@ jobs:
       GOFLAGS: -buildvcs=false
     steps:
       - uses: actions/checkout@v4
+      - name: Git identity for fixture commits
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+          git config --global --add safe.directory '*'
       - name: Go test go-pkgs/cloudflare/tests
         run: go -C go-pkgs/cloudflare/tests test -v ./...
       - name: Go test go-pkgs/cmd

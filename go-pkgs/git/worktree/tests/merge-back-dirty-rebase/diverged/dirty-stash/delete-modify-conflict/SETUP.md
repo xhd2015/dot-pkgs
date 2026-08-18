@@ -40,7 +40,6 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := os.MkdirAll(wrkHome, 0755); err != nil {
 		return err
 	}
-	t.Setenv("WRK_HOME", wrkHome)
 	return nil
 }
 ```

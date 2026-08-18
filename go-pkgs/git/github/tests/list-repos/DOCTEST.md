@@ -107,9 +107,6 @@ func captureGhArgv(ghBin string) string {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	if req.GhBin != "" {
-		t.Setenv("GH_BIN", req.GhBin)
-	}
 	opts := ghrepos.ListReposOptions{
 		Owners:            req.Owners,
 		SearchDescription: req.SearchDescription,

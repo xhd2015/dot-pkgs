@@ -156,10 +156,6 @@ type Response struct {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	if req.DisableEnv {
-		t.Setenv("PTYWRAP_NO_DSR_REPLY", "1")
-	}
-
 	row, col := req.Row, req.Col
 	if row <= 0 {
 		row = 1
@@ -181,7 +177,12 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 			got = append(got, b...)
 			return nil
 		}
-		rest := ptywrap.TestExported_MaybeAutoReplyDSR(write, req.Partial, req.Data, row, col)
+		var rest []byte
+		if req.DisableEnv {
+			rest = ptywrap.TestExported_MaybeAutoReplyDSRDisabled(write, req.Partial, req.Data, row, col)
+		} else {
+			rest = ptywrap.TestExported_MaybeAutoReplyDSR(write, req.Partial, req.Data, row, col)
+		}
 		return &Response{Replies: got, Rest: rest, WriteCalls: calls}, nil
 
 	case "maybe-chunks":
@@ -194,7 +195,11 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		}
 		var partial []byte
 		for _, chunk := range req.Chunks {
-			partial = ptywrap.TestExported_MaybeAutoReplyDSR(write, partial, chunk, row, col)
+			if req.DisableEnv {
+				partial = ptywrap.TestExported_MaybeAutoReplyDSRDisabled(write, partial, chunk, row, col)
+			} else {
+				partial = ptywrap.TestExported_MaybeAutoReplyDSR(write, partial, chunk, row, col)
+			}
 		}
 		return &Response{Replies: got, Rest: partial, WriteCalls: calls}, nil
 

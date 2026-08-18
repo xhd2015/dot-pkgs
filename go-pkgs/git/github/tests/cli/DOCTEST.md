@@ -113,12 +113,6 @@ type Response struct {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	if req.GhBin != "" {
-		t.Setenv("GH_BIN", req.GhBin)
-	} else {
-		t.Setenv("GH_BIN", "")
-	}
-
 	stdoutR, stdoutW, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -133,7 +127,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	os.Stdout = stdoutW
 	os.Stderr = stderrW
 
-	runErr := ghrepos.RunCLI(req.Args)
+	runErr := ghrepos.RunCLIWithGhBin(req.GhBin, req.Args)
 
 	stdoutW.Close()
 	stderrW.Close()

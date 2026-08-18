@@ -37,7 +37,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	t.Setenv("GH_BIN", "")
 	if req.Limit == 0 {
 		req.Limit = 100
 	}

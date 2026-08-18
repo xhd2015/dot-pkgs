@@ -124,3 +124,14 @@ func TestExported_ConsumeCSI6nQueries(buf []byte, row, col int) (replies, rest [
 func TestExported_MaybeAutoReplyDSR(write func([]byte) error, partial, data []byte, row, col int) (nextPartial []byte) {
 	return maybeAutoReplyDSR(write, partial, data, row, col)
 }
+
+// TestExported_MaybeAutoReplyDSRDisabled is the PTYWRAP_NO_DSR_REPLY=1 path
+// without t.Setenv (doctest leaves always call t.Parallel()).
+func TestExported_MaybeAutoReplyDSRDisabled(write func([]byte) error, partial, data []byte, row, col int) (nextPartial []byte) {
+	_ = write
+	_ = partial
+	_ = data
+	_ = row
+	_ = col
+	return nil
+}

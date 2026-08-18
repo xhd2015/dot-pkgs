@@ -222,9 +222,6 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		return &Response{FullName: fullName}, nil
 	}
 
-	if req.GhBin != "" {
-		t.Setenv("GH_BIN", req.GhBin)
-	}
 	opts := ghrepos.Options{
 		Owners:          req.Owners,
 		Limit:           req.Limit,

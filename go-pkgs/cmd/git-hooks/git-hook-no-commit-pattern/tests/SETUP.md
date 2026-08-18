@@ -70,6 +70,12 @@ func runGit(dir string, args ...string) error {
 		}
 		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
+	if len(args) > 0 && args[0] == "init" {
+		if err := runGit(dir, "config", "user.email", "test@example.com"); err != nil {
+			return err
+		}
+		return runGit(dir, "config", "user.name", "Test User")
+	}
 	return nil
 }
 

@@ -59,14 +59,19 @@ Examples:
 
 // RunCLI is the entry point for the kool github command-line interface.
 func RunCLI(args []string) error {
-	err := runCLI(args)
+	return RunCLIWithGhBin("", args)
+}
+
+// RunCLIWithGhBin is RunCLI with an explicit gh binary (empty uses GH_BIN / "gh").
+func RunCLIWithGhBin(ghBin string, args []string) error {
+	err := runCLI(ghBin, args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
 	return err
 }
 
-func runCLI(args []string) error {
+func runCLI(ghBin string, args []string) error {
 	if len(args) == 0 {
 		fmt.Println(strings.TrimPrefix(cliHelp, "\n"))
 		return nil
@@ -76,13 +81,13 @@ func runCLI(args []string) error {
 		fmt.Println(strings.TrimPrefix(cliHelp, "\n"))
 		return nil
 	case "repo":
-		return runRepoCLI(args[1:])
+		return runRepoCLI(ghBin, args[1:])
 	default:
 		return fmt.Errorf("unrecognized github command: %s", args[0])
 	}
 }
 
-func runRepoCLI(args []string) error {
+func runRepoCLI(ghBin string, args []string) error {
 	if len(args) == 0 {
 		fmt.Println(strings.TrimPrefix(repoHelp, "\n"))
 		return nil
@@ -92,13 +97,13 @@ func runRepoCLI(args []string) error {
 		fmt.Println(strings.TrimPrefix(repoHelp, "\n"))
 		return nil
 	case "list":
-		return runRepoList(args[1:])
+		return runRepoList(ghBin, args[1:])
 	default:
 		return fmt.Errorf("unrecognized repo command: %s", args[0])
 	}
 }
 
-func runRepoList(args []string) error {
+func runRepoList(ghBin string, args []string) error {
 	var (
 		searchDescription string
 		searchCode        string
@@ -131,6 +136,7 @@ func runRepoList(args []string) error {
 		SearchDescription: searchDescription,
 		SearchCode:        searchCode,
 		Limit:             limit,
+		GhBin:             ghBin,
 	})
 	if err != nil {
 		return err

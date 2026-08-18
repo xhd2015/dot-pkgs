@@ -27,7 +27,6 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
 		return err
 	}
-	t.Setenv("WRK_HOME", wrkHome)
 
 	// pre-create the expected tmp worktree dir (without suffix)
 	// naming: <repoBasename>-<pathToken>-<date>-tmp-rebase

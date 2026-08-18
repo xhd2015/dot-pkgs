@@ -71,7 +71,8 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := os.MkdirAll(filepath.Join(req.HomeDir, ".cloudflared"), 0o755); err != nil {
 		return err
 	}
-	t.Setenv("HOME", req.HomeDir)
+	// Do not t.Setenv("HOME"): doctest leaves always call t.Parallel().
+	// ConfigDir is always set; HomeDir is passed to the fake runner.
 
 	if strings.TrimSpace(req.ConfigDir) == "" {
 		req.ConfigDir = t.TempDir()

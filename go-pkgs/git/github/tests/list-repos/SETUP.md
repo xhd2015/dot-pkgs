@@ -41,7 +41,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	t.Setenv("GH_BIN", "")
 	return nil
 }
 
