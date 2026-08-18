@@ -327,9 +327,14 @@ func parseCGSManagedDisplaySpacesJSON(raw []byte) ([]DisplaySpaces, error) {
 			spaces = append(spaces, SpaceInfo{
 				ID:   id,
 				Type: spaceTypeFromMap(sm),
+				UUID: spaceUUIDFromMap(sm),
 			})
 		}
-		out = append(out, DisplaySpaces{Spaces: spaces})
+		ds := DisplaySpaces{Spaces: spaces}
+		if cur, ok := currentSpaceFromMap(mm); ok {
+			ds.Current = cur
+		}
+		out = append(out, ds)
 	}
 	return out, nil
 }
@@ -365,6 +370,44 @@ func spaceIDFromMap(sm map[string]interface{}) (uint64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func currentSpaceFromMap(mm map[string]interface{}) (SpaceInfo, bool) {
+	if mm == nil {
+		return SpaceInfo{}, false
+	}
+	raw, ok := mm["Current Space"]
+	if !ok {
+		raw, ok = mm["CurrentSpace"]
+	}
+	if !ok {
+		return SpaceInfo{}, false
+	}
+	sm, ok := raw.(map[string]interface{})
+	if !ok {
+		return SpaceInfo{}, false
+	}
+	id, ok := spaceIDFromMap(sm)
+	if !ok {
+		return SpaceInfo{}, false
+	}
+	return SpaceInfo{
+		ID:   id,
+		Type: spaceTypeFromMap(sm),
+		UUID: spaceUUIDFromMap(sm),
+	}, true
+}
+
+func spaceUUIDFromMap(sm map[string]interface{}) string {
+	if sm == nil {
+		return ""
+	}
+	for _, key := range []string{"uuid", "UUID"} {
+		if v, ok := sm[key].(string); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 func spaceTypeFromMap(sm map[string]interface{}) int {

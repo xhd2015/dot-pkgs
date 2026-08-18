@@ -9,11 +9,24 @@ import (
 type SpaceInfo struct {
 	ID   uint64
 	Type int // 0 = user Desktop
+	UUID string
+}
+
+// UserSpace is one type-0 Desktop on the first managed display.
+type UserSpace struct {
+	// Index is the dense 0-based Desktop index (Desktop 1 = 0).
+	Index int
+	ID    uint64
+	UUID  string
+	// Current is true when this is the display's Current Space.
+	Current bool
 }
 
 // DisplaySpaces is one monitor's Spaces list (order preserved).
 type DisplaySpaces struct {
 	Spaces []SpaceInfo
+	// Current is the monitor's Current Space (ID 0 if unknown).
+	Current SpaceInfo
 }
 
 // WindowSpaceOption configures SpaceIndexForWindow (injection for tests).
@@ -81,6 +94,53 @@ func WithPlatformGOOS(goos string) WindowSpaceOption {
 		c.platformGOOS = goos
 		c.hasPlatformGOOS = true
 	}
+}
+
+// ListManagedDisplays returns CGS managed display spaces (all monitors).
+// Injectable opts (WithManagedDisplays, WithPlatformGOOS) allow tests without WindowServer.
+func ListManagedDisplays(opts ...WindowSpaceOption) ([]DisplaySpaces, error) {
+	cfg := &windowSpaceConfig{}
+	for _, o := range opts {
+		if o != nil {
+			o(cfg)
+		}
+	}
+	goos := effectiveGOOS()
+	if cfg.hasPlatformGOOS {
+		goos = cfg.platformGOOS
+	}
+	if goos != "darwin" {
+		return nil, ErrUnsupportedPlatform
+	}
+	return resolveManagedDisplays(cfg)
+}
+
+// ListUserSpaces returns type-0 Desktops on the first managed display,
+// dense-indexed the same way as SpaceIndexForWindow.
+func ListUserSpaces(opts ...WindowSpaceOption) ([]UserSpace, error) {
+	displays, err := ListManagedDisplays(opts...)
+	if err != nil {
+		return nil, err
+	}
+	if len(displays) == 0 {
+		return nil, fmt.Errorf("space: no managed displays: %w", ErrSpaceNotFound)
+	}
+	currentID := displays[0].Current.ID
+	var out []UserSpace
+	n := 0
+	for _, s := range displays[0].Spaces {
+		if s.Type != 0 {
+			continue
+		}
+		out = append(out, UserSpace{
+			Index:   n,
+			ID:      s.ID,
+			UUID:    s.UUID,
+			Current: currentID != 0 && s.ID == currentID,
+		})
+		n++
+	}
+	return out, nil
 }
 
 // BuildUserSpaceIndex maps type==0 space IDs to dense 0-based indices in list order.
