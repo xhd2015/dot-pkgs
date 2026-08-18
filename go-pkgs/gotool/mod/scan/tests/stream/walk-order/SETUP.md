@@ -32,7 +32,11 @@ order.
 4. Set `req.RootDir` (operation `stream` is set by the `stream/` grouping Setup).
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initStreamWorkspace(t, "example.com/root")

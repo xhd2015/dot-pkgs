@@ -11,7 +11,11 @@ mvd --rm tracked → error → has move history
 - Run `mvd --rm src` without the `--force` flag — this should fail because the entry has movement history that would be lost.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     src := filepath.Join(req.WorkRoot, "src")

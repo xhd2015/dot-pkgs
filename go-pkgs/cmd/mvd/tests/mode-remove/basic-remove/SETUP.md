@@ -10,7 +10,11 @@ mvd --rm tracked → []  (removed)
 - Remove it with `--rm`. Since it has no movement history (only one location), the removal succeeds without requiring `--force`.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     dir := filepath.Join(req.WorkRoot, "tracked")

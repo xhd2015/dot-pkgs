@@ -11,7 +11,11 @@ mvd --rm -f tracked → []  (force removed)
 - Run `mvd --rm -f src` — the `--force` flag clears the history even though the entry has multiple locations.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     src := filepath.Join(req.WorkRoot, "src")

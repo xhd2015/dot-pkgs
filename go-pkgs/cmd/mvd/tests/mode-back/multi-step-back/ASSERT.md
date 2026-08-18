@@ -6,7 +6,11 @@
 - 0 (success, no-op is not an error)
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
     if resp == nil {

@@ -18,7 +18,11 @@ Note: git applies `.gitignore` to working-tree paths whether or not the `.gitign
 is committed, so the ignore rule is effective during scan.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initSkipRoot(t, "example.com/root")

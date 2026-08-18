@@ -159,7 +159,7 @@ import (
 
 	"github.com/xhd2015/doctest/session"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/cloudflare"
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // attachStep is one Attach call sharing ConfigDir / TunnelName / Runner.

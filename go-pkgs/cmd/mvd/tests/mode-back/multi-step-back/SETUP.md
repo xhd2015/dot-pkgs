@@ -15,7 +15,11 @@ mvd --back d1/src → [(src)]
 - Run `mvd --back src` — the project is already at origin, so this should be a no-op.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     src := filepath.Join(req.WorkRoot, "src")

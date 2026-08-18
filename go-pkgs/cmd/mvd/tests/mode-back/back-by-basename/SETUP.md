@@ -11,7 +11,12 @@ mvd --back src → [(src)]
 - Run `mvd --back kool` from the separate working directory — the basename lookup should find the project even though the CWD is unrelated.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     projectRoot := filepath.Join(req.WorkRoot, "projects")

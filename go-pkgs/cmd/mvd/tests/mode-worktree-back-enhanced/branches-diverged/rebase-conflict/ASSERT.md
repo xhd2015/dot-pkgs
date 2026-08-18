@@ -12,7 +12,9 @@
 
 ```go
 import (
+	"os"
 	"path/filepath"
+
 	"github.com/xhd2015/doctest/session"
 )
 

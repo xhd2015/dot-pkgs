@@ -20,7 +20,11 @@ skip the whole subtree — `ext`'s own `go.mod` is never scanned.
 3. Set `req.RootDir` (operation `scan` is set by the `skips/` grouping Setup).
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initSkipRoot(t, "example.com/root")

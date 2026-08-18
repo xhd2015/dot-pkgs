@@ -13,7 +13,12 @@ mvd --back al → [(src)]
 - Run `mvd --back opencode` from a separate working directory — this must resolve the alias to find the project in history.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     projectRoot := filepath.Join(req.WorkRoot, "projects")

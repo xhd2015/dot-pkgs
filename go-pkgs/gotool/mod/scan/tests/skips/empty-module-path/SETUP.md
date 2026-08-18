@@ -17,7 +17,12 @@ without being publishable modules themselves.
 3. Set `req.RootDir`.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	ws := initSkipRoot(t, "example.com/root")

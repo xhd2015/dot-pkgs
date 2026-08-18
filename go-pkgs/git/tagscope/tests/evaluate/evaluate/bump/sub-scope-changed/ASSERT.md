@@ -20,15 +20,15 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := decisionFor(t, resp.Plan, "sub/")
-	if d.LatestRelease != "sub/v0.2.3" {
-		t.Fatalf("LatestRelease = %q, want sub/v0.2.3", d.LatestRelease)
+	dec := decisionFor(t, resp.Plan, "sub/")
+	if dec.LatestRelease != "sub/v0.2.3" {
+		t.Fatalf("LatestRelease = %q, want sub/v0.2.3", dec.LatestRelease)
 	}
-	if d.NextTag != "sub/v0.2.4" {
-		t.Fatalf("NextTag = %q, want sub/v0.2.4", d.NextTag)
+	if dec.NextTag != "sub/v0.2.4" {
+		t.Fatalf("NextTag = %q, want sub/v0.2.4", dec.NextTag)
 	}
-	if d.SkipReason != "" {
-		t.Fatalf("SkipReason = %q, want empty", d.SkipReason)
+	if dec.SkipReason != "" {
+		t.Fatalf("SkipReason = %q, want empty", dec.SkipReason)
 	}
 }
 ```

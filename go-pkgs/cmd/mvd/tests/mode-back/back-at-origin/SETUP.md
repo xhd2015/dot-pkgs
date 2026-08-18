@@ -11,7 +11,11 @@ mvd --back src → no-op → nothing to move back
 - Run `mvd --back src` again — since the project is already at its origin, this should be a no-op that reports "nothing to move back".
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     src := filepath.Join(req.WorkRoot, "src")

@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
+
 	"github.com/xhd2015/doctest/session"
 )
 

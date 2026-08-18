@@ -11,7 +11,11 @@ mvd --back dst/src → [(src)]
 - Run `mvd --back <moved-path>` to move the project back to its original location at `src`.
 
 ```go
-import "github.com/xhd2015/doctest/session"
+import (
+	"path/filepath"
+
+	"github.com/xhd2015/doctest/session"
+)
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
     src := filepath.Join(req.WorkRoot, "src")
