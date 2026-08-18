@@ -98,6 +98,10 @@ func runWrkExternalGit(t *testing.T, dir string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
+	if len(args) > 0 && args[0] == "init" {
+		runWrkExternalGit(t, dir, "config", "user.email", "test@example.com")
+		runWrkExternalGit(t, dir, "config", "user.name", "Test User")
+	}
 }
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {

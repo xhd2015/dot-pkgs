@@ -1,7 +1,8 @@
 ## Expected
 
 - No error from the scan.
-- Zero issues returned (target path is inside the scanning worktree tree).
+- Exactly 1 issue with `IsIntraRepo == true` (target is inside the scanning worktree).
+- Lenient callers skip this issue (0 blocking).
 
 ## Exit Code
 
@@ -17,9 +18,11 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	if resp.Err != nil {
 		t.Fatalf("CheckLocalReplaces returned error: %v", resp.Err)
 	}
-	if len(resp.Issues) != 0 {
-		t.Fatalf("expected 0 issues: replace under worktree/external/ must be within-worktree, got %d: %+v", len(resp.Issues), resp.Issues)
+	if len(resp.Issues) != 1 {
+		t.Fatalf("expected 1 within-worktree issue, got %d: %+v", len(resp.Issues), resp.Issues)
+	}
+	if !resp.Issues[0].IsIntraRepo {
+		t.Fatalf("expected IsIntraRepo=true for replace under worktree/external/, got %+v", resp.Issues[0])
 	}
 }
-
 ```

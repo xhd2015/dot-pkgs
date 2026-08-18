@@ -194,6 +194,9 @@ type Request struct {
 	Args       []string
 	StdinInput string
 	UseScript  bool
+	// ExtraEnv is appended to the mvd child env (e.g. HOME=..., X=...).
+	// Do not t.Setenv here: doctest leaves always call t.Parallel().
+	ExtraEnv []string
 }
 
 type Response struct {
@@ -216,6 +219,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 
 	cmd := exec.Command(cmdName, cmdArgs...)
 	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
+	cmd.Env = append(cmd.Env, req.ExtraEnv...)
 
 	if req.StdinInput != "" {
 		stdin, err := cmd.StdinPipe()

@@ -17,15 +17,11 @@ repo/.git exported as GIT_DIR -> go-pkgs/cmd/go.mod replace old => ../ -> target
 ## Steps
 
 1. Create `go-pkgs/go.mod` and `go-pkgs/cmd/go.mod`.
-2. Export `GIT_DIR=<repo>/.git` for the rest of this test.
-3. Call `replace.CheckLocalReplaces(repo)`.
+2. Call `replace.CheckLocalReplaces(repo)`.
+   Do not `t.Setenv("GIT_DIR")`: doctest leaves always call `t.Parallel()`.
 
 ```go
-import (
-	"path/filepath"
-
-	"github.com/xhd2015/doctest/session"
-)
+import "github.com/xhd2015/doctest/session"
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := writeGoMod(req.RootDir, "go-pkgs/go.mod", "module github.com/xhd2015/dot-pkgs/go-pkgs\n\ngo 1.22\n"); err != nil {
@@ -34,7 +30,6 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	if err := writeGoMod(req.RootDir, "go-pkgs/cmd/go.mod", "module github.com/xhd2015/dot-pkgs/go-pkgs/cmd\n\ngo 1.22\n\nrequire github.com/xhd2015/dot-pkgs/go-pkgs v0.0.0\n\nreplace github.com/xhd2015/dot-pkgs/go-pkgs => ../\n"); err != nil {
 		return err
 	}
-	t.Setenv("GIT_DIR", filepath.Join(req.RootDir, ".git"))
 	return nil
 }
 

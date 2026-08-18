@@ -2,7 +2,7 @@
 
 - No error from the scan.
 - Exactly 1 issue is returned.
-- The issue has `IsIntraRepo == false`.
+- The issue has `IsIntraRepo == true` (resolved path is still under the scan root).
 - The issue has `NewPath == "./nonexistent"`.
 
 ```go
@@ -19,8 +19,8 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 		t.Fatalf("expected 1 issue, got %d: %+v", len(resp.Issues), resp.Issues)
 	}
 	issue := resp.Issues[0]
-	if issue.IsIntraRepo {
-		t.Fatalf("expected IsIntraRepo=false, got true. issue: %+v", issue)
+	if !issue.IsIntraRepo {
+		t.Fatalf("expected IsIntraRepo=true for missing path under scan root, got false. issue: %+v", issue)
 	}
 	if issue.NewPath != "./nonexistent" {
 		t.Fatalf("expected NewPath=./nonexistent, got %q", issue.NewPath)

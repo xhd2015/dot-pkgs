@@ -3,13 +3,13 @@
 **Feature**: local replace target is outside the git repo
 
 ```
-# replace target path resolves to directory outside git toplevel or doesn't exist -> extra-repo
-local replace -> resolve target -> git toplevel != top or not found -> IsIntraRepo = false
+# replace target path resolves outside the scanning worktree tree -> extra-repo
+local replace -> resolve target -> path not under scan root -> IsIntraRepo = false
 ```
 
 ## Preconditions
 
-- The replace target directory is outside the git repo or does not exist.
+- The replace target path is outside the scanning worktree tree.
 
 ## Steps
 

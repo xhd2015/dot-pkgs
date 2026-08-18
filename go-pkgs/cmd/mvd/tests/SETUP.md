@@ -110,6 +110,7 @@ func runMvd(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	bin := getMvdBin(t, d)
 	cmd := exec.Command(bin, req.Args...)
 	cmd.Env = append(os.Environ(), "MVD_DEBUG_CONFIG_HOME="+req.ConfigHome)
+	cmd.Env = append(cmd.Env, req.ExtraEnv...)
 	out, err := cmd.CombinedOutput()
 	exitCode := 0
 	if err != nil {

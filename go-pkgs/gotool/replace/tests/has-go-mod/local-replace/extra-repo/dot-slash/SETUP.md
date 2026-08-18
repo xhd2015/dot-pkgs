@@ -3,8 +3,8 @@
 **Feature**: `./` replace target outside git repo (target directory does not exist)
 
 ```
-# replace old => ./nonexistent -> ./nonexistent does not exist -> os.Stat fails -> extra-repo
-go.mod -> replace old => ./nonexistent -> target does not exist -> IsIntraRepo = false
+# replace old => ./nonexistent -> path still under scan root even if missing
+go.mod -> replace old => ./nonexistent -> target missing, still under tree -> IsIntraRepo = true
 ```
 
 ## Preconditions

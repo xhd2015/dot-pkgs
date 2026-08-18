@@ -3,6 +3,7 @@ package replace
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/worktree"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/gotool/mod/scan"
@@ -10,7 +11,8 @@ import (
 
 // ReplaceIssue describes a local filesystem replace directive found in a
 // go.mod file.  IsIntraRepo is true when the replace target resolves to an
-// existing directory that shares the same git toplevel as the scan root.
+// existing directory inside the scan-root worktree tree (same git toplevel,
+// or a nested linked worktree such as wrk external/).
 type ReplaceIssue struct {
 	GoModPath   string // absolute path to the go.mod file
 	OldPath     string // replace old path
@@ -63,14 +65,18 @@ func CheckLocalReplaces(top string) ([]ReplaceIssue, error) {
 }
 
 // isIntraRepoReplace reports whether the replace target at replacePath
-// (relative to modDir, or absolute) resolves to an existing directory that
-// lives in the same git repo as consumerTop.
+// (relative to modDir, or absolute) resolves to an existing directory inside
+// the scanning worktree (consumerTop). Linked worktrees under
+// worktree/external/ have their own git toplevel but are still in-tree.
 func isIntraRepoReplace(modDir, replacePath, consumerTop string) bool {
 	target := replacePath
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(modDir, target)
 	}
 	target = filepath.Clean(target)
+	if insideDir(consumerTop, target) {
+		return true
+	}
 	info, err := os.Stat(target)
 	if err != nil || !info.IsDir() {
 		return false
@@ -79,5 +85,56 @@ func isIntraRepoReplace(modDir, replacePath, consumerTop string) bool {
 	if err != nil {
 		return false
 	}
-	return top == consumerTop
+	return samePath(top, consumerTop)
+}
+
+func insideDir(parent, child string) bool {
+	parent = canonExisting(parent)
+	child = canonPath(child)
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	sep := string(filepath.Separator)
+	return rel != ".." && !strings.HasPrefix(rel, ".."+sep)
+}
+
+func samePath(a, b string) bool {
+	return canonExisting(a) == canonExisting(b)
+}
+
+func canonExisting(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	if ev, err := filepath.EvalSymlinks(abs); err == nil {
+		return ev
+	}
+	return abs
+}
+
+// canonPath resolves p even when the final elements do not exist, by
+// EvalSymlinks on the longest existing prefix (macOS /var → /private/var).
+func canonPath(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	if ev, err := filepath.EvalSymlinks(abs); err == nil {
+		return ev
+	}
+	var tail []string
+	dir := abs
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return abs
+		}
+		tail = append([]string{filepath.Base(dir)}, tail...)
+		if ev, err := filepath.EvalSymlinks(parent); err == nil {
+			return filepath.Join(append([]string{ev}, tail...)...)
+		}
+		dir = parent
+	}
 }
