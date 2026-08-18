@@ -12,11 +12,11 @@ otherwise -> absolute unchanged
 
 ## Preconditions
 
-- Cwd is saved and restored; leaves configure edge-case paths.
+- Leaves configure edge-case paths and `req.BaseDir`. No process `chdir`.
 
 ## Steps
 
-1. Save and restore the original cwd.
+1. Leaves set Path, BaseDir, and Op.
 
 ```go
 import (
@@ -26,7 +26,6 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	t.Helper()
-	saveAndRestoreCwd(t)
 	return nil
-}```
+}
+```

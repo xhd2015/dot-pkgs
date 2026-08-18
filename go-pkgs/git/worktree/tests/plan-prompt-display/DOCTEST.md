@@ -115,8 +115,6 @@ doctest test ./go-pkgs/git/worktree/tests/plan-prompt-display
 ```go
 import (
 	"bytes"
-	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -143,18 +141,6 @@ type Response struct {
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	var promptBuf strings.Builder
 	var stdout bytes.Buffer
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	os.Stdout = w
-
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&stdout, r)
-		close(done)
-	}()
 
 	var capturedLabel string
 	opts := worktree.MergeBackOptions{
@@ -162,6 +148,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		TargetPath: req.TargetPath,
 		DryRun:     req.DryRun,
 		Remove:     true,
+		Stdout:     &stdout,
 		Confirm: func(plan worktree.MergeBackPlan) (bool, error) {
 			capturedLabel = plan.TargetLabel
 			if req.CapturePrompt {
@@ -171,11 +158,6 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		},
 	}
 	result, runErr := worktree.MergeBack(opts)
-
-	w.Close()
-	os.Stdout = oldStdout
-	<-done
-
 	if runErr != nil {
 		return nil, runErr
 	}

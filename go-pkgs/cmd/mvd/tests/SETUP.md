@@ -135,8 +135,12 @@ func mergeEnv(base, extra []string) []string {
 func runMvd(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	bin := getMvdBin(t, d)
 	cmd := exec.Command(bin, req.Args...)
-	if req.WorkRoot != "" {
-		cmd.Dir = req.WorkRoot
+	dir := req.Cwd
+	if dir == "" {
+		dir = req.WorkRoot
+	}
+	if dir != "" {
+		cmd.Dir = dir
 	}
 	cmd.Env = mergeEnv(os.Environ(), append([]string{"MVD_DEBUG_CONFIG_HOME=" + req.ConfigHome}, req.ExtraEnv...))
 	out, err := cmd.CombinedOutput()

@@ -13,7 +13,6 @@ mvd src d2 → [(src), (d1/src), (d2/src)]
 
 ```go
 import (
-	"os"
 	"path/filepath"
 	"github.com/xhd2015/doctest/session"
 )
@@ -36,9 +35,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 
 	cwd := filepath.Join(req.WorkRoot, "cwd")
 	mkdirAll(t, cwd)
-	if err := os.Chdir(cwd); err != nil {
-		return err
-	}
+	req.Cwd = cwd
 
 	req.Args = []string{"kool", dst}
 	return nil

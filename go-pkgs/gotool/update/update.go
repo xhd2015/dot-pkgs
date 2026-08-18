@@ -14,19 +14,27 @@ import (
 var semverPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+`)
 
 // Update drops replace for the target module and sets require to the latest git tag.
-// Consumer module is the process cwd (legacy). Prefer Pin for cwd-independent use.
+// Consumer module is the process cwd (legacy). Prefer UpdateIn or Pin for
+// cwd-independent use.
 func Update(dir string) error {
+	consumerDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	return UpdateIn(consumerDir, dir)
+}
+
+// UpdateIn is Update with an explicit consumer module directory.
+func UpdateIn(consumerDir, dir string) error {
 	if dir == "" {
 		return fmt.Errorf("requires dir")
+	}
+	if consumerDir == "" {
+		return fmt.Errorf("requires consumer dir")
 	}
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("no such dir: %s", dir)
-	}
-
-	consumerDir, err := os.Getwd()
-	if err != nil {
-		return err
 	}
 
 	result, err := Pin(PinOptions{

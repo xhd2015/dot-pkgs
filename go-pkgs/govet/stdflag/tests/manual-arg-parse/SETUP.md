@@ -22,10 +22,11 @@ fixture.go -> CheckAST -> []Violation
 ## Context
 
 - `DOCTEST_ROOT` points to this test tree's root directory.
-- Each leaf's `Setup` populates `req.Src` by reading `fixture.go` from the leaf directory.
+- Each leaf's `Setup` populates `req.Src` by reading `fixture.go` via `fixtureFile` (`DOCTEST_CASE`).
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -33,5 +34,16 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	return nil
+}
+
+func fixtureFile(d *session.Doctest, rel string) string {
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	base := d.DOCTEST_CASE
+	if base == "" || !filepath.IsAbs(base) {
+		base = filepath.Join(d.DOCTEST_ROOT, base)
+	}
+	return filepath.Join(base, rel)
 }
 ```

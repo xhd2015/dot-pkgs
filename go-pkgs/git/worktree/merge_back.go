@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,6 +59,16 @@ type MergeBackOptions struct {
 	// StashLabel is the message for git stash push -m during dirty migration.
 	// Empty uses a product-neutral default ("merge-back"), not "wrk-merge-back".
 	StashLabel string
+
+	// Stdout receives dry-run plan listing. nil uses os.Stdout.
+	Stdout io.Writer
+}
+
+func mergeBackStdout(opts MergeBackOptions) io.Writer {
+	if opts.Stdout != nil {
+		return opts.Stdout
+	}
+	return os.Stdout
 }
 
 // MergeBackResult describes the outcome of a merge-back operation.
@@ -178,7 +189,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 			return result, nil
 		}
 		if opts.DryRun {
-			return printDryRun(result, plan)
+			return printDryRun(result, plan, mergeBackStdout(opts))
 		}
 		if err := executeRemove(plan, sourceAbs, mainRepo, branch); err != nil {
 			return nil, err
@@ -194,7 +205,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	}
 
 	if opts.DryRun {
-		return printDryRun(result, plan)
+		return printDryRun(result, plan, mergeBackStdout(opts))
 	}
 
 	if plan.NeedsConfirm {
@@ -260,7 +271,7 @@ func mergeBackViaTmpWorktree(
 	}
 
 	if opts.DryRun {
-		return printDryRun(result, tmpPlan)
+		return printDryRun(result, tmpPlan, mergeBackStdout(opts))
 	}
 
 	if tmpPlan.NeedsConfirm {
@@ -619,10 +630,10 @@ func WritePlannedCommandsDisplay(b *strings.Builder, plan MergeBackPlan) {
 	}
 }
 
-func printDryRun(result *MergeBackResult, plan MergeBackPlan) (*MergeBackResult, error) {
+func printDryRun(result *MergeBackResult, plan MergeBackPlan, w io.Writer) (*MergeBackResult, error) {
 	var b strings.Builder
 	WritePlannedCommandsDisplay(&b, plan)
-	fmt.Print(strings.TrimSuffix(b.String(), "\n"))
+	fmt.Fprint(w, strings.TrimSuffix(b.String(), "\n"))
 	result.Action = "dry-run"
 	result.Message = "dry-run: planned commands listed"
 	return result, nil

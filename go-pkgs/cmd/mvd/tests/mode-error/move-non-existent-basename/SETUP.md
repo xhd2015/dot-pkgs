@@ -10,7 +10,6 @@ mvd no-match dst → error → no configured project match
 
 ```go
 import (
-	"os"
 	"path/filepath"
 	"github.com/xhd2015/doctest/session"
 )
@@ -21,9 +20,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 
 	cwd := filepath.Join(req.WorkRoot, "cwd")
 	mkdirAll(t, cwd)
-	if err := os.Chdir(cwd); err != nil {
-		return err
-	}
+	req.Cwd = cwd
 
 	req.Args = []string{"git-ops", dst}
 	return nil

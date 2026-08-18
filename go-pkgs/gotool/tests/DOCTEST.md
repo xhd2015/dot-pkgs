@@ -19,7 +19,8 @@ implementer rewires `Update` as a thin wrapper around `Pin`.
 - **`resolve.ResolveLocalModules(currentDir, []string{localDir})`** — reads consumer
   `go.mod`, resolves local module path, returns `LocalModuleInfo.IsDependency`.
 - **`update.Update(dir)`** — drops replace for the target module and sets require to the
-  latest matching git version tag (cwd = consumer; implementer will wrap `Pin`).
+  latest matching git version tag (consumer = process cwd; legacy).
+- **`update.UpdateIn(consumerDir, dir)`** — same as Update with an explicit consumer module.
 - **`update.Pin(opts)`** — library pin with explicit `ConsumerDir`, `DepDir`, optional
   `Version`, and `DryRun`. No process-global Chdir; edits use
   `commands.GoModEditOptions{Dir: ConsumerDir}`.
@@ -77,7 +78,6 @@ doctest test ./go-pkgs/gotool/tests/update/pin
 ```go
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
@@ -112,23 +112,9 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Helper()
 	resp := &Response{}
 
-	// replace/update rely on consumer cwd (legacy). Pin must work without Chdir
-	// (parallel-safe product API via ConsumerDir).
-	needsChdir := req.Operation == "replace" || req.Operation == "update"
-	if needsChdir {
-		oldWd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-		if err := os.Chdir(req.ConsumerDir); err != nil {
-			return nil, err
-		}
-		defer os.Chdir(oldWd)
-	}
-
 	switch req.Operation {
 	case "replace":
-		resp.AbsDir, resp.ModulePath, resp.Err = replace.Replace(req.TargetDir)
+		resp.AbsDir, resp.ModulePath, resp.Err = replace.ReplaceIn(req.ConsumerDir, req.TargetDir)
 		if resp.Err == nil {
 			modInfo, err := resolve.GetModuleInfo(req.ConsumerDir)
 			if err != nil {
@@ -149,7 +135,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		}
 
 	case "update":
-		resp.Err = update.Update(req.TargetDir)
+		resp.Err = update.UpdateIn(req.ConsumerDir, req.TargetDir)
 		if resp.Err == nil {
 			modInfo, err := resolve.GetModuleInfo(req.ConsumerDir)
 			if err != nil {

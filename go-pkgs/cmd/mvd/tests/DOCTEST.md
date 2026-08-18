@@ -191,6 +191,9 @@ import (
 type Request struct {
 	ConfigHome string
 	WorkRoot   string
+	// Cwd is the mvd child process directory. Empty uses WorkRoot.
+	// Do not os.Chdir in leaves: doctest leaves always call t.Parallel().
+	Cwd        string
 	Args       []string
 	StdinInput string
 	UseScript  bool
@@ -218,8 +221,12 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	}
 
 	cmd := exec.Command(cmdName, cmdArgs...)
-	if req.WorkRoot != "" {
-		cmd.Dir = req.WorkRoot
+	dir := req.Cwd
+	if dir == "" {
+		dir = req.WorkRoot
+	}
+	if dir != "" {
+		cmd.Dir = dir
 	}
 	cmd.Env = mergeEnv(os.Environ(), append([]string{"MVD_DEBUG_CONFIG_HOME=" + req.ConfigHome}, req.ExtraEnv...))
 

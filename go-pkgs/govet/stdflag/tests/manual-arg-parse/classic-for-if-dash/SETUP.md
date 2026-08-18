@@ -2,7 +2,7 @@
 - The leaf directory contains `fixture.go` with a classic `for i := 0; i < len(args); i++` loop containing an `if args[i] == "--flag"` comparison.
 
 ## Steps
-1. Read `fixture.go` from the current directory.
+1. Read `fixture.go` from the leaf directory via `fixtureFile` (`DOCTEST_CASE`).
 2. Set `req.Src` to the file contents.
 
 ```go
@@ -13,7 +13,7 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	data, err := os.ReadFile("fixture.go")
+	data, err := os.ReadFile(fixtureFile(d, "fixture.go"))
 	if err != nil {
 		return err
 	}
