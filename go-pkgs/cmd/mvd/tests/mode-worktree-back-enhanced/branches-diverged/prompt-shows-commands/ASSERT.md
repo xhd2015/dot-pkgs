@@ -19,12 +19,12 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 )
 
-func displayGitPath(path string) string {
+func displayGitPath(path, baseDir string) string {
 	p := filepath.Clean(path)
 	if strings.HasPrefix(p, "/private/var/") {
 		p = "/var/" + strings.TrimPrefix(p, "/private/var/")
 	}
-	return pathfmt.Short(p)
+	return pathfmt.ShortFrom(p, baseDir)
 }
 
 func defaultBranchAt(t *testing.T, repo string) string {
@@ -48,8 +48,8 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	wtDir := filepath.Join(req.WorkRoot, "feature")
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	target := defaultBranchAt(t, mainRepo)
-	shortMain := displayGitPath(mainRepo)
-	shortWt := displayGitPath(wtDir)
+	shortMain := displayGitPath(mainRepo, req.WorkRoot)
+	shortWt := displayGitPath(wtDir, req.WorkRoot)
 
 	// Avoid leading "" from raw-string newline after `: ` — FormatPlanPrompt has no leading \n (P1).
 	tmpl := "<contains>\n" + `branch feature has diverged, rebase and merge into ` + target + `?

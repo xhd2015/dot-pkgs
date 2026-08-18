@@ -19,12 +19,12 @@ import (
 	"github.com/xhd2015/dot-pkgs/go-pkgs/pathfmt"
 )
 
-func displayGitPath(path string) string {
+func displayGitPath(path, baseDir string) string {
 	p := filepath.Clean(path)
 	if strings.HasPrefix(p, "/private/var/") {
 		p = "/var/" + strings.TrimPrefix(p, "/private/var/")
 	}
-	return pathfmt.Short(p)
+	return pathfmt.ShortFrom(p, baseDir)
 }
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
@@ -35,12 +35,10 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 
 	mainRepo := filepath.Join(req.WorkRoot, "main")
 	wtDir := filepath.Join(req.WorkRoot, "feature")
-	shortMain := displayGitPath(mainRepo)
-	shortWt := displayGitPath(wtDir)
+	shortMain := displayGitPath(mainRepo, req.WorkRoot)
+	shortWt := displayGitPath(wtDir, req.WorkRoot)
 
-	tmpl := `
-<contains>
-  # worktree: remove
+	tmpl := "<contains>\n" + `  # worktree: remove
   git -C ` + shortMain + ` worktree remove ` + shortWt + `
   # worktree branch: drop
   git -C ` + shortMain + ` branch -D feature

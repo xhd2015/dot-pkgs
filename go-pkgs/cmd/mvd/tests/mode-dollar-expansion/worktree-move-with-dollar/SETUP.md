@@ -19,9 +19,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
 
 	homeDir := filepath.Join(req.WorkRoot, ".lls-home")
-	configDir := filepath.Join(homeDir, "Library", "Application Support", "lls")
-	mkdirAll(t, configDir)
-	writeFile(t, filepath.Join(configDir, "config.json"), `{"envs":["X"]}`)
+	writeLlsXConfig(t, homeDir)
 
 	projectRoot := filepath.Join(req.WorkRoot, "projects")
 	mainRepo := filepath.Join(projectRoot, "main")

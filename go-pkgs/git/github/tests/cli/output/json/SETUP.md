@@ -21,7 +21,7 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Args = []string{"repo", "list", "--owner", "alice", "--json"}
-	req.GhBin = writeOwnedOnlyGh(t, "alice", fixtureFile(d, "testdata/repos.json")
+	req.GhBin = writeOwnedOnlyGh(t, "alice", fixtureFile(d, "testdata/repos.json"))
 	return nil
 }
 ```

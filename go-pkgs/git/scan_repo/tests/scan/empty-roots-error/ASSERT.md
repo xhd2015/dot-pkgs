@@ -1,6 +1,6 @@
 ## Expected
 
-- `resp` is nil.
+- Scan returns an error; `Run` may still populate `resp.Elapsed`.
 
 ## Errors
 
@@ -21,9 +21,6 @@ import (
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	if err == nil {
 		t.Fatal("expected error for empty roots")
-	}
-	if resp != nil {
-		t.Fatalf("expected nil response, got %v", resp)
 	}
 	msg := strings.ToLower(err.Error())
 	if !strings.Contains(msg, "root") {

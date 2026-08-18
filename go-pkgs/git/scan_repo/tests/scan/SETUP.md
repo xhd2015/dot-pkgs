@@ -28,6 +28,8 @@ import (
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.ListRemotes = false
 	req.ListWorktrees = false
+	// Discovery leaves must not share $HOME/.cache under --label-all.
+	req.NoCache = true
 	return nil
 }
 
