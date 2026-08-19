@@ -23,6 +23,7 @@ func TestHelp(t *testing.T) {
 		"--origin-domain",
 		"pre-push",
 		"Co-authored-by",
+		"remote_sha not in local repo",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("help missing %q; got:\n%s", want, got)
@@ -83,6 +84,41 @@ func TestOlderUnpushedWithTrailerRejected(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "feat: with bot") {
 		t.Fatalf("should list bad subject:\n%s", out.String())
+	}
+}
+
+func TestUnknownRemoteSHACleanPushPasses(t *testing.T) {
+	// Other clone advanced origin; this clone never fetched that tip.
+	// Desired: clean local commit still passes (do not die on rev-list).
+	remote, clone := initRemoteAndClone(t)
+	t.Chdir(clone)
+
+	unknownRemote := pushUnfetchedRemoteTip(t, remote)
+	doCommit(t, clone, "feat: local clean")
+	local := revParse(t, clone, "HEAD")
+	assertSHAMissing(t, unknownRemote)
+
+	stdin := pushLine("refs/heads/master", local, "refs/heads/master", unknownRemote)
+	var out bytes.Buffer
+	if err := runWithIO(nil, strings.NewReader(stdin), &out); err != nil {
+		t.Fatalf("unknown remote SHA with clean local commit should pass: %v\n%s", err, out.String())
+	}
+}
+
+func TestUnknownRemoteSHAUnpushedTrailerRejected(t *testing.T) {
+	remote, clone := initRemoteAndClone(t)
+	t.Chdir(clone)
+
+	unknownRemote := pushUnfetchedRemoteTip(t, remote)
+	doCommit(t, clone, "feat: with bot\n\nCo-authored-by: Bot <bot@example.com>")
+	local := revParse(t, clone, "HEAD")
+	assertSHAMissing(t, unknownRemote)
+
+	stdin := pushLine("refs/heads/master", local, "refs/heads/master", unknownRemote)
+	var out bytes.Buffer
+	err := runWithIO(nil, strings.NewReader(stdin), &out)
+	if !errors.Is(err, errCoAuthoredByFound) {
+		t.Fatalf("unknown remote SHA must still reject unpushed trailer, got %v\n%s", err, out.String())
 	}
 }
 
@@ -235,6 +271,27 @@ func pushLine(localRef, localSHA, remoteRef, remoteSHA string) string {
 	return fmt.Sprintf("%s %s %s %s\n", localRef, localSHA, remoteRef, remoteSHA)
 }
 
+// pushUnfetchedRemoteTip pushes a new commit from a second clone and returns
+// that SHA. The current repo must not fetch it.
+func pushUnfetchedRemoteTip(t *testing.T, remote string) string {
+	t.Helper()
+	other := t.TempDir()
+	mustRun(t, "", "git", "clone", remote, other)
+	mustRun(t, other, "git", "config", "user.email", "test@example.com")
+	mustRun(t, other, "git", "config", "user.name", "Test User")
+	doCommit(t, other, "feat: on remote only")
+	mustRun(t, other, "git", "push", "origin", "HEAD")
+	return revParse(t, other, "HEAD")
+}
+
+func assertSHAMissing(t *testing.T, sha string) {
+	t.Helper()
+	err := exec.Command("git", "cat-file", "-e", sha+"^{commit}").Run()
+	if err == nil {
+		t.Fatalf("setup: expected SHA %s to be missing locally", sha)
+	}
+}
+
 func initRemoteAndClone(t *testing.T) (remote, clone string) {
 	t.Helper()
 	remote = t.TempDir()
@@ -301,6 +358,9 @@ func writeFile(t *testing.T, path string, content string) {
 
 func mustRun(t *testing.T, dir string, name string, args ...string) {
 	t.Helper()
+	if name == "git" {
+		args = append([]string{"-c", "core.hooksPath=/dev/null"}, args...)
+	}
 	cmd := exec.Command(name, args...)
 	if dir != "" {
 		cmd.Dir = dir

@@ -23,6 +23,7 @@ Reads git pre-push stdin (one line per ref update):
 Commit sets checked (already-pushed commits are excluded):
   - update:  git rev-list <remote_sha>..<local_sha>
   - new branch (remote_sha all-zero): git rev-list <local_sha> --not --remotes
+  - remote_sha not in local repo: same as new branch
   - delete (local_sha all-zero): skip
 
 Matching is case-insensitive and requires a colon (Co-authored-by:).
@@ -201,7 +202,16 @@ func commitsToCheck(u pushUpdate) ([]string, error) {
 		// New remote branch: only commits not already on any remote-tracking ref.
 		args = []string{"rev-list", u.localSHA, "--not", "--remotes"}
 	} else {
-		args = []string{"rev-list", u.remoteSHA + ".." + u.localSHA}
+		exists, err := commitExists(u.remoteSHA)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			// Advertised remote tip was never fetched: same exclusion as a new branch.
+			args = []string{"rev-list", u.localSHA, "--not", "--remotes"}
+		} else {
+			args = []string{"rev-list", u.remoteSHA + ".." + u.localSHA}
+		}
 	}
 	out, ok, err := githook.GitOptionalOutput(args...)
 	if err != nil {
@@ -231,6 +241,14 @@ func commitMessage(sha string) (string, error) {
 // messageHasCoAuthoredBy reports trailer-style Co-authored-by: (colon required).
 func messageHasCoAuthoredBy(msg string) bool {
 	return strings.Contains(strings.ToLower(msg), "co-authored-by:")
+}
+
+func commitExists(sha string) (bool, error) {
+	_, ok, err := githook.GitOptionalOutput("rev-parse", "--verify", "--quiet", sha+"^{commit}")
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
 }
 
 func isZeroSHA(sha string) bool {
