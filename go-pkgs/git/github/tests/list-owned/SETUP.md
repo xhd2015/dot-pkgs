@@ -54,8 +54,13 @@ func writeFakeGh(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
 	ghPath := filepath.Join(dir, "gh")
+	tmpPath := ghPath + ".tmp"
 	script := mockGhHeader + body
-	if err := os.WriteFile(ghPath, []byte(script), 0755); err != nil {
+	// Write then rename so Linux overlayfs does not ETXTBSY on immediate exec.
+	if err := os.WriteFile(tmpPath, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmpPath, ghPath); err != nil {
 		t.Fatal(err)
 	}
 	return ghPath
