@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -36,6 +37,17 @@ func (r RepoType) String() string {
 }
 
 func RunCLI(args []string) error {
+	return RunCLIWithIO(args, os.Stdout, os.Stderr)
+}
+
+// RunCLIWithIO is RunCLI with explicit stdout/stderr (nil uses os.Stdout/os.Stderr).
+func RunCLIWithIO(args []string, stdout, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
 	var roots []string
 	var ignoreDirs []string
 	var ignoreDirBasenames []string
@@ -59,25 +71,27 @@ func RunCLI(args []string) error {
 		Bool("--no-cache", &noCache).
 		Bool("--refresh", &refresh).
 		String("--cache-dir", &cacheDir).
-		Help("-h,--help", cliHelp).
+		HelpFunc("-h,--help", func() {
+			fmt.Fprint(stdout, cliHelp)
+		}).
 		HelpNoExit().
 		Parse(args)
 	if err != nil {
 		if err == errHelp {
 			return nil
 		}
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(stderr, err)
 		return err
 	}
 	if len(remain) > 0 {
 		err := fmt.Errorf("unrecognized arguments: %s", strings.Join(remain, " "))
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(stderr, err)
 		return err
 	}
 
 	if len(roots) == 0 {
 		err := fmt.Errorf("at least one --root is required")
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(stderr, err)
 		return err
 	}
 
@@ -86,7 +100,7 @@ func RunCLI(args []string) error {
 		norm, normErr := normalizeIgnoreDir(dir)
 		if normErr != nil {
 			err := fmt.Errorf("%s: %w", dir, normErr)
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(stderr, err)
 			return err
 		}
 		normalizedIgnoreDirs = append(normalizedIgnoreDirs, norm)
@@ -103,9 +117,10 @@ func RunCLI(args []string) error {
 		NoCache:            noCache,
 		Refresh:            refresh,
 		CacheRoot:          cacheDir,
+		Stderr:             stderr,
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(stderr, err)
 		return err
 	}
 	repos := result.Repos
@@ -116,10 +131,10 @@ func RunCLI(args []string) error {
 		}
 		data, err := json.Marshal(repos)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(stderr, err)
 			return err
 		}
-		fmt.Print(string(data))
+		fmt.Fprint(stdout, string(data))
 		return nil
 	}
 
@@ -130,7 +145,7 @@ func RunCLI(args []string) error {
 				line += fmt.Sprintf("\torigin:%s/%s@%s", origin.Owner, origin.Repo, origin.Host)
 			}
 		}
-		fmt.Println(line)
+		fmt.Fprintln(stdout, line)
 	}
 	return nil
 }

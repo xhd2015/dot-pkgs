@@ -127,8 +127,6 @@ doctest test -v ./external/dot-pkgs-cli/go-pkgs/git/scan_repo/tests/cli/
 ```go
 import (
 	"bytes"
-	"io"
-	"os"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -145,35 +143,18 @@ type Response struct {
 	ExitCode int
 }
 
+func cliArgs(args []string) []string {
+	for _, a := range args {
+		if a == "--no-cache" || a == "--cache-dir" || a == "--refresh" {
+			return args
+		}
+	}
+	return append(append([]string{}, args...), "--no-cache")
+}
+
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	stdoutR, stdoutW, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	stderrR, stderrW, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
-	os.Stdout = stdoutW
-	os.Stderr = stderrW
-
-	runErr := scan_repo.RunCLI(req.Args)
-
-	stdoutW.Close()
-	stderrW.Close()
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	if _, err := io.Copy(&stdoutBuf, stdoutR); err != nil {
-		return nil, err
-	}
-	if _, err := io.Copy(&stderrBuf, stderrR); err != nil {
-		return nil, err
-	}
+	var stdout, stderr bytes.Buffer
+	runErr := scan_repo.RunCLIWithIO(cliArgs(req.Args), &stdout, &stderr)
 
 	exitCode := 0
 	if runErr != nil {
@@ -181,8 +162,8 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	}
 
 	return &Response{
-		Stdout:   stdoutBuf.String(),
-		Stderr:   stderrBuf.String(),
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
 		ExitCode: exitCode,
 	}, nil
 }

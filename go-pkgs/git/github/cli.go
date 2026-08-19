@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -59,51 +60,62 @@ Examples:
 
 // RunCLI is the entry point for the kool github command-line interface.
 func RunCLI(args []string) error {
-	return RunCLIWithGhBin("", args)
+	return RunCLIWithIO("", args, os.Stdout, os.Stderr)
 }
 
 // RunCLIWithGhBin is RunCLI with an explicit gh binary (empty uses GH_BIN / "gh").
 func RunCLIWithGhBin(ghBin string, args []string) error {
-	err := runCLI(ghBin, args)
+	return RunCLIWithIO(ghBin, args, os.Stdout, os.Stderr)
+}
+
+// RunCLIWithIO is RunCLI with explicit stdout/stderr (nil uses os.Stdout/os.Stderr).
+func RunCLIWithIO(ghBin string, args []string, stdout, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+	err := runCLI(ghBin, args, stdout)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(stderr, err)
 	}
 	return err
 }
 
-func runCLI(ghBin string, args []string) error {
+func runCLI(ghBin string, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		fmt.Println(strings.TrimPrefix(cliHelp, "\n"))
+		fmt.Fprint(stdout, strings.TrimPrefix(cliHelp, "\n"))
 		return nil
 	}
 	switch args[0] {
 	case "-h", "--help", "help":
-		fmt.Println(strings.TrimPrefix(cliHelp, "\n"))
+		fmt.Fprint(stdout, strings.TrimPrefix(cliHelp, "\n"))
 		return nil
 	case "repo":
-		return runRepoCLI(ghBin, args[1:])
+		return runRepoCLI(ghBin, args[1:], stdout)
 	default:
 		return fmt.Errorf("unrecognized github command: %s", args[0])
 	}
 }
 
-func runRepoCLI(ghBin string, args []string) error {
+func runRepoCLI(ghBin string, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		fmt.Println(strings.TrimPrefix(repoHelp, "\n"))
+		fmt.Fprint(stdout, strings.TrimPrefix(repoHelp, "\n"))
 		return nil
 	}
 	switch args[0] {
 	case "-h", "--help", "help":
-		fmt.Println(strings.TrimPrefix(repoHelp, "\n"))
+		fmt.Fprint(stdout, strings.TrimPrefix(repoHelp, "\n"))
 		return nil
 	case "list":
-		return runRepoList(ghBin, args[1:])
+		return runRepoList(ghBin, args[1:], stdout)
 	default:
 		return fmt.Errorf("unrecognized repo command: %s", args[0])
 	}
 }
 
-func runRepoList(ghBin string, args []string) error {
+func runRepoList(ghBin string, args []string, stdout io.Writer) error {
 	var (
 		searchDescription string
 		searchCode        string
@@ -118,7 +130,9 @@ func runRepoList(ghBin string, args []string) error {
 		StringSlice("--owner", &owners).
 		Int("--limit", &limit).
 		Bool("--json", &asJSON).
-		Help("-h,--help", listHelp).
+		HelpFunc("-h,--help", func() {
+			fmt.Fprint(stdout, listHelp)
+		}).
 		HelpNoExit().
 		Parse(args)
 	if err != nil {
@@ -147,7 +161,7 @@ func runRepoList(ghBin string, args []string) error {
 		if err != nil {
 			return fmt.Errorf("encode JSON: %w", err)
 		}
-		fmt.Println(string(data))
+		fmt.Fprintln(stdout, string(data))
 		return nil
 	}
 
@@ -156,7 +170,7 @@ func runRepoList(ghBin string, args []string) error {
 		for i, reason := range result.MatchedBy {
 			reasons[i] = string(reason)
 		}
-		fmt.Fprintf(os.Stdout, "%s\t%s\n", result.FullName, strings.Join(reasons, ","))
+		fmt.Fprintf(stdout, "%s\t%s\n", result.FullName, strings.Join(reasons, ","))
 	}
 	return nil
 }

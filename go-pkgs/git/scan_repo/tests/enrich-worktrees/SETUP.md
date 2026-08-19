@@ -29,6 +29,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	}
 	req.ListWorktrees = true
 	req.ListRemotes = false
+	req.NoCache = true
 	return nil
 }
 

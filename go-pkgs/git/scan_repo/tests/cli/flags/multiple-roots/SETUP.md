@@ -26,7 +26,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mkdirAll(t, rootB)
 	fakeGitRepo(t, filepath.Join(rootA, "repo-a"))
 	fakeGitRepo(t, filepath.Join(rootB, "repo-b"))
-	req.Args = []string{"--root", rootA, "--root", rootB}
+	req.Args = []string{"--root", rootA, "--root", rootB, "--no-cache"}
 	return nil
 }
 ```

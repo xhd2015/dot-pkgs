@@ -93,8 +93,7 @@ doctest test -v ./go-pkgs/git/github/tests/cli/...
 
 ```go
 import (
-	"io"
-	"os"
+	"bytes"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -113,35 +112,8 @@ type Response struct {
 }
 
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
-	stdoutR, stdoutW, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	stderrR, stderrW, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
-	os.Stdout = stdoutW
-	os.Stderr = stderrW
-
-	runErr := ghrepos.RunCLIWithGhBin(req.GhBin, req.Args)
-
-	stdoutW.Close()
-	stderrW.Close()
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-
-	stdoutBytes, readErr := io.ReadAll(stdoutR)
-	if readErr != nil {
-		return nil, readErr
-	}
-	stderrBytes, readErr := io.ReadAll(stderrR)
-	if readErr != nil {
-		return nil, readErr
-	}
+	var stdout, stderr bytes.Buffer
+	runErr := ghrepos.RunCLIWithIO(req.GhBin, req.Args, &stdout, &stderr)
 
 	exitCode := 0
 	if runErr != nil {
@@ -149,8 +121,8 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	}
 
 	return &Response{
-		Stdout:   string(stdoutBytes),
-		Stderr:   string(stderrBytes),
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
 		ExitCode: exitCode,
 	}, nil
 }

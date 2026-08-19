@@ -29,7 +29,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	mkdirAll(t, visible)
 	fakeGitRepo(t, visible)
 	addUnreadableDir(t, root, "secret")
-	req.Args = []string{"--root", root}
+	req.Args = []string{"--root", root, "--no-cache"}
 	return nil
 }
 ```
