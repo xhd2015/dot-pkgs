@@ -16,7 +16,7 @@ require (
 	github.com/xhd2015/go-coverage v1.0.41 // indirect
 	github.com/xhd2015/go-inspect v0.0.49 // indirect
 	github.com/xhd2015/less-gen v0.0.19 // indirect
-	github.com/xhd2015/xgo v1.2.0 // indirect
+	github.com/xhd2015/xgo v1.2.8 // indirect
 	golang.design/x/x11 v0.2.0 // indirect
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/image v0.28.0 // indirect
