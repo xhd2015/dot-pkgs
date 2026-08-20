@@ -5,7 +5,7 @@
 ```
 LookPath hit + local 0.1.0 + latest 0.2.0
   -> Ensure -> Action=update
-  ShellCalls == [UpdateCmd] once
+  ShellCalls == ["<BinPath> update"] once
   ResultNeedsUpdate true
 ```
 

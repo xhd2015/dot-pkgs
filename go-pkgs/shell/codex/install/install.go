@@ -179,15 +179,43 @@ func Install(ctx context.Context, opts InstallOpts) error {
 	return run(ctx, InstallCmd)
 }
 
-// Update runs UpdateCmd via RunShell.
-// opts.Bin is reserved for path-qualified forms; sealed tests expect UpdateCmd.
+// Update runs a path-qualified `<bin> update` when Bin is set, otherwise UpdateCmd.
+// If that command fails, it always runs InstallCmd.
 func Update(ctx context.Context, opts UpdateOpts) error {
 	run := opts.RunShell
 	if run == nil {
 		run = defaultRunShell(opts.Stdout, opts.Stderr)
 	}
-	_ = opts.Bin
-	return run(ctx, UpdateCmd)
+	cmd := updateCmdForBin(opts.Bin)
+	if err := run(ctx, cmd); err != nil {
+		if instErr := Install(ctx, InstallOpts{
+			RunShell: run,
+			Stdout:   opts.Stdout,
+			Stderr:   opts.Stderr,
+		}); instErr != nil {
+			return fmt.Errorf("codex update: %w; install: %v", err, instErr)
+		}
+		return nil
+	}
+	return nil
+}
+
+func updateCmdForBin(bin string) string {
+	bin = strings.TrimSpace(bin)
+	if bin == "" {
+		return UpdateCmd
+	}
+	return shellQuote(bin) + " update"
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " \t\n'\"\\$`") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // Ensure installs or updates Codex as needed.
@@ -196,15 +224,13 @@ func Update(ctx context.Context, opts UpdateOpts) error {
 //   - present + NeedsUpdate → Update; Action=update
 //   - present + !NeedsUpdate → noop; Action=noop
 //   - present + latest/local unknown → noop; Action=noop
+//
+// Production lookup (nil LookPath) uses NewestCodex. Injected LookPath is the
+// test seam and keeps first-hit semantics.
 func Ensure(ctx context.Context, opts EnsureOpts) (Result, error) {
 	var result Result
 
-	lookPath := opts.LookPath
-	if lookPath == nil {
-		lookPath = exec.LookPath
-	}
-
-	binPath, lookErr := lookPath("codex")
+	binPath, lookErr := resolveEnsureBin(ctx, opts)
 	if lookErr != nil {
 		// Missing → install; never fetch latest.
 		if err := Install(ctx, InstallOpts{
@@ -284,6 +310,16 @@ func Ensure(ctx context.Context, opts EnsureOpts) (Result, error) {
 	}
 	result.Action = "update"
 	return result, nil
+}
+
+func resolveEnsureBin(ctx context.Context, opts EnsureOpts) (string, error) {
+	if opts.LookPath != nil {
+		return opts.LookPath("codex")
+	}
+	p, _, err := NewestCodex(ctx, NewestCodexOpts{
+		RunVersion: opts.RunVersion,
+	})
+	return p, err
 }
 
 func resolveBin(bin string, lookPath func(file string) (string, error)) (string, error) {

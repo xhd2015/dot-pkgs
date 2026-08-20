@@ -2,7 +2,7 @@
 
 - `err == nil`.
 - `resp.Action == "update"`.
-- `resp.ShellCalls` is exactly `[install.UpdateCmd]`.
+- `resp.ShellCalls` is exactly `["<BinPath> update"]` (path-qualified).
 - `resp.FetchLatestCalls >= 1`.
 - `resp.ResultNeedsUpdate == true`.
 - `resp.LocalVersion` parses to `0.1.0` (or equals that form).
@@ -14,19 +14,22 @@
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
-	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/codex/install"
 )
 
 func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err error) {
 	t.Helper()
 	_ = d
-	_ = req
 	assertNoError(t, err)
 	assertEqual(t, "Action", resp.Action, "update")
-	assertShellCalls(t, resp.ShellCalls, install.UpdateCmd)
+	bin := req.BinPath
+	if bin == "" {
+		bin = filepath.Join(req.WorkDir, "bin", "codex")
+	}
+	assertShellCalls(t, resp.ShellCalls, bin+" update")
 	if resp.FetchLatestCalls < 1 {
 		t.Fatalf("FetchLatestCalls = %d, want >= 1", resp.FetchLatestCalls)
 	}
