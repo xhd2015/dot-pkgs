@@ -61,6 +61,11 @@ root `app-path/` (own `DOCTEST.md` / `Request` / `Run`) for the same reason.
 
 - Nested doctest root `tab-set/` covers `BuildTabSetNewWindowScript` (P1 Classic TDD).
 
+**Contents (nested)**
+
+- Nested doctest root `contents/` covers `BuildContentsScript` / `Contents`
+  (no-focus dump; home then system; skip not-running).
+
 **App-path (nested)**
 
 - Nested doctest root `app-path/` covers injectable `ResolveAppPathWith`
