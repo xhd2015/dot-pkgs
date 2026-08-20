@@ -205,3 +205,173 @@ func TestOpenUnsupportedPlatform(t *testing.T) {
 		t.Fatalf("Open() error = %v, want ErrUnsupportedPlatform", err)
 	}
 }
+
+func TestAppBundleDir(t *testing.T) {
+	cases := []struct {
+		name string
+		exe  string
+		want string
+	}{
+		{
+			name: "standard",
+			exe:  "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+			want: "/Applications/iTerm.app",
+		},
+		{
+			name: "bak variant",
+			exe:  "/Users/x/Applications/iTerm.app.bak-123/Contents/MacOS/iTerm2",
+			want: "/Users/x/Applications/iTerm.app.bak-123",
+		},
+		{
+			name: "no app ancestor",
+			exe:  "/usr/bin/bash",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := appBundleDir(tc.exe)
+			if got != tc.want {
+				t.Fatalf("appBundleDir(%q) = %q, want %q", tc.exe, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunningITermApps_DiskPathsOnly(t *testing.T) {
+	// No running processes; both disk paths exist
+	tmp := t.TempDir()
+	homeApp := filepath.Join(tmp, "Applications", "iTerm.app")
+	mkAppDir(t, homeApp)
+	sysApp := filepath.Join(tmp, "System", "iTerm.app")
+	mkAppDir(t, sysApp)
+
+	got := RunningITermAppsWithOpts(RunningITermAppOpts{
+		Getenv:    func(string) string { return "" },
+		Home:      func() string { return tmp },
+		IsApp:      func(p string) bool {
+			return p == homeApp || p == sysApp
+		},
+		Pids:      func() (string, error) { return "", nil },
+		SystemApp: sysApp,
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("got %v, want 2 paths", got)
+	}
+	// Home first, then system
+	if got[0] != homeApp {
+		t.Fatalf("first = %q, want home %q", got[0], homeApp)
+	}
+	if got[1] != sysApp {
+		t.Fatalf("second = %q, want system %q", got[1], sysApp)
+	}
+}
+
+func TestRunningITermApps_BakVariantRunning(t *testing.T) {
+	tmp := t.TempDir()
+	homeApp := filepath.Join(tmp, "Applications", "iTerm.app")
+	mkAppDir(t, homeApp)
+
+	bakExe := filepath.Join(tmp, "Applications", "iTerm.app.bak-999", "Contents", "MacOS", "iTerm2")
+	psOutput := bakExe + "\n"
+
+	got := RunningITermAppsWithOpts(RunningITermAppOpts{
+		Getenv: func(string) string { return "" },
+		Home:   func() string { return tmp },
+		IsApp: func(p string) bool {
+			return p == homeApp // only home exists on disk
+		},
+		Pids: func() (string, error) { return psOutput, nil },
+	})
+
+	// Should contain both the home disk path and the bak running path
+	found := map[string]bool{}
+	for _, p := range got {
+		found[p] = true
+	}
+	if !found[homeApp] {
+		t.Fatalf("missing home app %q in %v", homeApp, got)
+	}
+	bakApp := filepath.Join(tmp, "Applications", "iTerm.app.bak-999")
+	if !found[bakApp] {
+		t.Fatalf("missing bak app %q in %v", bakApp, got)
+	}
+}
+
+func TestRunningITermApps_EnvWins(t *testing.T) {
+	tmp := t.TempDir()
+	envApp := filepath.Join(tmp, "custom", "iTerm.app")
+	mkAppDir(t, envApp)
+	homeApp := filepath.Join(tmp, "Applications", "iTerm.app")
+	mkAppDir(t, homeApp)
+
+	got := RunningITermAppsWithOpts(RunningITermAppOpts{
+		Getenv: func(key string) string {
+			if key == EnvITerm2AppPath {
+				return envApp
+			}
+			return ""
+		},
+		Home: func() string { return tmp },
+		IsApp: func(p string) bool {
+			return p == envApp || p == homeApp
+		},
+		Pids: func() (string, error) { return "", nil },
+	})
+
+	if len(got) < 2 {
+		t.Fatalf("got %v, want at least 2", got)
+	}
+	// Env path should be first
+	if got[0] != envApp {
+		t.Fatalf("first = %q, want env %q", got[0], envApp)
+	}
+}
+
+func TestRunningITermApps_Dedup(t *testing.T) {
+	tmp := t.TempDir()
+	homeApp := filepath.Join(tmp, "Applications", "iTerm.app")
+
+	// Same path appearing from disk + ps
+	psOutput := homeApp + "/Contents/MacOS/iTerm2\n"
+
+	got := RunningITermAppsWithOpts(RunningITermAppOpts{
+		Getenv: func(string) string { return "" },
+		Home:   func() string { return tmp },
+		IsApp: func(p string) bool {
+			return p == homeApp
+		},
+		Pids: func() (string, error) { return psOutput, nil },
+	})
+
+	count := 0
+	for _, p := range got {
+		if p == homeApp {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("home app appeared %d times, want 1; got %v", count, got)
+	}
+}
+
+func TestRunningITermApps_NothingRunningOrOnDisk(t *testing.T) {
+	got := RunningITermAppsWithOpts(RunningITermAppOpts{
+		Getenv: func(string) string { return "" },
+		Home:   func() string { return "" },
+		IsApp:  func(string) bool { return false },
+		Pids:   func() (string, error) { return "", nil },
+	})
+
+	if len(got) != 0 {
+		t.Fatalf("got %v, want empty", got)
+	}
+}
+
+func mkAppDir(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(path, "Contents", "MacOS"), 0755); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -187,6 +187,143 @@ func IsInstalled() bool {
 	return ResolveAppPath() != ""
 }
 
+// RunningITermApps returns the union of all iTerm2 app bundles that are either
+// running as a MacOS process, present at the predefined disk paths
+// (~/Applications/iTerm.app and /Applications/iTerm.app), or pointed to by
+// ITERM2_APP_PATH. Deduped by cleaned absolute path. Includes .bak variants
+// if they have a live iTerm2 process. Order: env, home, system, then
+// non-standard running paths.
+//
+// Use this for read operations (snapshot, session scan) that must see windows
+// from every running iTerm2 instance. For write operations (open, create
+// window) prefer ResolveAppPath for a single target.
+func RunningITermApps() []string {
+	return RunningITermAppsWithOpts(RunningITermAppOpts{})
+}
+
+// RunningITermAppOpts injects dependencies for parallel-safe tests.
+// Zero value uses production defaults (os.Getenv, os.UserHomeDir, os.Stat,
+// and `ps -axo args=`).
+type RunningITermAppOpts struct {
+	// Getenv reads env; nil => os.Getenv. Only ITERM2_APP_PATH is consulted.
+	Getenv func(key string) string
+	// Home returns user home for ~/Applications candidate; nil => os.UserHomeDir.
+	// Empty home skips the home candidate.
+	Home func() string
+	// IsApp reports whether path is a usable .app bundle directory.
+	// nil => os.Stat + IsDir.
+	IsApp func(path string) bool
+	// Pids returns full `ps -axo args=` output (all process command lines).
+	// nil => exec.Command("ps", "-axo", "args=").Output()
+	Pids func() (string, error)
+	// SystemApp overrides the system Applications path for tests.
+	// Empty => AppPath ("/Applications/iTerm.app").
+	SystemApp string
+}
+
+// RunningITermAppsWithOpts is the injectable variant of RunningITermApps.
+func RunningITermAppsWithOpts(opts RunningITermAppOpts) []string {
+	getenv := opts.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	isApp := opts.IsApp
+	if isApp == nil {
+		isApp = defaultIsApp
+	}
+	pids := opts.Pids
+	if pids == nil {
+		pids = defaultPidsOutput
+	}
+
+	seen := map[string]bool{}
+	var out []string
+	add := func(p string) {
+		p = filepath.Clean(p)
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+
+	// 1. ITERM2_APP_PATH env (if set and usable)
+	if envPath := strings.TrimSpace(getenv(EnvITerm2AppPath)); envPath != "" && isApp(envPath) {
+		add(envPath)
+	}
+
+	// 2. Predefined disk paths (home first, then system)
+	var home string
+	if opts.Home != nil {
+		home = opts.Home()
+	} else if h, err := os.UserHomeDir(); err == nil {
+		home = h
+	}
+	if home != "" {
+		homeApp := filepath.Join(home, "Applications", "iTerm.app")
+		if isApp(homeApp) {
+			add(homeApp)
+		}
+	}
+	systemApp := opts.SystemApp
+	if systemApp == "" {
+		systemApp = AppPath
+	}
+	if isApp(systemApp) {
+		add(systemApp)
+	}
+
+	// 3. Running processes (catches .bak variants and non-standard paths)
+	if raw, err := pids(); err == nil {
+		for _, line := range strings.Split(raw, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || !strings.Contains(line, "iTerm") {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			exe := fields[0]
+			if !strings.HasSuffix(exe, "/Contents/MacOS/iTerm2") && !strings.HasSuffix(exe, "/MacOS/iTerm2") {
+				continue
+			}
+			// Walk up from executable to .app bundle dir
+			appDir := appBundleDir(exe)
+			if appDir != "" {
+				add(appDir)
+			}
+		}
+	}
+
+	return out
+}
+
+// appBundleDir walks up from a MacOS binary path to the containing .app dir.
+// e.g. /Users/x/Applications/iTerm.app.bak-123/Contents/MacOS/iTerm2
+//      -> /Users/x/Applications/iTerm.app.bak-123
+// Returns "" if no .app ancestor found within 6 levels.
+func appBundleDir(exePath string) string {
+	p := exePath
+	for i := 0; i < 6 && p != "/" && p != "."; i++ {
+		base := strings.ToLower(filepath.Base(p))
+		if strings.Contains(base, "iterm") && strings.Contains(base, ".app") {
+			return p
+		}
+		p = filepath.Dir(p)
+	}
+	return ""
+}
+
+// defaultPidsOutput runs `ps -axo args=` and returns stdout.
+func defaultPidsOutput() (string, error) {
+	out, err := exec.Command("ps", "-axo", "args=").Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 // TellApplicationHeader returns the AppleScript tell line for appPath.
 //
 // Non-empty path → path-bound string literal:
