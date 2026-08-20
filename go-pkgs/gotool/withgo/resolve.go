@@ -29,13 +29,21 @@ func DefaultInstallDir() (string, error) {
 	return filepath.Join(home, "installed"), nil
 }
 
+// TargetGoroot returns the install location selected for goVersion without
+// checking for it or downloading it. Callers that need to preview a command
+// (for example a dry-run) can use this without causing an installation.
+func TargetGoroot(goVersion string, opts ResolveOptions) string {
+	pin := PinPatch(goVersion)
+	return downloadgo.Target(opts.InstallDir, pin)
+}
+
 // ResolveGoroot pins goVersion and returns dest $InstallDir/<pin>.
 // An existing dest directory is returned without install or Prompt.
 // Missing dest with Download false is an error. Missing dest with Download
 // true writes Prompt to Stderr (if set) then calls Install or downloadgo.Download.
 func ResolveGoroot(goVersion string, opts ResolveOptions) (string, error) {
 	pin := PinPatch(goVersion)
-	dest := downloadgo.Target(opts.InstallDir, pin)
+	dest := TargetGoroot(goVersion, opts)
 	fi, err := os.Stat(dest)
 	if err == nil && fi.IsDir() {
 		return dest, nil
