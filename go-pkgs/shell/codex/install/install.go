@@ -11,9 +11,9 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/binaryversion"
 )
 
 const (
@@ -29,8 +29,6 @@ const (
 	// NPMLatestURL is the npm registry "latest" metadata endpoint for @openai/codex.
 	NPMLatestURL = "https://registry.npmjs.org/@openai/codex/latest"
 )
-
-var semverRe = regexp.MustCompile(`\d+\.\d+\.\d+`)
 
 // LatestVersionOpts configures LatestVersion.
 type LatestVersionOpts struct {
@@ -99,25 +97,14 @@ type Result struct {
 // ParseVersion extracts the first semver X.Y.Z from version command or package text.
 // Empty input or no match returns an error.
 func ParseVersion(output string) (string, error) {
-	if strings.TrimSpace(output) == "" {
-		return "", fmt.Errorf("parse version: empty output")
-	}
-	m := semverRe.FindString(output)
-	if m == "" {
-		return "", fmt.Errorf("parse version: no semver in %q", output)
-	}
-	return m, nil
+	return binaryversion.ParseSemver(output)
 }
 
 // NeedsUpdate reports whether local is strictly older than latest.
 // Returns false when either side is empty/unparseable, equal, or local > latest.
 func NeedsUpdate(local, latest string) bool {
-	lv, err1 := parseSemverParts(local)
-	rv, err2 := parseSemverParts(latest)
-	if err1 != nil || err2 != nil {
-		return false
-	}
-	return compareSemver(lv, rv) < 0
+	cmp, err := binaryversion.CompareSemver(local, latest)
+	return err == nil && cmp < 0
 }
 
 // LatestVersion GETs the npm (or override) latest metadata and returns JSON "version".
@@ -348,51 +335,4 @@ func defaultRunVersion(ctx context.Context, bin string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-type semver struct {
-	major, minor, patch int
-}
-
-func parseSemverParts(s string) (semver, error) {
-	// Accept raw or embedded forms by extracting first X.Y.Z.
-	v, err := ParseVersion(s)
-	if err != nil {
-		// Also accept already-clean X.Y.Z that ParseVersion handles;
-		// empty/garbage → error.
-		return semver{}, err
-	}
-	parts := strings.Split(v, ".")
-	if len(parts) != 3 {
-		return semver{}, fmt.Errorf("bad semver %q", v)
-	}
-	major, err1 := strconv.Atoi(parts[0])
-	minor, err2 := strconv.Atoi(parts[1])
-	patch, err3 := strconv.Atoi(parts[2])
-	if err1 != nil || err2 != nil || err3 != nil {
-		return semver{}, fmt.Errorf("bad semver %q", v)
-	}
-	return semver{major: major, minor: minor, patch: patch}, nil
-}
-
-func compareSemver(a, b semver) int {
-	if a.major != b.major {
-		if a.major < b.major {
-			return -1
-		}
-		return 1
-	}
-	if a.minor != b.minor {
-		if a.minor < b.minor {
-			return -1
-		}
-		return 1
-	}
-	if a.patch != b.patch {
-		if a.patch < b.patch {
-			return -1
-		}
-		return 1
-	}
-	return 0
 }

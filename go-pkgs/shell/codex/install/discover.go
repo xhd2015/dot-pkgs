@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/binaryversion"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/lookpath"
 )
 
@@ -115,11 +116,7 @@ func FoundCodex(ctx context.Context, opts NewestCodexOpts) ([]CodexCLI, error) {
 		}
 	}
 
-	type cand struct {
-		path string
-		via  string
-	}
-	var cands []cand
+	var cands []binaryversion.Candidate
 	seen := make(map[string]struct{})
 	add := func(p, via string) {
 		p = strings.TrimSpace(p)
@@ -131,7 +128,7 @@ func FoundCodex(ctx context.Context, opts NewestCodexOpts) ([]CodexCLI, error) {
 			return
 		}
 		seen[cleaned] = struct{}{}
-		cands = append(cands, cand{path: cleaned, via: via})
+		cands = append(cands, binaryversion.Candidate{Path: cleaned, Via: via})
 	}
 
 	if p := strings.TrimSpace(getenv(EnvCodexBin)); p != "" {
@@ -153,23 +150,15 @@ func FoundCodex(ctx context.Context, opts NewestCodexOpts) ([]CodexCLI, error) {
 		}
 	}
 
-	var out []CodexCLI
-	for _, c := range cands {
-		if !isExec(c.path) {
-			continue
+	versioned := binaryversion.Find(ctx, cands, func(ctx context.Context, path string) (string, error) {
+		if !isExec(path) {
+			return "", fmt.Errorf("codex candidate is not executable: %s", path)
 		}
-		raw, err := runVersion(ctx, c.path)
-		if err != nil {
-			continue
-		}
-		ver, err := ParseVersion(raw)
-		if err != nil {
-			continue
-		}
-		out = append(out, CodexCLI{Path: c.path, Version: ver, Via: c.via})
-	}
-	if out == nil {
-		return []CodexCLI{}, nil
+		return runVersion(ctx, path)
+	})
+	out := make([]CodexCLI, 0, len(versioned))
+	for _, c := range versioned {
+		out = append(out, CodexCLI{Path: c.Path, Version: c.Version, Via: c.Via})
 	}
 	return out, nil
 }
@@ -184,11 +173,19 @@ func NewestCodex(ctx context.Context, opts NewestCodexOpts) (binPath, version st
 	if len(found) == 0 {
 		return "", "", fmt.Errorf("newest codex: none found")
 	}
-	best := found[0]
-	for _, c := range found[1:] {
-		if NeedsUpdate(best.Version, c.Version) {
-			best = c
-		}
+	candidates := make([]binaryversion.Candidate, 0, len(found))
+	for _, c := range found {
+		candidates = append(candidates, binaryversion.Candidate{Path: c.Path, Via: c.Via})
+	}
+	versions := make(map[string]string, len(found))
+	for _, c := range found {
+		versions[c.Path] = c.Version
+	}
+	best, err := binaryversion.Newest(ctx, candidates, func(_ context.Context, path string) (string, error) {
+		return versions[path], nil
+	})
+	if err != nil {
+		return "", "", err
 	}
 	return best.Path, best.Version, nil
 }
