@@ -3,7 +3,8 @@
 - Non-empty AppleScript.
 - Contains `activate`.
 - Contains window id `win-focus-42`.
-- Mentions selecting a tab and includes tab index `2`.
+- Mentions the stable session ID and records its containing tab before selection.
+- Contains the fallback tab index `2`.
 - Does **not** create a window (`create window` absent).
 
 ## Exit Code
@@ -34,7 +35,13 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	if !strings.Contains(script, req.FocusRef.WindowID) {
 		t.Fatalf("focus script must include window id %q; script:\n%s", req.FocusRef.WindowID, script)
 	}
-	// Tab selection: index appears and "tab" is mentioned (select tab / tabs).
+	if !strings.Contains(script, req.FocusRef.SessionID) {
+		t.Fatalf("focus script must include stable session id %q; script:\n%s", req.FocusRef.SessionID, script)
+	}
+	if !strings.Contains(script, "set targetTab to aTab") || !strings.Contains(script, "select targetTab") {
+		t.Fatalf("focus script must select the tab containing the stable session; script:\n%s", script)
+	}
+	// Keep the numeric tab index as the fallback when no session ID is available.
 	tabStr := strconv.Itoa(req.FocusRef.TabIndex)
 	if !strings.Contains(script, tabStr) {
 		t.Fatalf("focus script must include tab index %s; script:\n%s", tabStr, script)

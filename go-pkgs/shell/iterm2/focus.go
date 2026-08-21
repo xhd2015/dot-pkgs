@@ -12,8 +12,8 @@ type FocusConfig struct {
 }
 
 // BuildFocusScript returns AppleScript that activates iTerm2, selects the
-// window matching ref.WindowID, and selects the 1-based tab at ref.TabIndex.
-// It does not create windows or tabs.
+// window matching ref.WindowID, then selects the pane's containing tab by its
+// stable session ID when available. It never creates windows or tabs.
 func BuildFocusScript(ref SessionRef) string {
 	escaped := EscapeCommandForAppleScript(ref.WindowID)
 	escapedSession := EscapeCommandForAppleScript(ref.SessionID)
@@ -25,6 +25,8 @@ func BuildFocusScript(ref SessionRef) string {
 		tellHeaderResolved(),
 		`  activate`,
 		`  set targetWindow to missing value`,
+		`  set targetTab to missing value`,
+		`  set targetSession to missing value`,
 		`  repeat with aWindow in windows`,
 		`    try`,
 		`      if (id of aWindow as string) is "` + escaped + `" then`,
@@ -34,30 +36,43 @@ func BuildFocusScript(ref SessionRef) string {
 		`    on error`,
 		`    end try`,
 		`  end repeat`,
-		`  if targetWindow is not missing value then`,
-		`    select targetWindow`,
-		`    try`,
-		fmt.Sprintf(`      select tab %d of targetWindow`, tabIndex),
-		`    on error`,
-		`    end try`,
 	}
 	if ref.SessionID != "" {
-		// Select the pane too when the tab contains more than one session.
 		lines = append(lines,
+			`  if targetWindow is not missing value then`,
 			`    repeat with aTab in tabs of targetWindow`,
 			`      repeat with aSession in sessions of aTab`,
 			`        try`,
 			`          if (id of aSession as string) is "`+escapedSession+`" then`,
-			`            select aSession`,
+			`            set targetTab to aTab`,
+			`            set targetSession to aSession`,
 			`            exit repeat`,
 			`          end if`,
 			`        on error`,
 			`        end try`,
 			`      end repeat`,
+			`      if targetSession is not missing value then exit repeat`,
 			`    end repeat`,
+			`  end if`,
 		)
 	}
-	lines = append(lines, `  end if`, `end tell`)
+	lines = append(lines,
+		`  if targetWindow is not missing value then`,
+		`    try`,
+		`      select targetWindow`,
+		`      if targetTab is not missing value then`,
+		`        select targetTab`,
+		`      else`,
+		fmt.Sprintf(`        select tab %d of targetWindow`, tabIndex),
+		`      end if`,
+		`      if targetSession is not missing value then`,
+		`        select targetSession`,
+		`      end if`,
+		`    on error`,
+		`    end try`,
+		`  end if`,
+		`end tell`,
+	)
 	return strings.Join(lines, "\n")
 }
 

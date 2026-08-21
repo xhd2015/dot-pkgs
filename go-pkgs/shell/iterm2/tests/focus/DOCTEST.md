@@ -28,7 +28,8 @@ session_id matching, live iTerm e2e (no L3).
 - **Finder** — pure `FindByTTY(refs, ttys)` filters refs (union over query TTYs;
   stable ref order).
 - **Focus script builder** — `BuildFocusScript(ref)` activates iTerm, selects
-  window by id, selects tab by 1-based index (no create window).
+  the window by ID, then selects the pane's containing tab by stable session ID
+  when one is available; the 1-based tab index is the fallback.
 - **Focus runner** — `Focus(ref, cfg)` Execs the focus script via injectable
   `FocusConfig.Exec` (default real osascript).
 
@@ -41,8 +42,9 @@ session_id matching, live iTerm e2e (no L3).
   order follows input `refs` (stable). Matching uses NormalizeTTY on both sides.
 - **BuildSessionListScript** — AppleScript scans windows/tabs/sessions; emits
   tty; uses ASCII TAB field separator (not bare `tab` inside iTerm tell).
-- **BuildFocusScript** — `activate`; select window by id; select tab by index;
-  does **not** create a window.
+- **BuildFocusScript** — `activate`; select window by ID; when a session ID is
+  available, select its containing tab and pane; otherwise select the 1-based
+  tab index. It does **not** create a window.
 - **Focus** — builds focus script and calls `cfg.Exec(script)`; Exec error
   propagates. Nil/missing Exec uses package default osascript.
 

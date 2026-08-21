@@ -2,7 +2,7 @@
 
 - `Focus(ref, cfg)` returns nil.
 - `cfg.Exec` invoked at least once.
-- Some Exec script contains the window id and tab index from `FocusRef`.
+- Some Exec script contains the window ID, stable session ID, and fallback tab index from `FocusRef`.
 - Exec script looks like a focus script (contains `activate`).
 
 ## Exit Code
@@ -40,6 +40,12 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	all := strings.Join(scripts, "\n---\n")
 	if !strings.Contains(all, req.FocusRef.WindowID) {
 		t.Fatalf("Exec script must contain window id %q; scripts:\n%s", req.FocusRef.WindowID, all)
+	}
+	if !strings.Contains(all, req.FocusRef.SessionID) {
+		t.Fatalf("Exec script must contain stable session id %q; scripts:\n%s", req.FocusRef.SessionID, all)
+	}
+	if !strings.Contains(all, "set targetTab to aTab") || !strings.Contains(all, "select targetTab") {
+		t.Fatalf("Exec script must select the tab containing the stable session; scripts:\n%s", all)
 	}
 	tabStr := strconv.Itoa(req.FocusRef.TabIndex)
 	if !strings.Contains(all, tabStr) {
