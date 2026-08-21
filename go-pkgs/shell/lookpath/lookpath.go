@@ -212,9 +212,13 @@ func defaultRunLogin(timeout time.Duration) func(shell, command string, env []st
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		// Login interactive: shell -lic 'command'
+		// Login interactive: shell -lic 'command'.
+		// Setsid (Unix): new session without a controlling TTY so -i does not
+		// tcsetpgrp the caller's terminal (SIGTTOU → Stopped under job control).
+		// Stdin stays nil → /dev/null; -i still sources interactive rc files.
 		cmd := exec.CommandContext(ctx, shell, "-lic", command)
 		cmd.Env = env
+		cmd.SysProcAttr = loginSysProcAttr()
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
