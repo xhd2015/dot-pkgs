@@ -38,5 +38,12 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	if strings.Contains(script, " & tab & ") {
 		t.Fatalf("list script must not use bare AppleScript tab as delimiter inside iTerm tell; script:\n%s", script)
 	}
+	// Soft-skip mid-scan churn: indexed loops + on error (not live `in windows`/`in tabs`).
+	if !strings.Contains(script, "count of windows") || !strings.Contains(script, "repeat with wi from 1 to windowCount") {
+		t.Fatalf("list script should snapshot window count and index windows; script:\n%s", script)
+	}
+	if strings.Contains(script, "repeat with aWindow in windows") || strings.Contains(script, "repeat with aTab in tabs") {
+		t.Fatalf("list script must not use live collection iterators (Invalid index races); script:\n%s", script)
+	}
 }
 ```
