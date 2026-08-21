@@ -11,10 +11,7 @@ rebase. The source worktree's uncommitted changes are preserved.
 All other cases (ahead+clean, ahead+dirty, diverged+clean, diverged+dirty+rm,
 same/ancestor+any) retain their existing behavior.
 
-The tmp worktree is created at `~/.wrk/worktrees/` following the same naming
-convention as `wrk` worktrees: `<repo>-<branchToken>-<date>-tmp-rebase[-suffix]`.
-Tmp branch follows the same convention: `<source-branch>-tmp-rebase-<random>`.
-Both are always cleaned up (success or failure).
+The tmp worktree is created beneath `MergeBackOptions.TmpDir`; when that option is empty, it uses the system temporary directory. The name is `<repo>-<branchToken>-<date>-tmp-rebase[-suffix]`. Tmp branch follows the same convention: `<source-branch>-tmp-rebase-<random>`. Both are always cleaned up (success or failure).
 
 ## DSN (Domain Specific Notion)
 
@@ -29,9 +26,7 @@ Both are always cleaned up (success or failure).
   HEAD: `same`, `ancestor`, `ahead`, or `diverged`.
 - **MergeBack** — the orchestrator function that reads relation, decides what
   git commands to run, and executes them.
-- **Tmp worktree** — a throwaway linked worktree at `~/.wrk/worktrees/` used
-  only when the source worktree is dirty and a rebase is needed. Always
-  cleaned up after the operation.
+- **Tmp worktree** — a throwaway linked git worktree beneath the configured temporary-worktree parent, used only when the source worktree is dirty and a rebase is needed. Always cleaned up after the operation.
 
 ### Behaviors
 
@@ -53,7 +48,7 @@ Both are always cleaned up (success or failure).
 **Tmp worktree lifecycle (diverged + dirty + !Remove):**
 
 1. Create a temporary branch from source HEAD
-2. Create a tmp worktree on that branch at `~/.wrk/worktrees/<repo>-<pathToken>-<date>-tmp-rebase[-suffix]`
+2. Create a tmp worktree on that branch beneath the configured temporary-worktree parent
 3. Run `git rebase <target-HEAD>` inside tmp worktree
 4. FF-merge rebased result into target: `git merge --ff-only <tmp-branch>`
 5. Force-update source branch: `git branch -f <source-branch> <tmp-branch>`
@@ -125,6 +120,7 @@ doctest test ./go-pkgs/git/worktree/tests/merge-back-dirty-rebase
 
 ```go
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/xhd2015/doctest/session"
@@ -152,6 +148,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 		TargetPath: req.TargetPath,
 		DryRun:     false,
 		Remove:     req.Remove,
+		TmpDir:     filepath.Join(req.WorkRoot, ".wrk", "worktrees"),
 		Confirm: func(plan worktree.MergeBackPlan) (bool, error) {
 			return true, nil
 		},

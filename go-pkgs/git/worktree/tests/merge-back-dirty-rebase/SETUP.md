@@ -14,7 +14,8 @@ Setup -> git repo + linked worktree -> MergeBack(opts) -> result + checkout stat
 
 ## Context
 
-- Each test uses `t.TempDir()` as `WorkRoot`.
+- Each test creates an operating-system-unique temporary directory as `WorkRoot`, so fixture paths remain isolated even when separate `go test` processes run concurrently.
+- The scenario harness passes `WorkRoot/.wrk/worktrees` as `MergeBackOptions.TmpDir`, isolating temporary linked worktrees without changing the library default.
 - `req.MakeDirty` controls whether the source worktree has uncommitted changes.
 - Branch topology is built by descendant SETUPs.
 - Tests assert both the `MergeBackResult` (Action, Relation) and filesystem side-effects (tmp worktree cleanup, branch state).
@@ -147,7 +148,12 @@ func isAncestor(t *testing.T, repo, ancestor, descendant string) bool {
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	skipIfNoGit(t)
-	req.WorkRoot = t.TempDir()
+	workRoot, err := os.MkdirTemp("", "gopkgs-merge-back-dirty-rebase-*")
+	if err != nil {
+		return err
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(workRoot) })
+	req.WorkRoot = workRoot
 	return nil
 }
 ```

@@ -3,7 +3,7 @@
 **Feature**: diverged + dirty + no --rm → tmp worktree path
 
 ```
-# worktree dirty, Remove=false → rebase in tmp worktree at ~/.wrk/worktrees/
+# worktree dirty, Remove=false → rebase in configured temporary-worktree parent
 dirty feat -> MergeBack(!Remove) -> create tmp worktree -> rebase there -> merge -> cleanup
 ```
 

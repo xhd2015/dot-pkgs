@@ -10,8 +10,7 @@ existing tmp dir -> MergeBack -> create at -1 suffix -> succeed -> clean up suff
 ## Steps
 
 1. Pre-create the expected tmp worktree directory to trigger collision.
-2. Set `WRK_HOME` to temp dir.
-3. Call MergeBack.
+2. Call MergeBack with the test's work-root-local temporary-worktree parent.
 
 ```go
 import (
