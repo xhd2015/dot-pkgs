@@ -327,7 +327,9 @@ func (c *Collector) capturePhased(now time.Time, procsByTTY map[string][]ProcRow
 			return nil, append(warnings, w3...), err
 		}
 		warnings = append(warnings, w3...)
-		if spaceWarn != "" {
+		// Only surface Space resolve soft-fails when the space-first gate is on;
+		// otherwise callers that only need inventory (and Linux CI) stay quiet.
+		if spaceGate && spaceWarn != "" {
 			warnings = append(warnings, "warning: "+spaceWarn)
 		}
 		win := SnapshotWindow{
