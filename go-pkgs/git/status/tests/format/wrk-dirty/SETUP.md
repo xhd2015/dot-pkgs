@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: full wrk counts format as four-segment dirty string
+**Feature**: full wrk counts format as five-segment dirty string
 
 ```
-{1,1,1,1} -> FormatWrk -> dirty (1 added, 1 changed, 1 renamed, 1 deleted)
+{1,1,1,1,1} -> FormatWrk -> dirty (1 staged, 1 changed, 1 renamed, 1 deleted, 1 untracked)
 ```
 
 ## Steps
@@ -21,7 +21,7 @@ import (
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.Op = "format-wrk"
-	req.WrkCounts = status.WrkCounts{Added: 1, Changed: 1, Renamed: 1, Deleted: 1}
+	req.WrkCounts = status.WrkCounts{Staged: 1, Changed: 1, Renamed: 1, Deleted: 1, Untracked: 1}
 	return nil
 }
 ```

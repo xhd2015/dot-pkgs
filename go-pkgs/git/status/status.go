@@ -18,13 +18,15 @@ const (
 	StyleWrk
 )
 
-// WrkCounts is the wrk four-bucket view (distinct from backup Counts labels).
+// WrkCounts is the wrk five-bucket view (distinct from backup Counts labels).
+// Each porcelain line increments exactly one bucket (path-once).
+// Any index (staged) change counts as Staged only — not also Changed/Renamed/Deleted.
 type WrkCounts struct {
-	Added, Changed, Renamed, Deleted int
+	Staged, Changed, Renamed, Deleted, Untracked int
 }
 
 func (c WrkCounts) dirty() bool {
-	return c.Added+c.Changed+c.Renamed+c.Deleted > 0
+	return c.Staged+c.Changed+c.Renamed+c.Deleted+c.Untracked > 0
 }
 
 func ParsePorcelain(porcelain string) Counts {
@@ -40,16 +42,43 @@ func ParsePorcelain(porcelain string) Counts {
 	}
 }
 
-// ParsePorcelainWrk applies wrk taxonomy (?? → added; M/default → changed).
-// Implemented via gitops ParseChangeCounts (same four-bucket rules).
+// ParsePorcelainWrk applies wrk taxonomy (path-once, first match wins):
+//
+//	?? → Untracked
+//	index column non-blank (not '?') → Staged (covers A/M/D/R/… including AM;
+//	  staged paths are not also Changed/Renamed/Deleted)
+//	else worktree R → Renamed
+//	else worktree D → Deleted
+//	else → Changed
 func ParsePorcelainWrk(porcelain string) WrkCounts {
-	c := gitopsStatus.ParseChangeCounts(porcelain)
-	return WrkCounts{
-		Added:   c.Added,
-		Changed: c.Changed,
-		Renamed: c.Renamed,
-		Deleted: c.Deleted,
+	var counts WrkCounts
+	for _, line := range strings.Split(porcelain, "\n") {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "??") {
+			counts.Untracked++
+			continue
+		}
+		if len(line) < 2 {
+			counts.Changed++
+			continue
+		}
+		x, y := line[0], line[1]
+		if x != ' ' && x != '?' {
+			counts.Staged++
+			continue
+		}
+		switch {
+		case y == 'R':
+			counts.Renamed++
+		case y == 'D':
+			counts.Deleted++
+		default:
+			counts.Changed++
+		}
 	}
+	return counts
 }
 
 // FormatWrk renders wrk --status Status: value (no ANSI).
@@ -59,8 +88,8 @@ func FormatWrk(counts WrkCounts) string {
 	if !counts.dirty() {
 		return "clean"
 	}
-	return fmt.Sprintf("dirty (%d added, %d changed, %d renamed, %d deleted)",
-		counts.Added, counts.Changed, counts.Renamed, counts.Deleted)
+	return fmt.Sprintf("dirty (%d staged, %d changed, %d renamed, %d deleted, %d untracked)",
+		counts.Staged, counts.Changed, counts.Renamed, counts.Deleted, counts.Untracked)
 }
 
 func (c Counts) dirty() bool {
@@ -105,9 +134,10 @@ func Format(counts Counts, style FormatStyle) string {
 
 func wrkCountsFromBackup(counts Counts) WrkCounts {
 	return WrkCounts{
-		Added:   counts.Added + counts.Untracked,
-		Changed: counts.Modified,
-		Renamed: counts.Renamed,
-		Deleted: counts.Deleted,
+		Staged:    counts.Added,
+		Changed:   counts.Modified,
+		Renamed:   counts.Renamed,
+		Deleted:   counts.Deleted,
+		Untracked: counts.Untracked,
 	}
 }

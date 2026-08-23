@@ -30,5 +30,5 @@ func IsCleanWrk(path string) (bool, error) {
 		return false, err
 	}
 	counts := status.ParsePorcelainWrk(out)
-	return counts.Added == 0 && counts.Changed == 0 && counts.Renamed == 0 && counts.Deleted == 0, nil
+	return counts.Staged == 0 && counts.Changed == 0 && counts.Renamed == 0 && counts.Deleted == 0 && counts.Untracked == 0, nil
 }

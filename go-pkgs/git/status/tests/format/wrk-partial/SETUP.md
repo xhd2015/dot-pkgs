@@ -1,9 +1,9 @@
 # Scenario
 
-**Feature**: partial wrk counts still emit all four dirty segments
+**Feature**: partial wrk counts still emit all five dirty segments
 
 ```
-{Changed:1} -> FormatWrk -> dirty (0 added, 1 changed, 0 renamed, 0 deleted)
+{Changed:1} -> FormatWrk -> dirty (0 staged, 1 changed, 0 renamed, 0 deleted, 0 untracked)
 ```
 
 ## Steps

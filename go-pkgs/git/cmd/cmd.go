@@ -32,9 +32,13 @@ func RunOptional(ctx context.Context, dir string, args ...string) (string, bool,
 	// Note: context is currently unused by xgo/support/cmd; callers still pass it
 	// for API compatibility. Cancellation would require os/exec.CommandContext.
 	_ = ctx
-	text := strings.TrimSpace(buf.String())
+	raw := buf.String()
+	// Preserve leading spaces: `git status --porcelain` uses XY codes where a
+	// leading space means "unstaged" (e.g. " M file"). TrimSpace would turn that
+	// into "M file" and mis-classify it as staged.
+	text := trimGitOutput(raw)
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 && text == "" {
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 && strings.TrimSpace(raw) == "" {
 			return "", false, nil
 		}
 		return "", false, normalizeError(dir, args, err, buf.Bytes())
@@ -56,11 +60,18 @@ func RunEnv(ctx context.Context, dir string, extraEnv []string, args ...string) 
 		Stderr(&buf).
 		Run("git", args...)
 	_ = ctx
-	text := strings.TrimSpace(buf.String())
+	raw := buf.String()
+	text := trimGitOutput(raw)
 	if err != nil {
 		return "", normalizeError(dir, args, err, buf.Bytes())
 	}
 	return text, nil
+}
+
+// trimGitOutput removes trailing newlines only. Leading whitespace is significant
+// for porcelain status lines.
+func trimGitOutput(s string) string {
+	return strings.TrimRight(s, "\r\n")
 }
 
 func normalizeError(dir string, args []string, err error, output []byte) error {

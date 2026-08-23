@@ -3,8 +3,9 @@
 **Feature**: `git/cmd.Run` wraps git subprocess with normalized errors
 
 ```
-caller dir + args -> Run -> git subprocess -> trimmed stdout or one-line error
+caller dir + args -> Run -> git subprocess -> trailing-trim stdout or one-line error
 ```
+
 
 ## Preconditions
 

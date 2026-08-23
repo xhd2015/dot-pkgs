@@ -1,7 +1,7 @@
 # git/cmd — Git Subprocess Helpers
 
 ## Version
-0.0.2
+0.0.3
 
 Doc tests for `github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd`. `Run` executes
 `git -C <dir>` with stdout capture and one-line error gist. `RunOptional` returns
@@ -18,7 +18,8 @@ Doc tests for `github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd`. `Run` executes
 
 ### Behaviors
 
-- **Run** — success returns trimmed stdout; failure returns normalized one-line error.
+- **Run** — success returns stdout with trailing newlines trimmed only (leading
+  spaces preserved for porcelain); failure returns normalized one-line error.
 - **RunOptional** — distinguishes missing git / command failure via `ok` flag.
 - **RunCombined** — like Run but merges stderr into output on success path.
 
@@ -27,8 +28,9 @@ Doc tests for `github.com/xhd2015/dot-pkgs/go-pkgs/git/cmd`. `Run` executes
 ```
 cmd
 └── run/
-    ├── success/        # rev-parse in temp git repo
-    └── missing-repo/   # non-repo directory → error
+    ├── success/                 # rev-parse in temp git repo
+    ├── porcelain-leading-space/ # status --porcelain keeps " M" unstaged prefix
+    └── missing-repo/            # non-repo directory → error
 ```
 
 ## Test Index
@@ -36,6 +38,7 @@ cmd
 | Leaf | Description |
 |------|-------------|
 | `run/success` | `git rev-parse --is-inside-work-tree` in initialized repo |
+| `run/porcelain-leading-space` | Unstaged modify → output still starts with space+`M` |
 | `run/missing-repo` | Run in plain temp dir without `.git` → error |
 
 ## How to Run

@@ -1,6 +1,6 @@
 ## Expected
 
-- `resp.Formatted` is `"dirty (0 added, 1 changed, 0 renamed, 0 deleted)"`.
+- `resp.Formatted` is `"dirty (0 staged, 1 changed, 0 renamed, 0 deleted, 0 untracked)"`.
 
 ## Errors
 
@@ -17,7 +17,7 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "dirty (0 added, 1 changed, 0 renamed, 0 deleted)"
+	want := "dirty (0 staged, 1 changed, 0 renamed, 0 deleted, 0 untracked)"
 	if resp.Formatted != want {
 		t.Fatalf("formatted = %q, want %q", resp.Formatted, want)
 	}

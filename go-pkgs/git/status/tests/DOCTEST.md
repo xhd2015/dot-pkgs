@@ -1,13 +1,13 @@
 # git/status — Porcelain Parse and Status Formatting
 
 ## Version
-0.0.2
+0.0.3
 
 Doc tests for `github.com/xhd2015/dot-pkgs/go-pkgs/git/status`. `ParsePorcelain`
 aggregates `git status --porcelain` lines into backup `Counts`. `ParsePorcelainWrk`
-applies the wrk four-bucket taxonomy (`??` → added, `M`/default → changed).
+applies the wrk five-bucket taxonomy (`??` → untracked; index change → staged; path-once).
 `Format` renders backup-style strings; `FormatWrk` renders wrk `--status` values
-(always four segments when dirty).
+(always five segments when dirty).
 
 ## DSN (Domain Specific Notion)
 
@@ -16,23 +16,25 @@ applies the wrk four-bucket taxonomy (`??` → added, `M`/default → changed).
 - **Caller** — supplies porcelain text or pre-aggregated counts.
 - **Backup parser** — `ParsePorcelain` counts modified, added, deleted, untracked,
   renamed, copied, and unmerged entries from porcelain lines.
-- **Wrk parser** — `ParsePorcelainWrk` maps porcelain into four buckets: added,
-  changed, renamed, deleted (`??` counts as **added**, not untracked; `M`/default
-  counts as **changed**, not modified).
+- **Wrk parser** — `ParsePorcelainWrk` maps porcelain into five buckets: added,
+  changed, renamed, deleted, untracked (`??` → **untracked**; index change → **staged**
+  once; unstaged `M`/`D`/`R` → changed/deleted/renamed).
 - **Backup formatter** — `Format(Counts, FormatBackup)` emits `clean` or
   `dirty (N modified, M added, …)` matching `machinebackup` output.
 - **Wrk formatter** — `FormatWrk(WrkCounts)` emits `clean` or
-  `dirty (N added, N changed, N renamed, N deleted)` with all four segments when dirty.
+  `dirty (N staged, N changed, N renamed, N deleted, N untracked)` with all five
+  segments when dirty.
 
 ### Behaviors
 
 - Empty porcelain → all counts zero → both formatters yield `"clean"`.
 - Backup: non-zero counts → only non-zero labels appear in `dirty (...)` suffix;
   order: modified, added, deleted, untracked, renamed, copied, unmerged.
-- Wrk: dirty output always lists added, changed, renamed, deleted (zeros included).
-- Wrk status includes untracked files by default (`??` → added via `ParsePorcelainWrk`).
-  Callers may still pass `--untracked-files=no` via `checkout.Options.PorcelainUntracked: false`;
-  parse tests supply representative lines including `??` when exercising the added bucket.
+- Wrk: dirty output always lists staged, changed, renamed, deleted, untracked
+  (zeros included).
+- Wrk status includes untracked files by default (`??` → untracked via
+  `ParsePorcelainWrk`). Callers may still pass `--untracked-files=no` via
+  `checkout.Options.PorcelainUntracked: false`.
 
 ## Decision Tree
 
@@ -41,7 +43,8 @@ status
 ├── parse/
 │   ├── clean/
 │   ├── mixed/
-│   └── wrk-mixed/
+│   ├── wrk-mixed/
+│   └── wrk-am/
 └── format/
     ├── backup-clean/
     ├── backup-dirty/
@@ -56,11 +59,12 @@ status
 |------|-------------|
 | `parse/clean` | Empty porcelain → zero backup counts |
 | `parse/mixed` | Two modified + one untracked |
-| `parse/wrk-mixed` | Porcelain maps to wrk buckets (`??`→added, `M`→changed, `R`, `D`) |
+| `parse/wrk-mixed` | Porcelain maps to wrk buckets (`??`→untracked, `M`→changed, `R`, `D`) |
+| `parse/wrk-am` | `AM` path-once → Staged=1, Changed=0 |
 | `format/backup-clean` | Zero backup counts → `"clean"` |
 | `format/backup-dirty` | Backup counts → `"dirty (2 modified, 1 untracked)"` |
 | `format/wrk-clean` | Zero WrkCounts → `"clean"` |
-| `format/wrk-dirty` | `{1,1,1,1}` → full four-segment dirty line |
+| `format/wrk-dirty` | `{1,1,1,1,1}` → full five-segment dirty line |
 | `format/wrk-partial` | `{Changed:1}` → dirty with zero segments for other buckets |
 
 ## How to Run

@@ -22,7 +22,7 @@ durable stepwise git enrichment (branch → sha → msg → status) and returns
 - **Clean repo** — after commit → `Branch`, 7-char `CommitSHA`, `CommitMsg`, `Status: "clean"`.
 - **Dirty repo** — modified file → `Status: "dirty (N modified)"` with other fields populated.
 - **Wrk style** — `StatusStyle: FormatWrk` uses `ParsePorcelainWrk` + `FormatWrk`
-  for `Meta.Status`. Untracked files are included by default (`??` → added);
+  for `Meta.Status`. Untracked files are included by default (`??` → untracked);
   `PorcelainUntracked: false` is an optional opt-out that appends
   `--untracked-files=no`.
 - Enrich always returns `Meta`; caller inspects `Error` field.
