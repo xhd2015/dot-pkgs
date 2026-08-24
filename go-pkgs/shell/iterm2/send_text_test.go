@@ -49,6 +49,14 @@ func TestBuildSendTextScriptNoCtrlUNoSubmit(t *testing.T) {
 	}
 }
 
+func TestBuildSendTextScriptNonPrintable(t *testing.T) {
+	s := BuildSendTextScript("aabb", "\x03\x1b[A", SendTextOptions{NoCtrlU: true, NoSubmit: true}, "")
+	want := `write text (ASCII character 3) & (ASCII character 27) & "[A" without newline`
+	if !strings.Contains(s, want) {
+		t.Fatalf("want %q in:\n%s", want, s)
+	}
+}
+
 func TestBuildSendTextScriptFocus(t *testing.T) {
 	s := BuildSendTextScript("uuid-1", "ls", SendTextOptions{Focus: true}, "")
 	lower := strings.ToLower(s)

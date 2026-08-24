@@ -3,6 +3,8 @@ package iterm2
 import (
 	"fmt"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/applescript"
 )
 
 // SendTextOptions controls how text is written into a session.
@@ -49,12 +51,12 @@ func BuildSendTextScript(sessionID, text string, opts SendTextOptions, appPath s
 }
 
 func buildSendWriteTextLine(text string, opts SendTextOptions) string {
-	escaped := EscapeCommandForAppleScript(text)
+	body := applescript.WriteTextExpr(text)
 	var expr string
 	if opts.NoCtrlU {
-		expr = `"` + escaped + `"`
+		expr = body
 	} else {
-		expr = `((ASCII character 21) & "` + escaped + `")`
+		expr = `((ASCII character 21) & ` + body + `)`
 	}
 	line := `write text ` + expr
 	if opts.NoSubmit {

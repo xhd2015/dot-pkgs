@@ -8,7 +8,7 @@ require (
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/xhd2015/gitops v0.0.31
-	github.com/xhd2015/less-flags v1.0.2
+	github.com/xhd2015/less-flags v1.0.5
 	github.com/xhd2015/xgo v1.2.8
 	golang.org/x/term v0.43.0
 	golang.org/x/tools v0.45.0
