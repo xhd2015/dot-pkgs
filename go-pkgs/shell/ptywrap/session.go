@@ -320,12 +320,15 @@ func (s *session) exportInPlacePrompt() []byte {
 		s.screen.Lock()
 		cur := s.screen.Cursor()
 		line := renderSnapshotLine(s.screen, cols, cur.Y)
-		if line == "" {
+		if line == "" || strings.Contains(line, "[Terminal exited]") {
+			line = ""
 			for y := cur.Y - 1; y >= 0; y-- {
-				line = renderSnapshotLine(s.screen, cols, y)
-				if line != "" {
-					break
+				cand := renderSnapshotLine(s.screen, cols, y)
+				if cand == "" || strings.Contains(cand, "[Terminal exited]") {
+					continue
 				}
+				line = cand
+				break
 			}
 		}
 		s.screen.Unlock()
