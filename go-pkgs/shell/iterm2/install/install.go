@@ -113,15 +113,18 @@ type Result struct {
 // ResolveLatestStableURL follows redirects from LatestURL/DefaultLatestURL and
 // returns the final zip URL plus a version parsed from the zip basename
 // (e.g. iTerm2-3_6_11.zip → 3.6.11).
+//
+// It must not download the zip body: production "latest" redirects to a ~45MB
+// archive. When opts.HTTPClient is nil or has no CheckRedirect, resolve stops
+// before following a .zip Location (http.ErrUseLastResponse) and reads that
+// Location. Injected clients that already set CheckRedirect are left unchanged
+// (tests that serve a tiny zip body may still follow through).
 func ResolveLatestStableURL(ctx context.Context, opts ResolveOpts) (url string, version string, err error) {
 	latest := opts.LatestURL
 	if latest == "" {
 		latest = DefaultLatestURL
 	}
-	client := opts.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := resolveHTTPClient(opts.HTTPClient)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latest, nil)
 	if err != nil {
@@ -132,20 +135,12 @@ func ResolveLatestStableURL(ctx context.Context, opts ResolveOpts) (url string, 
 		return "", "", fmt.Errorf("resolve latest: %w", err)
 	}
 	defer resp.Body.Close()
-	// Drain body so the connection can be reused.
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// Drain only a small response (redirect HTML / error page), never a zip.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("resolve latest: HTTP %d from %s", resp.StatusCode, latest)
-	}
-
-	finalURL := resp.Request.URL.String()
-	if !strings.HasSuffix(strings.ToLower(finalURL), ".zip") {
-		// Also accept path ending in .zip ignoring query string.
-		path := resp.Request.URL.Path
-		if !strings.HasSuffix(strings.ToLower(path), ".zip") {
-			return "", "", fmt.Errorf("resolve latest: final URL is not a zip: %s", finalURL)
-		}
+	finalURL, err := finalZipURLFromResolveResponse(resp)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve latest: %w", err)
 	}
 
 	ver, err := versionFromZipURL(finalURL)
@@ -153,6 +148,71 @@ func ResolveLatestStableURL(ctx context.Context, opts ResolveOpts) (url string, 
 		return "", "", fmt.Errorf("resolve latest: %w", err)
 	}
 	return finalURL, ver, nil
+}
+
+// resolveHTTPClient returns a client that stops before GETting a .zip redirect
+// target, unless the caller already provided CheckRedirect.
+func resolveHTTPClient(base *http.Client) *http.Client {
+	if base == nil {
+		base = http.DefaultClient
+	}
+	if base.CheckRedirect != nil {
+		return base
+	}
+	c := *base
+	c.CheckRedirect = stopBeforeZipBody
+	return &c
+}
+
+// stopBeforeZipBody follows intermediate redirects but returns
+// http.ErrUseLastResponse when the next hop looks like a zip download, so
+// ResolveLatestStableURL can read Location without downloading the archive.
+func stopBeforeZipBody(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	if urlLooksLikeZip(req.URL.String()) {
+		return http.ErrUseLastResponse
+	}
+	return nil
+}
+
+func finalZipURLFromResolveResponse(resp *http.Response) (string, error) {
+	if resp == nil || resp.Request == nil {
+		return "", fmt.Errorf("nil response")
+	}
+	// Redirect stopped before zip: use Location (absolute or relative).
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		loc := strings.TrimSpace(resp.Header.Get("Location"))
+		if loc == "" {
+			return "", fmt.Errorf("HTTP %d with empty Location", resp.StatusCode)
+		}
+		ref, err := resp.Request.URL.Parse(loc)
+		if err != nil {
+			return "", fmt.Errorf("parse Location %q: %w", loc, err)
+		}
+		finalURL := ref.String()
+		if !urlLooksLikeZip(finalURL) {
+			return "", fmt.Errorf("redirect Location is not a zip: %s", finalURL)
+		}
+		return finalURL, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("HTTP %d from %s", resp.StatusCode, resp.Request.URL.String())
+	}
+	finalURL := resp.Request.URL.String()
+	if !urlLooksLikeZip(finalURL) {
+		return "", fmt.Errorf("final URL is not a zip: %s", finalURL)
+	}
+	return finalURL, nil
+}
+
+func urlLooksLikeZip(raw string) bool {
+	clean := raw
+	if i := strings.IndexAny(clean, "?#"); i >= 0 {
+		clean = clean[:i]
+	}
+	return strings.HasSuffix(strings.ToLower(clean), ".zip")
 }
 
 // Download GETs url and writes the body to destPath. Non-2xx or empty body is an error.
@@ -291,6 +351,30 @@ func VerifyInstalled(appPath string) error {
 		return fmt.Errorf("verify installed: no binary under %s", macosDir)
 	}
 	return nil
+}
+
+// ReadBundleVersion returns CFBundleShortVersionString from appPath/Contents/Info.plist.
+// Prefer this over VerifyScriptable for probes: it does not launch or talk to a
+// running iTerm2 process.
+func ReadBundleVersion(appPath string) (string, error) {
+	appPath = strings.TrimSpace(appPath)
+	if appPath == "" {
+		return "", fmt.Errorf("read bundle version: empty app path")
+	}
+	plistPath := filepath.Join(appPath, "Contents", "Info.plist")
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		return "", fmt.Errorf("read bundle version: read Info.plist: %w", err)
+	}
+	ver, err := plistString(data, "CFBundleShortVersionString")
+	if err != nil {
+		return "", fmt.Errorf("read bundle version: %w", err)
+	}
+	ver = strings.TrimSpace(ver)
+	if ver == "" {
+		return "", fmt.Errorf("read bundle version: empty CFBundleShortVersionString")
+	}
+	return ver, nil
 }
 
 // VerifyScriptable returns the iTerm2 version via AppleScript (or an injected Runner).
