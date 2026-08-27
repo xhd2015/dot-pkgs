@@ -248,6 +248,23 @@ func (m *Manager) Remove(id string) {
 	m.remove(id)
 }
 
+// Close stops and deletes every session. Call on process SIGTERM/shutdown so
+// in-process PTY children are reaped before the manager exits.
+func (m *Manager) Close() {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	ids := make([]string, 0, len(m.sessions))
+	for id := range m.sessions {
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+	for _, id := range ids {
+		m.remove(id)
+	}
+}
+
 func (m *Manager) remove(id string) {
 	m.mu.Lock()
 	s, ok := m.sessions[id]

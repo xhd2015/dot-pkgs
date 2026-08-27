@@ -35,11 +35,10 @@ func startPTY(command []string, cwd string, opts SpawnOptions) (*exec.Cmd, *os.F
 		cmd.Env = append(cmd.Env, "PS1="+opts.PS1)
 	}
 
-	ptmx, err := pty.Start(cmd)
+	cmd, ptmx, err := startPTYProcess(cmd)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("start pty: %w", err)
+		return nil, nil, nil, err
 	}
-	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
 	return cmd, ptmx, append([]string(nil), command...), nil
 }
 
@@ -93,11 +92,23 @@ func startDefaultShellPTY(cwd string, opts SpawnOptions) (*exec.Cmd, *os.File, [
 		cmd.Env = append(cmd.Env, "PS1="+opts.PS1)
 	}
 
+	command := append([]string{shellPath}, shellFlags...)
+	cmd, ptmx, err := startPTYProcess(cmd)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return cmd, ptmx, command, nil
+}
+
+func startPTYProcess(cmd *exec.Cmd) (*exec.Cmd, *os.File, error) {
+	preparePTYCmd(cmd)
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("start pty: %w", err)
+		return nil, nil, fmt.Errorf("start pty: %w", err)
 	}
 	pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
-	command := append([]string{shellPath}, shellFlags...)
-	return cmd, ptmx, command, nil
+	if cmd.Process != nil {
+		startPdeathWatcher(os.Getpid(), cmd.Process.Pid)
+	}
+	return cmd, ptmx, nil
 }

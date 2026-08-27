@@ -491,8 +491,8 @@ func (s *session) stopChild() {
 	if s.ptmx != nil {
 		_ = s.ptmx.Close()
 	}
-	if s.cmd != nil && s.cmd.Process != nil && s.cmd.ProcessState == nil {
-		_ = s.cmd.Process.Kill()
+	if s.cmd != nil && s.cmd.Process != nil {
+		killProcessGroup(s.cmd.Process.Pid)
 	}
 	// Reap the process so it does not linger as a zombie; waitOnce coordinates
 	// with readLoop's wait() after EOF.
