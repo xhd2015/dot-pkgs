@@ -16,8 +16,14 @@ require (
 )
 
 require (
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/xhd2015/go-coverage v1.0.41 // indirect
 	github.com/xhd2015/go-inspect v0.0.49 // indirect
+	golang.design/x/clipboard v0.8.0 // indirect
+	golang.design/x/x11 v0.2.0 // indirect
+	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
+	golang.org/x/image v0.28.0 // indirect
+	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 )
 
 require (
