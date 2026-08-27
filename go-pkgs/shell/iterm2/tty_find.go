@@ -11,8 +11,9 @@ import (
 //
 //	WindowID\tWindowName\tTabIndex\tSessionIndex\tSessionID\tTTY\tName
 //
-// Uses `repeat with … in` enumeration (faster than index snapshots for this
-// targeted scan). Soft-skips per-item errors so mid-scan churn does not abort.
+// Uses bulk property gets (`tty`/`id` of sessions of tabs of aWindow) instead of
+// one Apple Event per session. Session Name is left empty (optional for callers).
+// Soft-skips per-window/tab errors so mid-scan churn does not abort.
 func BuildFindByTTYScript(ttys []string) string {
 	want := uniqueNormalizedTTYs(ttys)
 	sep := fieldSepAS
@@ -31,32 +32,28 @@ func BuildFindByTTYScript(ttys []string) string {
 		`      try`,
 		`        set windowName to name of aWindow as string`,
 		`      end try`,
-		`      set ti to 0`,
-		`      repeat with aTab in tabs of aWindow`,
-		`        set ti to ti + 1`,
+		`      set tabTTYs to tty of sessions of tabs of aWindow`,
+		`      set tabIDs to id of sessions of tabs of aWindow`,
+		`      repeat with i from 1 to count of tabTTYs`,
 		`        try`,
-		`          set si to 0`,
-		`          repeat with aSession in sessions of aTab`,
-		`            set si to si + 1`,
+		`          set ttyList to item i of tabTTYs`,
+		`          set idList to item i of tabIDs`,
+		`          set n to count of ttyList`,
+		`          repeat with j from 1 to n`,
 		`            try`,
-		`              set sessionTTY to ""`,
-		`              try`,
-		`                set sessionTTY to tty of aSession`,
-		`              end try`,
-		`              set normTTY to sessionTTY`,
-		`              if normTTY does not start with "/dev/" and normTTY is not "" then`,
-		`                set normTTY to "/dev/" & normTTY`,
-		`              end if`,
-		`              if wantTTYs contains normTTY or wantTTYs contains sessionTTY then`,
-		`                set sessionID to ""`,
-		`                set sessionName to ""`,
-		`                try`,
-		`                  set sessionID to id of aSession as string`,
-		`                end try`,
-		`                try`,
-		`                  set sessionName to name of aSession as string`,
-		`                end try`,
-		`                set end of outLines to windowID & fieldSep & windowName & fieldSep & (ti as string) & fieldSep & (si as string) & fieldSep & sessionID & fieldSep & normTTY & fieldSep & sessionName`,
+		`              set sessionTTY to item j of ttyList as string`,
+		`              if sessionTTY is not "" then`,
+		`                set normTTY to sessionTTY`,
+		`                if normTTY does not start with "/dev/" then`,
+		`                  set normTTY to "/dev/" & normTTY`,
+		`                end if`,
+		`                if wantTTYs contains normTTY or wantTTYs contains sessionTTY then`,
+		`                  set sessionID to ""`,
+		`                  try`,
+		`                    set sessionID to item j of idList as string`,
+		`                  end try`,
+		`                  set end of outLines to windowID & fieldSep & windowName & fieldSep & (i as string) & fieldSep & (j as string) & fieldSep & sessionID & fieldSep & normTTY & fieldSep & ""`,
+		`                end if`,
 		`              end if`,
 		`            end try`,
 		`          end repeat`,

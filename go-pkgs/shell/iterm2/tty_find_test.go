@@ -16,6 +16,15 @@ func TestBuildFindByTTYScript_IncludesWantedTTYs(t *testing.T) {
 	if !strings.Contains(script, "wantTTYs contains normTTY") {
 		t.Fatal("expected contains-based TTY filter")
 	}
+	if !strings.Contains(script, "tty of sessions of tabs of aWindow") {
+		t.Fatal("expected bulk tty property get")
+	}
+	if !strings.Contains(script, "id of sessions of tabs of aWindow") {
+		t.Fatal("expected bulk id property get")
+	}
+	if strings.Contains(script, "tty of aSession") {
+		t.Fatal("expected no per-session tty of aSession")
+	}
 }
 
 func TestBuildFindByTTYScript_Empty(t *testing.T) {
