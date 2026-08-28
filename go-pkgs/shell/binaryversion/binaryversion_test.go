@@ -3,9 +3,10 @@ package binaryversion
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/os/exectry"
 )
 
 func TestNewestUsesHighestVersionAndStableTieBreak(t *testing.T) {
@@ -59,7 +60,7 @@ func TestCompareSemver(t *testing.T) {
 
 func TestCommandSupportsCLISpecificVersionArguments(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "tool")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\n[ \"$1\" = version ] || exit 2\nprintf 'tool v2.3.4\\n'\n"), 0o755); err != nil {
+	if err := exectry.WriteExecutable(bin, []byte("#!/bin/sh\n[ \"$1\" = version ] || exit 2\nprintf 'tool v2.3.4\\n'\n")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Command("version")(context.Background(), bin)

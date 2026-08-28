@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/os/exectry"
 )
 
 type ghUserWire struct {
@@ -19,7 +21,7 @@ func EnsureAuthenticated(ctx context.Context, ghBin string) (string, error) {
 		return "", err
 	}
 
-	stdout, stderr, err := outputWithETXTBSYRetry(ctx, bin, "api", "user")
+	stdout, stderr, err := exectry.OutputStderr(ctx, bin, "api", "user")
 	if err != nil {
 		return "", wrapGhAuthError(err, stderr)
 	}

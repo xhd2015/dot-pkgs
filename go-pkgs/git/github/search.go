@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/os/exectry"
 )
 
 type ghSearchRepoWire struct {
@@ -43,7 +45,7 @@ func runSearchCode(ctx context.Context, ghBin, owner, keyword string, limit int)
 }
 
 func runGhCommand(ctx context.Context, ghBin, subcommand, owner string, args []string) ([]byte, error) {
-	stdout, stderr, err := outputWithETXTBSYRetry(ctx, ghBin, args...)
+	stdout, stderr, err := exectry.OutputStderr(ctx, ghBin, args...)
 	if err != nil {
 		return nil, wrapGhSubcommandError(subcommand, owner, err, stderr)
 	}

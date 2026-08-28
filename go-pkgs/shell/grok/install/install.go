@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/os/exectry"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/binaryversion"
 )
 
@@ -236,8 +237,7 @@ func defaultRunShell(stdout, stderr io.Writer) func(ctx context.Context, cmd str
 }
 
 func defaultRunVersion(ctx context.Context, bin string) (string, error) {
-	c := exec.CommandContext(ctx, bin, "--version")
-	out, err := c.Output()
+	out, err := exectry.Output(ctx, bin, "--version")
 	if err != nil {
 		return "", err
 	}

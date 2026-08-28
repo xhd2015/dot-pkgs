@@ -3,10 +3,11 @@ package install
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/os/exectry"
 )
 
 func TestWellKnownPathsWithHome(t *testing.T) {
@@ -292,7 +293,7 @@ func writeVersionScript(t *testing.T, dir, stdout string) string {
 	t.Helper()
 	bin := filepath.Join(dir, "codex")
 	body := "#!/bin/sh\nprintf '%s\\n' '" + strings.ReplaceAll(stdout, "'", "") + "'\n"
-	if err := os.WriteFile(bin, []byte(body), 0o755); err != nil {
+	if err := exectry.WriteExecutable(bin, []byte(body)); err != nil {
 		t.Fatal(err)
 	}
 	return bin

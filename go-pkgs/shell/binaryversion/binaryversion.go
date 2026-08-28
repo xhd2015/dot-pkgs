@@ -4,10 +4,11 @@ package binaryversion
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/os/exectry"
 )
 
 var semverRe = regexp.MustCompile(`\d+\.\d+\.\d+`)
@@ -38,7 +39,7 @@ func Command(args ...string) Probe {
 		if strings.TrimSpace(binary) == "" {
 			return "", fmt.Errorf("probe version: empty binary")
 		}
-		out, err := exec.CommandContext(ctx, binary, args...).Output()
+		out, err := exectry.Output(ctx, binary, args...)
 		if err != nil {
 			return "", err
 		}
