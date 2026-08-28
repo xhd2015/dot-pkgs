@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 	"github.com/xhd2015/doctest/session"
 )
@@ -36,6 +37,45 @@ func reserveTCPPort(t *testing.T) int {
 	ln.Close()
 	return port
 }
+
+func isAddrInUse(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "address already in use")
+}
+
+// listenExactPort rebinds 127.0.0.1:port after a reserveTCPPort close. Retries
+// briefly so parallel doctest probes that stole the port can release it.
+func listenExactPort(port int) (net.Listener, error) {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	var last error
+	for i := 0; i < 25; i++ {
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			return ln, nil
+		}
+		last = err
+		if !isAddrInUse(err) {
+			return nil, err
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+	return nil, last
+}
+
+// withAddrInUseRetry re-runs fn when a parallel leaf stole a reserved port.
+func withAddrInUseRetry(fn func() error) error {
+	var last error
+	for attempt := 0; attempt < 3; attempt++ {
+		last = fn()
+		if last == nil || !isAddrInUse(last) {
+			return last
+		}
+	}
+	return last
+}
+
+// permanentlyDeadUpstreamPort is never bound by unprivileged tests (needs root),
+// so parallel doctests cannot turn a "dead upstream" into a live TCP acceptor.
+const permanentlyDeadUpstreamPort = 1
 
 func startLocalConnectTarget(t *testing.T) string {
 	t.Helper()

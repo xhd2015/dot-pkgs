@@ -25,7 +25,6 @@ health monitor -> upstream proxy available, switching
 ```go
 import (
 	"fmt"
-	"net"
 	"os/exec"
 	"testing"
 	"time"
@@ -33,72 +32,69 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	binPath := getBinPath(t, d)
+	return withAddrInUseRetry(func() error {
+		binPath := getBinPath(t, d)
 
-	reserved, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return fmt.Errorf("reserve upstream port: %w", err)
-	}
-	upstreamPort := reserved.Addr().(*net.TCPAddr).Port
-	reserved.Close()
+		upstreamPort, err := reserveClosedPort()
+		if err != nil {
+			return fmt.Errorf("reserve upstream port: %w", err)
+		}
+		proxyPort, err := reserveClosedPort()
+		if err != nil {
+			return fmt.Errorf("reserve proxy port: %w", err)
+		}
 
-	proxyLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return fmt.Errorf("reserve proxy port: %w", err)
-	}
-	proxyPort := proxyLn.Addr().(*net.TCPAddr).Port
-	proxyLn.Close()
+		cmd := exec.Command(binPath,
+			"--upstream-proxy", fmt.Sprintf("http://127.0.0.1:%d", upstreamPort),
+			"--listen-port", fmt.Sprintf("%d", proxyPort),
+		)
 
-	cmd := exec.Command(binPath,
-		"--upstream-proxy", fmt.Sprintf("http://127.0.0.1:%d", upstreamPort),
-		"--listen-port", fmt.Sprintf("%d", proxyPort),
-	)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		cmd.Stderr = cmd.Stdout
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	cmd.Stderr = cmd.Stdout
+		if err := cmd.Start(); err != nil {
+			return err
+		}
 
-	if err := cmd.Start(); err != nil {
-		return err
-	}
+		sc := newStreamCollector(stdout)
+		getOutput := func() string { return scNewOutput(sc) }
 
-	sc := newStreamCollector(stdout)
-	getOutput := func() string { return scNewOutput(sc) }
+		if !waitForPattern(getOutput, "falling back to direct", 10*time.Second) {
+			cmd.Process.Kill()
+			cmd.Wait()
+			return fmt.Errorf("timed out waiting for initial 'falling back to direct'\noutput:\n%s", scFullOutput(sc))
+		}
+		if !waitForPattern(getOutput, "listening on", 10*time.Second) {
+			cmd.Process.Kill()
+			cmd.Wait()
+			return fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", scFullOutput(sc))
+		}
+		scConsume(sc)
 
-	if !waitForPattern(getOutput, "falling back to direct", 10*time.Second) {
+		upstream, err := listenExactPort(upstreamPort)
+		if err != nil {
+			cmd.Process.Kill()
+			cmd.Wait()
+			return fmt.Errorf("start upstream listener: %w", err)
+		}
+		defer upstream.Close()
+
+		if !waitForPattern(getOutput, "upstream proxy available, switching", 10*time.Second) {
+			cmd.Process.Kill()
+			cmd.Wait()
+			return fmt.Errorf("timed out waiting for 'upstream proxy available, switching'\noutput:\n%s", scFullOutput(sc))
+		}
+		scConsume(sc)
+
+		time.Sleep(500 * time.Millisecond)
 		cmd.Process.Kill()
 		cmd.Wait()
-		return fmt.Errorf("timed out waiting for initial 'falling back to direct'\noutput:\n%s", scFullOutput(sc))
-	}
-	if !waitForPattern(getOutput, "listening on", 10*time.Second) {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return fmt.Errorf("timed out waiting for 'listening on'\noutput:\n%s", scFullOutput(sc))
-	}
-	scConsume(sc)
 
-	upstream, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", upstreamPort))
-	if err != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return fmt.Errorf("start upstream listener: %v", err)
-	}
-	defer upstream.Close()
-
-	if !waitForPattern(getOutput, "upstream proxy available, switching", 10*time.Second) {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return fmt.Errorf("timed out waiting for 'upstream proxy available, switching'\noutput:\n%s", scFullOutput(sc))
-	}
-	scConsume(sc)
-
-	time.Sleep(500 * time.Millisecond)
-	cmd.Process.Kill()
-	cmd.Wait()
-
-	req.CapturedOutput = scFullOutput(sc)
-	return nil
+		req.CapturedOutput = scFullOutput(sc)
+		return nil
+	})
 }
 ```

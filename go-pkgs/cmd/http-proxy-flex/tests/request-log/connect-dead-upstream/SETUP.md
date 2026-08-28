@@ -16,7 +16,9 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	upstreamPort := reserveTCPPort(t)
+	// Port 1 stays connection-refused for unprivileged processes — avoids
+	// reserveTCPPort() races where a parallel leaf binds the "dead" port.
+	upstreamPort := permanentlyDeadUpstreamPort
 	proxyPort := reserveTCPPort(t)
 
 	binPath := getBinPath(t, d)
