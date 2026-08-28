@@ -21,13 +21,14 @@ import (
 )
 
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
-	upstreamPort := reserveTCPPort(t)
-	proxyPort := reserveTCPPort(t)
-
-	upstream, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", upstreamPort))
+	// Bind :0 and keep the listener — do not reserveTCPPort()+rebind; that
+	// close→listen gap races other parallel doctests for the same port.
+	upstream, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("start upstream listener: %w", err)
 	}
+	upstreamPort := upstream.Addr().(*net.TCPAddr).Port
+	proxyPort := reserveTCPPort(t)
 
 	binPath := getBinPath(t, d)
 	cmd := exec.Command(binPath,

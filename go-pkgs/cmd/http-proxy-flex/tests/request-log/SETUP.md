@@ -22,6 +22,10 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	return nil
 }
 
+// reserveTCPPort returns a free TCP port number after closing the probe
+// listener. Prefer net.Listen("tcp", "127.0.0.1:0") and keeping that listener
+// whenever the test needs the port bound immediately — the close→rebind gap
+// races parallel doctests (EADDRINUSE).
 func reserveTCPPort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
