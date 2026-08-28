@@ -66,12 +66,28 @@ func writeFakeGh(t *testing.T, body string) string {
 	ghPath := filepath.Join(dir, "gh")
 	tmpPath := ghPath + ".tmp"
 	script := mockGhHeader + body
-	// Write then rename so Linux overlayfs does not ETXTBSY on immediate exec.
-	if err := os.WriteFile(tmpPath, []byte(script), 0755); err != nil {
+	// Write→fsync→rename so Docker overlayfs does not ETXTBSY on immediate exec.
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte(script)); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(tmpPath, ghPath); err != nil {
 		t.Fatal(err)
+	}
+	if dirf, err := os.Open(dir); err == nil {
+		_ = dirf.Sync()
+		dirf.Close()
 	}
 	return ghPath
 }

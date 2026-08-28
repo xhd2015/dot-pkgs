@@ -1,7 +1,6 @@
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,13 +19,9 @@ func EnsureAuthenticated(ctx context.Context, ghBin string) (string, error) {
 		return "", err
 	}
 
-	cmd := exec.CommandContext(ctx, bin, "api", "user")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	stdout, err := cmd.Output()
+	stdout, stderr, err := outputWithETXTBSYRetry(ctx, bin, "api", "user")
 	if err != nil {
-		return "", wrapGhAuthError(err, stderr.String())
+		return "", wrapGhAuthError(err, stderr)
 	}
 
 	var user ghUserWire

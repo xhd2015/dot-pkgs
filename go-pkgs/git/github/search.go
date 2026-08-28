@@ -1,7 +1,6 @@
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -44,13 +43,9 @@ func runSearchCode(ctx context.Context, ghBin, owner, keyword string, limit int)
 }
 
 func runGhCommand(ctx context.Context, ghBin, subcommand, owner string, args []string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, ghBin, args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	stdout, err := cmd.Output()
+	stdout, stderr, err := outputWithETXTBSYRetry(ctx, ghBin, args...)
 	if err != nil {
-		return nil, wrapGhSubcommandError(subcommand, owner, err, stderr.String())
+		return nil, wrapGhSubcommandError(subcommand, owner, err, stderr)
 	}
 	return stdout, nil
 }

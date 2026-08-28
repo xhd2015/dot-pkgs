@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 )
 
 type ghRepoOwner struct {
@@ -62,15 +65,41 @@ func runGh(ctx context.Context, ghBin, owner string, limit int, includeArchived,
 		args = append(args, "--source")
 	}
 
-	cmd := exec.CommandContext(ctx, ghBin, args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	stdout, err := cmd.Output()
+	stdout, stderr, err := outputWithETXTBSYRetry(ctx, ghBin, args...)
 	if err != nil {
-		return nil, wrapGhError(owner, err, stderr.String())
+		return nil, wrapGhError(owner, err, stderr)
 	}
 	return stdout, nil
+}
+
+func isTextFileBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.ETXTBSY) {
+		return true
+	}
+	return strings.Contains(err.Error(), "text file busy")
+}
+
+// outputWithETXTBSYRetry runs name with args, retrying fork/exec when the
+// kernel returns ETXTBSY (common on Docker overlayfs right after writing a
+// mock binary, even after write→rename).
+func outputWithETXTBSYRetry(ctx context.Context, name string, args ...string) ([]byte, string, error) {
+	var stderr bytes.Buffer
+	var stdout []byte
+	var err error
+	for attempt := 0; attempt < 8; attempt++ {
+		stderr.Reset()
+		cmd := exec.CommandContext(ctx, name, args...)
+		cmd.Stderr = &stderr
+		stdout, err = cmd.Output()
+		if err == nil || !isTextFileBusy(err) {
+			return stdout, stderr.String(), err
+		}
+		time.Sleep(time.Duration(20*(attempt+1)) * time.Millisecond)
+	}
+	return stdout, stderr.String(), err
 }
 
 func wrapGhError(owner string, err error, stderr string) error {
