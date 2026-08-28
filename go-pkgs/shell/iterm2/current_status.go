@@ -1,50 +1,21 @@
 package iterm2
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
-	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2/window"
 )
 
-// CurrentLocation is the iTerm2 pane that parents the calling process.
-type CurrentLocation struct {
-	WindowID    string
-	WindowName  string
-	TabIndex    int // 1-based
-	SessionID   string
-	TTY         string
-	SessionName string
-}
-
-// TabStatusRow is one tab line for window status output.
-type TabStatusRow struct {
-	Index     int
-	Current   bool
-	Name      string
-	SessionID string
-	TTY       string
-}
-
-// WindowStatus is the parent window plus all of its tabs.
-type WindowStatus struct {
-	WindowID        string
-	WindowName      string
-	CurrentTabIndex int
-	Tabs            []TabStatusRow
-}
-
-// TabStatus is a summary of the parent tab only.
-type TabStatus struct {
-	WindowID   string
-	WindowName string
-	TabIndex   int
-	Name       string
-	SessionID  string
-	TTY        string
-}
+// Status model types live in package window; aliases keep existing iterm2 importers stable.
+type (
+	CurrentLocation = window.CurrentLocation
+	TabStatusRow    = window.TabStatusRow
+	WindowStatus    = window.WindowStatus
+	TabStatus       = window.TabStatus
+)
 
 // CurrentStatusConfig injects resolve inputs for tests.
 type CurrentStatusConfig struct {
@@ -204,80 +175,27 @@ func locationFromRef(ref SessionRef) CurrentLocation {
 
 // BuildWindowStatus lists every tab in loc's window, marking the current tab.
 func BuildWindowStatus(refs []SessionRef, loc CurrentLocation) WindowStatus {
-	st := WindowStatus{
-		WindowID:        loc.WindowID,
-		WindowName:      loc.WindowName,
-		CurrentTabIndex: loc.TabIndex,
-	}
-	type agg struct {
-		row      TabStatusRow
-		haveCurr bool
-	}
-	byTab := map[int]*agg{}
-	var order []int
-	for _, ref := range refs {
-		if ref.WindowID != loc.WindowID {
-			continue
-		}
-		if ref.TabIndex < 1 {
-			continue
-		}
-		a, ok := byTab[ref.TabIndex]
-		if !ok {
-			a = &agg{row: TabStatusRow{Index: ref.TabIndex}}
-			byTab[ref.TabIndex] = a
-			order = append(order, ref.TabIndex)
-		}
-		isCurrentPane := loc.TabIndex == ref.TabIndex &&
-			(loc.SessionID == "" || SessionUUID(ref.SessionID) == SessionUUID(loc.SessionID) ||
-				(loc.TTY != "" && NormalizeTTY(ref.TTY) == NormalizeTTY(loc.TTY)))
-		if isCurrentPane {
-			a.row.Current = true
-			a.row.Name = ref.Name
-			a.row.SessionID = ref.SessionID
-			a.row.TTY = ref.TTY
-			a.haveCurr = true
-			continue
-		}
-		if !a.haveCurr && a.row.Name == "" {
-			a.row.Name = ref.Name
-			a.row.SessionID = ref.SessionID
-			a.row.TTY = ref.TTY
-		}
-	}
-	if loc.TabIndex >= 1 {
-		if a, ok := byTab[loc.TabIndex]; ok {
-			a.row.Current = true
-			if !a.haveCurr {
-				if loc.SessionName != "" {
-					a.row.Name = loc.SessionName
-				}
-				if loc.SessionID != "" {
-					a.row.SessionID = loc.SessionID
-				}
-				if loc.TTY != "" {
-					a.row.TTY = loc.TTY
-				}
-			}
-		}
-	}
-	sort.Ints(order)
-	for _, ti := range order {
-		st.Tabs = append(st.Tabs, byTab[ti].row)
-	}
-	return st
+	return window.BuildWindowStatus(sessionRefsToPaneRefs(refs), loc)
 }
 
 // BuildTabStatus returns the current-tab summary for loc.
 func BuildTabStatus(loc CurrentLocation) TabStatus {
-	return TabStatus{
-		WindowID:   loc.WindowID,
-		WindowName: loc.WindowName,
-		TabIndex:   loc.TabIndex,
-		Name:       loc.SessionName,
-		SessionID:  loc.SessionID,
-		TTY:        loc.TTY,
+	return window.BuildTabStatus(loc)
+}
+
+func sessionRefsToPaneRefs(refs []SessionRef) []window.PaneRef {
+	out := make([]window.PaneRef, len(refs))
+	for i, ref := range refs {
+		out[i] = window.PaneRef{
+			WindowID:   ref.WindowID,
+			WindowName: ref.WindowName,
+			TabIndex:   ref.TabIndex,
+			SessionID:  ref.SessionID,
+			TTY:        ref.TTY,
+			Name:       ref.Name,
+		}
 	}
+	return out
 }
 
 // CurrentWindowStatus resolves the parent window and lists its tabs.
@@ -315,78 +233,12 @@ func CurrentTabStatusWith(cfg *CurrentStatusConfig) (TabStatus, error) {
 
 // FormatWindowStatus renders WindowStatus for human CLI stdout.
 func FormatWindowStatus(st WindowStatus) string {
-	var b strings.Builder
-	title := st.WindowName
-	if title == "" {
-		title = "(untitled)"
-	}
-	fmt.Fprintf(&b, "window %s  %s\n", st.WindowID, title)
-	// Column widths from content.
-	maxName := 0
-	for _, tab := range st.Tabs {
-		if n := len(tab.Name); n > maxName {
-			maxName = n
-		}
-	}
-	if maxName > 48 {
-		maxName = 48
-	}
-	for _, tab := range st.Tabs {
-		mark := " "
-		if tab.Current {
-			mark = "*"
-		}
-		name := tab.Name
-		if name == "" {
-			name = "(untitled)"
-		}
-		if maxName > 0 && len(name) > maxName {
-			if maxName <= 1 {
-				name = name[:maxName]
-			} else {
-				name = name[:maxName-1] + "…"
-			}
-		}
-		fmt.Fprintf(&b, "  %s [%d] %-*s  %s  %s\n",
-			mark, tab.Index, maxName, name, displaySessionID(tab.SessionID), displayTTY(tab.TTY))
-	}
-	return b.String()
+	return window.FormatWindowStatus(st)
 }
 
 // FormatTabStatus renders TabStatus for human CLI stdout.
 func FormatTabStatus(st TabStatus) string {
-	var b strings.Builder
-	wtitle := st.WindowName
-	if wtitle == "" {
-		wtitle = "(untitled)"
-	}
-	fmt.Fprintf(&b, "tab %d of window %s  %s\n", st.TabIndex, st.WindowID, wtitle)
-	name := st.Name
-	if name == "" {
-		name = "(untitled)"
-	}
-	fmt.Fprintf(&b, "  name:     %s\n", name)
-	fmt.Fprintf(&b, "  session:  %s\n", st.SessionID)
-	fmt.Fprintf(&b, "  tty:      %s\n", displayTTY(st.TTY))
-	return b.String()
-}
-
-// displaySessionID returns the full session unique ID for CLI copy/paste
-// (e.g. kool iterm2 session <id> send). Empty → "-".
-func displaySessionID(id string) string {
-	id = strings.TrimSpace(SessionUUID(id))
-	if id == "" {
-		return "-"
-	}
-	return id
-}
-
-func displayTTY(tty string) string {
-	tty = strings.TrimSpace(tty)
-	if tty == "" {
-		return "-"
-	}
-	return tty
+	return window.FormatTabStatus(st)
 }
 
 func probeControllingTTY() string {
