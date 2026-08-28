@@ -1,8 +1,10 @@
-package iterm2
+package tabselect
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2/window"
 )
 
 func TestParseTabFlag(t *testing.T) {
@@ -48,10 +50,10 @@ func TestParseTabIndexFlag(t *testing.T) {
 }
 
 func TestSelectWindowTab(t *testing.T) {
-	st := WindowStatus{
+	st := window.WindowStatus{
 		WindowID:        "100",
 		CurrentTabIndex: 1,
-		Tabs: []TabStatusRow{
+		Tabs: []window.TabStatusRow{
 			{Index: 1, Current: true, SessionID: "AAA", Name: "a"},
 			{Index: 2, SessionID: "BBB", Name: "b"},
 			{Index: 3, SessionID: "CCC", Name: "c"},
