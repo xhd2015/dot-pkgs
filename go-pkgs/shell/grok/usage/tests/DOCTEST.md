@@ -2,7 +2,7 @@
 
 ## Version
 
-0.0.1
+0.0.2
 
 Classic TDD doctests for package
 `github.com/xhd2015/dot-pkgs/go-pkgs/shell/grok/usage`.
@@ -11,7 +11,7 @@ Classic TDD doctests for package
 No real network, no real `~/.grok/auth.json`. Parallel-safe.
 
 **Out of scope:** Marcus wiring, agent-pro PTY fallback, live cli-chat-proxy e2e,
-Cloudflare `grok.com/rest/rate-limits`.
+Cloudflare `grok.com/rest/rate-limits` (request/token windows).
 
 Fixtures use generic identities (`user@example.com`) — no personal hosts in
 scenario copy beyond public product URLs used as API constants.
@@ -20,23 +20,28 @@ scenario copy beyond public product URLs used as API constants.
 
 ### Participants
 
-- **`Fetch(ctx, opts)`** — load/ensure auth → GET `api.BillingURL` →
-  `NormalizeJSON`. On HTTP 401/403, force-refresh once and retry GET once.
-- **`NormalizeJSON(raw, source)`** — map `config.used` / `monthlyLimit` /
-  billing period into `Snapshot`.
+- **`Fetch(ctx, opts)`** — load/ensure auth → GET monthly `api.BillingURL` and
+  weekly `api.BillingCreditsURL` → `NormalizeJSON` each → `SelectPreferred`.
+  On HTTP 401/403 for a GET, force-refresh once and retry that GET once.
+- **`NormalizeJSON(raw, source)`** — map monthly `used`/`monthlyLimit` and/or
+  credits `creditUsagePercent` / `currentPeriod` into `Snapshot`.
+- **`SelectPreferred`** — monthly wins when `MonthlyLimit > 0`; else weekly when
+  `UsedPercent >= 0`; else monthly uncapped; else weekly.
 - **`Snapshot`** — `Used`, `MonthlyLimit`, `UsedPercent` / `RemainingPercent`
-  (`-1` when limit is 0), `ResetAt`, `Source` (`billing`), `Email`.
-- **`FetchOpts.ForceRefresh`** — always refresh access token before GET.
+  (`-1` when unknown), `ResetAt`, `PeriodType` (`monthly`/`weekly`), `Source`
+  (`billing`), `Email`.
+- **`FetchOpts.ForceRefresh`** — always refresh access token before GETs.
 
 ### Behaviors
 
 **Fetch**
 
-- Billing OK with limit → `Source=billing`, percents from used/limit
-- Billing OK with `monthlyLimit=0` → percents `-1`
+- Monthly capped + weekly present → prefer monthly percents / `PeriodType=monthly`
+- Monthly uncapped + weekly credits → prefer weekly percents / `PeriodType=weekly`
+- Monthly uncapped only (credits same shape / no percent) → percents `-1`
 - `ForceRefresh=true` → Ensure called with ForceRefresh
 - GET 401 then OK after forced refresh → success
-- Non-auth GET failure → error
+- Both GETs fail → error
 
 **Normalize**
 
@@ -46,11 +51,12 @@ scenario copy beyond public product URLs used as API constants.
 
 ```
 fetch/
-├── billing-ok/            # limited billing succeeds
-├── unlimited/             # monthlyLimit=0 → unknown %
-├── force-refresh/         # ForceRefresh passed to Ensure
-├── unauthorized-retry/    # 401 → force refresh → retry OK
-└── http-fail/             # non-auth GET failure
+├── billing-ok/                 # monthly capped wins over weekly
+├── monthly-open-weekly/        # monthlyLimit=0 → weekly credits %
+├── unlimited/                  # monthly uncapped, no weekly % → unknown %
+├── force-refresh/              # ForceRefresh passed to Ensure
+├── unauthorized-retry/         # 401 → force refresh → retry OK
+└── http-fail/                  # both GETs fail
 ```
 
 ## How to Run
@@ -94,11 +100,26 @@ const fixtureBillingUnlimited = `{
   }
 }`
 
+const fixtureBillingCreditsWeekly = `{
+  "config": {
+    "billingPeriodStart": "2026-08-28T00:55:25.179446+00:00",
+    "billingPeriodEnd": "2026-09-04T00:55:25.179446+00:00",
+    "creditUsagePercent": 2.0,
+    "currentPeriod": {
+      "start": "2026-08-28T00:55:25.179446+00:00",
+      "end": "2026-09-04T00:55:25.179446+00:00",
+      "type": "USAGE_PERIOD_TYPE_WEEKLY"
+    },
+    "productUsage": [{"product": "GrokBuild", "usagePercent": 2.0}]
+  }
+}`
+
 // Request is filled root→leaf.
 type Request struct {
 	Operation string // fetch
 
-	// FetchMode: billing-ok | unlimited | force-refresh | unauthorized-retry | http-fail
+	// FetchMode: billing-ok | monthly-open-weekly | unlimited | force-refresh |
+	// unauthorized-retry | http-fail
 	FetchMode string
 }
 
@@ -108,6 +129,7 @@ type Response struct {
 	MonthlyLimit     int64
 	RemainingPercent int
 	UsedPercent      int
+	PeriodType       string
 	Source           string
 	Email            string
 	ResetUnix        int64
@@ -144,6 +166,40 @@ func assertContains(t *testing.T, name, got, substr string) {
 	}
 }
 
+func bodyForURL(mode, url string, gets int) ([]byte, error) {
+	switch mode {
+	case "billing-ok":
+		switch url {
+		case api.BillingURL:
+			return []byte(fixtureBillingLimited), nil
+		case api.BillingCreditsURL:
+			return []byte(fixtureBillingCreditsWeekly), nil
+		}
+	case "monthly-open-weekly":
+		switch url {
+		case api.BillingURL:
+			return []byte(fixtureBillingUnlimited), nil
+		case api.BillingCreditsURL:
+			return []byte(fixtureBillingCreditsWeekly), nil
+		}
+	case "unlimited", "force-refresh":
+		return []byte(fixtureBillingUnlimited), nil
+	case "unauthorized-retry":
+		if gets == 1 && url == api.BillingURL {
+			return nil, fmt.Errorf("grok api: HTTP 401 from %s", api.BillingURL)
+		}
+		switch url {
+		case api.BillingURL:
+			return []byte(fixtureBillingLimited), nil
+		case api.BillingCreditsURL:
+			return []byte(fixtureBillingCreditsWeekly), nil
+		}
+	case "http-fail":
+		return nil, fmt.Errorf("grok api: HTTP 500 from %s", url)
+	}
+	return nil, fmt.Errorf("unknown FetchMode/url %q %q", mode, url)
+}
+
 func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	t.Helper()
 	_ = d
@@ -170,26 +226,10 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	get := func(ctx context.Context, opts api.GetOpts) ([]byte, error) {
 		gets++
 		urls = append(urls, opts.URL)
-		switch req.FetchMode {
-		case "billing-ok":
-			return []byte(fixtureBillingLimited), nil
-		case "unlimited":
-			return []byte(fixtureBillingUnlimited), nil
-		case "force-refresh":
-			return []byte(fixtureBillingUnlimited), nil
-		case "unauthorized-retry":
-			if gets == 1 {
-				return nil, fmt.Errorf("grok api: HTTP 401 from %s", api.BillingURL)
-			}
-			if opts.Auth.AccessToken != "refreshed-access" {
-				return nil, fmt.Errorf("expected refreshed token, got %q", opts.Auth.AccessToken)
-			}
-			return []byte(fixtureBillingLimited), nil
-		case "http-fail":
-			return nil, fmt.Errorf("grok api: HTTP 500 from %s", api.BillingURL)
-		default:
-			return nil, fmt.Errorf("unknown FetchMode %q", req.FetchMode)
+		if req.FetchMode == "unauthorized-retry" && gets > 1 && opts.Auth.AccessToken != "refreshed-access" {
+			return nil, fmt.Errorf("expected refreshed token, got %q", opts.Auth.AccessToken)
 		}
+		return bodyForURL(req.FetchMode, opts.URL, gets)
 	}
 
 	force := req.FetchMode == "force-refresh"
@@ -216,6 +256,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	resp.MonthlyLimit = snap.MonthlyLimit
 	resp.RemainingPercent = snap.RemainingPercent
 	resp.UsedPercent = snap.UsedPercent
+	resp.PeriodType = snap.PeriodType
 	resp.Source = snap.Source
 	resp.Email = snap.Email
 	if !snap.ResetAt.IsZero() {

@@ -4,6 +4,7 @@
 - `Source == "billing"`
 - `Used == 73`, `MonthlyLimit == 0`
 - `UsedPercent == -1`, `RemainingPercent == -1`
+- both GETs return uncapped monthly shape (no weekly %)
 
 ```go
 import (
@@ -22,5 +23,6 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	assertEqual(t, "MonthlyLimit", resp.MonthlyLimit, int64(0))
 	assertEqual(t, "UsedPercent", resp.UsedPercent, -1)
 	assertEqual(t, "RemainingPercent", resp.RemainingPercent, -1)
+	assertEqual(t, "GetCount", resp.GetCount, 2)
 }
 ```

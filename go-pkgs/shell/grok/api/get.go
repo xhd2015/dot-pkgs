@@ -9,8 +9,11 @@ import (
 )
 
 const (
-	// BillingURL is the cli-chat-proxy billing/usage endpoint.
+	// BillingURL is the cli-chat-proxy billing/usage endpoint (monthly spend shape).
 	BillingURL = "https://cli-chat-proxy.grok.com/v1/billing"
+
+	// BillingCreditsURL is the weekly credits usage shape used by Grok CLI.
+	BillingCreditsURL = BillingURL + "?format=credits"
 
 	// DefaultUserAgent identifies Grok CLI-style clients to the proxy.
 	DefaultUserAgent = "GrokCLI/1.0.5"

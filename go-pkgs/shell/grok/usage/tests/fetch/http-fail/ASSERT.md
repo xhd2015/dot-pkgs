@@ -2,7 +2,7 @@
 
 - `err != nil`
 - error mentions `HTTP 500`
-- single GET (no auth retry)
+- two GETs (monthly + credits; no auth retry)
 
 ```go
 import (
@@ -17,6 +17,6 @@ func Assert(t *testing.T, d *session.Doctest, req *Request, resp *Response, err 
 	_ = req
 	assertError(t, err)
 	assertContains(t, "err", err.Error(), "HTTP 500")
-	assertEqual(t, "GetCount", resp.GetCount, 1)
+	assertEqual(t, "GetCount", resp.GetCount, 2)
 }
 ```
