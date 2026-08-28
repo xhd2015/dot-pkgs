@@ -2,6 +2,7 @@ package ptywrap
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
@@ -19,6 +20,9 @@ type Manager struct {
 	sessions map[string]*session
 	counter  int
 	Spawn    SpawnOptions
+	// LifecycleLog receives grep-friendly [ptywrap] lifecycle lines.
+	// Nil (default) disables logging — do not assume stderr; TUI hosts share a terminal.
+	LifecycleLog io.Writer
 }
 
 // NewManager creates an empty session manager.
@@ -36,7 +40,22 @@ func (m *Manager) createShell(name, cwd string) (*session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return m.registerSession(name, cwd, command, cmd, ptmx)
+	s, err := m.registerSession(name, cwd, command, cmd, ptmx)
+	if err != nil {
+		return nil, err
+	}
+	total, running := m.sessionCounts()
+	m.logLifecycle("create",
+		"kind", "shell",
+		"session_id", s.id,
+		"pid", strconv.Itoa(s.childPID()),
+		"name", s.name,
+		"cwd", s.cwd,
+		"cmd", s.commandSummary(),
+		"sessions_total", strconv.Itoa(total),
+		"sessions_running", strconv.Itoa(running),
+	)
+	return s, nil
 }
 
 func (m *Manager) createCommand(name, cwd string, command []string) (*session, error) {
@@ -48,7 +67,22 @@ func (m *Manager) createCommandWithID(id, name, cwd string, command []string) (*
 	if err != nil {
 		return nil, err
 	}
-	return m.registerSessionWithID(id, name, cwd, resolved, cmd, ptmx)
+	s, err := m.registerSessionWithID(id, name, cwd, resolved, cmd, ptmx)
+	if err != nil {
+		return nil, err
+	}
+	total, running := m.sessionCounts()
+	m.logLifecycle("create",
+		"kind", "command",
+		"session_id", s.id,
+		"pid", strconv.Itoa(s.childPID()),
+		"name", s.name,
+		"cwd", s.cwd,
+		"cmd", s.commandSummary(),
+		"sessions_total", strconv.Itoa(total),
+		"sessions_running", strconv.Itoa(running),
+	)
+	return s, nil
 }
 
 // CreateCommand starts a new PTY session running command in cwd.
@@ -99,17 +133,18 @@ func (m *Manager) registerSessionWithID(id, name, cwd string, command []string, 
 	}
 
 	s := &session{
-		id:        id,
-		name:      name,
-		command:   append([]string(nil), command...),
-		cwd:       cwd,
-		createdAt: time.Now(),
-		cmd:       cmd,
-		ptmx:      ptmx,
-		cols:      80,
-		rows:      24,
-		screen:    vt10x.New(vt10x.WithSize(80, 24)),
-		done:      make(chan struct{}),
+		id:           id,
+		name:         name,
+		command:      append([]string(nil), command...),
+		cwd:          cwd,
+		createdAt:    time.Now(),
+		cmd:          cmd,
+		ptmx:         ptmx,
+		cols:         80,
+		rows:         24,
+		screen:       vt10x.New(vt10x.WithSize(80, 24)),
+		done:         make(chan struct{}),
+		lifecycleLog: m.LifecycleLog,
 	}
 
 	m.mu.Lock()
@@ -240,6 +275,17 @@ func (m *Manager) RegisterExternal(name, cwd string, command []string, cmd *exec
 	if err != nil {
 		return "", err
 	}
+	total, running := m.sessionCounts()
+	m.logLifecycle("create",
+		"kind", "external",
+		"session_id", s.id,
+		"pid", strconv.Itoa(s.childPID()),
+		"name", s.name,
+		"cwd", s.cwd,
+		"cmd", s.commandSummary(),
+		"sessions_total", strconv.Itoa(total),
+		"sessions_running", strconv.Itoa(running),
+	)
 	return s.id, nil
 }
 
@@ -274,9 +320,19 @@ func (m *Manager) remove(id string) {
 	m.mu.Unlock()
 
 	if !ok {
+		m.logLifecycle("remove", "session_id", id, "found", "false")
 		return
 	}
+	pid := s.childPID()
 	s.close()
+	total, running := m.sessionCounts()
+	m.logLifecycle("remove",
+		"session_id", id,
+		"pid", strconv.Itoa(pid),
+		"cmd", s.commandSummary(),
+		"sessions_total", strconv.Itoa(total),
+		"sessions_running", strconv.Itoa(running),
+	)
 }
 
 // RegisterTestSessions seeds sessions for doctest harnesses.

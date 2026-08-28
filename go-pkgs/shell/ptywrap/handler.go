@@ -89,6 +89,16 @@ func HandleTerminalWebSocket(w http.ResponseWriter, r *http.Request, mgr *Manage
 	}
 
 	if s == nil {
+		// Evidence for leak diagnosis: client asked to reattach but session was
+		// gone (or never sent id) → createShell allocates a new PTY.
+		if sessionID != "" {
+			mgr.logLifecycle("reattach_miss",
+				"requested_session_id", sessionID,
+				"name", name,
+				"cwd", cwd,
+				"attach_mode", attachMode,
+			)
+		}
 		var createErr error
 		s, createErr = mgr.createShell(name, cwd)
 		if createErr != nil {
@@ -98,6 +108,14 @@ func HandleTerminalWebSocket(w http.ResponseWriter, r *http.Request, mgr *Manage
 		}
 		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"session_id","session_id":"%s"}`, s.id)))
 	} else {
+		mgr.logLifecycle("reattach",
+			"session_id", s.id,
+			"requested_session_id", sessionID,
+			"pid", strconv.Itoa(s.childPID()),
+			"status", s.status(),
+			"name", name,
+			"attach_mode", attachMode,
+		)
 		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"session_id","session_id":"%s"}`, s.id)))
 	}
 
@@ -117,11 +135,27 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 	s.sendInitialFrame(conn, attachMode)
 
 	if role == roleSnapshot {
+		mgr.logLifecycle("attach",
+			"session_id", s.id,
+			"pid", strconv.Itoa(s.childPID()),
+			"role", string(role),
+			"attach_mode", attachMode,
+			"status", s.status(),
+			"snapshot_only", "true",
+		)
 		conn.Close()
 		return
 	}
 
 	s.registerConn(conn, role)
+	mgr.logLifecycle("attach",
+		"session_id", s.id,
+		"pid", strconv.Itoa(s.childPID()),
+		"role", string(role),
+		"attach_mode", attachMode,
+		"status", s.status(),
+		"cmd", s.commandSummary(),
+	)
 
 	type wsCloseResult struct {
 		closeCode        int
@@ -200,6 +234,34 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 
 	handleWriterClose := func(result wsCloseResult) {
 		shouldDelete := isWriter && (result.closeCode == 4000 || result.deleteOnClose)
+		action := "keep"
+		reason := "not_writer"
+		if shouldDelete {
+			action = "remove"
+			reason = "close_delete_or_4000"
+		} else if isWriter && alreadyExited {
+			action = "keep"
+			reason = "already_exited"
+		} else if isWriter && result.keepChildOnClose {
+			action = "keep"
+			reason = "detach_keep"
+		} else if isWriter && !alreadyExited && !result.keepChildOnClose {
+			action = "stop_child"
+			reason = "writer_disconnect"
+		}
+		mgr.logLifecycle("detach",
+			"session_id", s.id,
+			"pid", strconv.Itoa(s.childPID()),
+			"role", string(role),
+			"is_writer", strconv.FormatBool(isWriter),
+			"close_code", strconv.Itoa(result.closeCode),
+			"delete_on_close", strconv.FormatBool(result.deleteOnClose),
+			"keep_child", strconv.FormatBool(result.keepChildOnClose),
+			"already_exited", strconv.FormatBool(alreadyExited),
+			"action", action,
+			"reason", reason,
+			"cmd", s.commandSummary(),
+		)
 		if shouldDelete {
 			mgr.remove(s.id)
 			return
@@ -225,6 +287,15 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 		// Shell exited: send a normal close frame so clients see 1000
 		// rather than abnormal closure 1006 from a bare TCP tear-down.
 		s.unregisterConn(conn)
+		mgr.logLifecycle("detach",
+			"session_id", s.id,
+			"pid", strconv.Itoa(s.childPID()),
+			"role", string(role),
+			"is_writer", strconv.FormatBool(isWriter),
+			"action", "keep",
+			"reason", "child_exited_server_close",
+			"cmd", s.commandSummary(),
+		)
 		msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 		_ = conn.WriteControl(websocket.CloseMessage, msg, time.Now().Add(time.Second))
 		_ = conn.Close()
@@ -272,6 +343,14 @@ func handleSessions(w http.ResponseWriter, r *http.Request, mgr *Manager) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		mgr.logLifecycle("rest_create",
+			"session_id", s.id,
+			"pid", strconv.Itoa(s.childPID()),
+			"name", s.name,
+			"cwd", s.cwd,
+			"cmd", s.commandSummary(),
+			"via", "POST /api/terminal/sessions",
+		)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(s.info(false))
@@ -281,6 +360,10 @@ func handleSessions(w http.ResponseWriter, r *http.Request, mgr *Manager) {
 			http.Error(w, "missing id", http.StatusBadRequest)
 			return
 		}
+		mgr.logLifecycle("rest_delete",
+			"session_id", id,
+			"via", "DELETE /api/terminal/sessions",
+		)
 		mgr.remove(id)
 		w.WriteHeader(http.StatusOK)
 	default:

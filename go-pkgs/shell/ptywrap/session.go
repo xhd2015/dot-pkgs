@@ -3,8 +3,10 @@ package ptywrap
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +73,9 @@ type session struct {
 	oscPartial []byte
 	// Incomplete CSI 6n (DSR cursor) fragments across PTY read chunks.
 	dsrPartial []byte
+
+	// Copied from Manager.LifecycleLog at create; nil disables logging.
+	lifecycleLog io.Writer
 }
 
 func (s *session) readLoop() {
@@ -125,9 +130,16 @@ func (s *session) readLoop() {
 			s.broadcastOutput(data, writer, observerSet, attacherSet)
 		}
 		if err != nil {
+			pid := s.childPID()
 			s.markExited()
 			s.appendExitMarker()
 			s.wait()
+			s.logLifecycle("shell_exit",
+				"session_id", s.id,
+				"pid", strconv.Itoa(pid),
+				"cmd", s.commandSummary(),
+				"read_err", err.Error(),
+			)
 
 			exitMsg := []byte("\r\n[Terminal exited]")
 			s.mu.Lock()
@@ -488,16 +500,27 @@ func (s *session) wait() {
 // The session status becomes "exited" once readLoop (or this method) marks it.
 // Safe to call more than once and concurrently with close().
 func (s *session) stopChild() {
+	pid := s.childPID()
+	alreadyExited := s.exited
 	if s.ptmx != nil {
 		_ = s.ptmx.Close()
 	}
+	killed := false
 	if s.cmd != nil && s.cmd.Process != nil {
 		killProcessGroup(s.cmd.Process.Pid)
+		killed = true
 	}
 	// Reap the process so it does not linger as a zombie; waitOnce coordinates
 	// with readLoop's wait() after EOF.
 	s.wait()
 	s.markExited()
+	s.logLifecycle("stop_child",
+		"session_id", s.id,
+		"pid", strconv.Itoa(pid),
+		"cmd", s.commandSummary(),
+		"already_exited", strconv.FormatBool(alreadyExited),
+		"kill_sent", strconv.FormatBool(killed),
+	)
 }
 
 func (s *session) close() {
