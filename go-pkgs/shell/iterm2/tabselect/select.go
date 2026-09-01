@@ -22,6 +22,8 @@ const (
 	TabSelNext
 	// TabSelLeft is --tab left; no wrap.
 	TabSelLeft
+	// TabSelCurrent is --tab current (the tab that parents this process).
+	TabSelCurrent
 )
 
 // TabSelector identifies a tab in the current iTerm2 window.
@@ -30,21 +32,23 @@ type TabSelector struct {
 	N    int // for TabSelAbs1 / TabSelAbs0
 }
 
-// ParseTabFlag parses --tab values: 1-based N, or next|right|left.
+// ParseTabFlag parses --tab values: 1-based N, or next|right|left|current.
 func ParseTabFlag(raw string) (TabSelector, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return TabSelector{}, fmt.Errorf("--tab requires a value (1-based index, or next|left|right)")
+		return TabSelector{}, fmt.Errorf("--tab requires a value (1-based index, or next|left|right|current)")
 	}
 	switch strings.ToLower(s) {
 	case "next", "right":
 		return TabSelector{Kind: TabSelNext}, nil
 	case "left":
 		return TabSelector{Kind: TabSelLeft}, nil
+	case "current":
+		return TabSelector{Kind: TabSelCurrent}, nil
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil {
-		return TabSelector{}, fmt.Errorf("--tab must be a 1-based index or next|left|right, got %q", raw)
+		return TabSelector{}, fmt.Errorf("--tab must be a 1-based index or next|left|right|current, got %q", raw)
 	}
 	if n < 1 {
 		return TabSelector{}, fmt.Errorf("--tab index must be >= 1 (1-based); use --tab-index for 0-based")
@@ -116,6 +120,11 @@ func SelectWindowTab(st window.WindowStatus, sel TabSelector) (window.TabStatusR
 			return window.TabStatusRow{}, -1, fmt.Errorf("no tab to the left (current tab is first in window)")
 		}
 		return tabs[curPos-1], curPos - 1, nil
+	case TabSelCurrent:
+		if curPos < 0 {
+			return window.TabStatusRow{}, -1, fmt.Errorf("current tab unknown; cannot resolve --tab current")
+		}
+		return tabs[curPos], curPos, nil
 	default:
 		return window.TabStatusRow{}, -1, fmt.Errorf("invalid tab selector")
 	}

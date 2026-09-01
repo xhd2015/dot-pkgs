@@ -17,6 +17,8 @@ func TestParseTabFlag(t *testing.T) {
 		{"next", TabSelNext, 0, ""},
 		{"RIGHT", TabSelNext, 0, ""},
 		{"left", TabSelLeft, 0, ""},
+		{"current", TabSelCurrent, 0, ""},
+		{"CURRENT", TabSelCurrent, 0, ""},
 		{"2", TabSelAbs1, 2, ""},
 		{"", 0, 0, "--tab requires"},
 		{"0", 0, 0, ">= 1"},
@@ -73,6 +75,11 @@ func TestSelectWindowTab(t *testing.T) {
 	row, pos, err = SelectWindowTab(st, TabSelector{Kind: TabSelAbs0, N: 0})
 	if err != nil || pos != 0 || row.SessionID != "AAA" {
 		t.Fatalf("abs0: %+v pos=%d err=%v", row, pos, err)
+	}
+
+	row, pos, err = SelectWindowTab(st, TabSelector{Kind: TabSelCurrent})
+	if err != nil || pos != 0 || row.SessionID != "AAA" {
+		t.Fatalf("current: %+v pos=%d err=%v", row, pos, err)
 	}
 
 	stLast := st
