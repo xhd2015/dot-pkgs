@@ -117,6 +117,14 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 		return nil, fmt.Errorf("target does not share the same main repository")
 	}
 
+	// Refresh main from its upstream (or origin/<branch>) before comparing /
+	// landing, so push after land is not a non-FF surprise. Skip only when no
+	// remote can be resolved (local fixtures without origin).
+	syncCmds, err := prepareMainRemoteSync(targetAbs, opts.DryRun)
+	if err != nil {
+		return nil, err
+	}
+
 	branch, err := ReadBranch(sourceAbs)
 	if err != nil {
 		return nil, err
@@ -181,9 +189,16 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	plan = prependCommands(plan, syncCmds)
 
 	if included {
 		if !opts.Remove {
+			if opts.DryRun && len(syncCmds) > 0 {
+				return printDryRun(result, MergeBackPlan{
+					TargetLabel: plan.TargetLabel,
+					Commands:    syncCmds,
+				}, mergeBackStdout(opts))
+			}
 			result.Action = "noop"
 			result.Message = fmt.Sprintf("branch %s is already included in %s", branch, plan.TargetLabel)
 			return result, nil
@@ -201,7 +216,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 
 	// For diverged + dirty + !remove: use tmp worktree for rebase
 	if relation == "diverged" && dirty && !opts.Remove {
-		return mergeBackViaTmpWorktree(opts, result, sourceAbs, mainRepo, targetAbs, branch, mergeRef)
+		return mergeBackViaTmpWorktree(opts, result, sourceAbs, mainRepo, targetAbs, branch, mergeRef, syncCmds)
 	}
 
 	if opts.DryRun {
@@ -244,6 +259,7 @@ func mergeBackViaTmpWorktree(
 	opts MergeBackOptions,
 	result *MergeBackResult,
 	sourceAbs, mainRepo, targetAbs, branch, mergeRef string,
+	syncCmds []PlannedCommand,
 ) (*MergeBackResult, error) {
 	targetHEAD, err := revParseCommit(targetAbs, "HEAD")
 	if err != nil {
@@ -269,6 +285,7 @@ func mergeBackViaTmpWorktree(
 			{Dir: targetAbs, Args: []string{"merge", "--ff-only", tmpBranch}},
 		},
 	}
+	tmpPlan = prependCommands(tmpPlan, syncCmds)
 
 	if opts.DryRun {
 		return printDryRun(result, tmpPlan, mergeBackStdout(opts))
@@ -592,9 +609,14 @@ func plannedCommandComment(cmd PlannedCommand, plan MergeBackPlan) string {
 		return ""
 	}
 	switch cmd.Args[0] {
+	case "fetch":
+		return "# main: fetch upstream"
 	case "merge":
 		return fmt.Sprintf("# %s: fast forward", plan.TargetLabel)
 	case "rebase":
+		if len(cmd.Args) >= 2 && strings.Contains(cmd.Args[1], "/") {
+			return fmt.Sprintf("# main: rebase onto %s", cmd.Args[1])
+		}
 		return fmt.Sprintf("# %s: rebase onto %s", plan.Branch, plan.TargetLabel)
 	case "worktree":
 		if len(cmd.Args) >= 2 && cmd.Args[1] == "remove" {
@@ -615,7 +637,10 @@ func formatPlannedCommandForDisplay(cmd PlannedCommand) string {
 		args[2] = displayPath(args[2])
 	}
 	if len(args) >= 2 && args[0] == "rebase" {
-		args = args[:1]
+		// Keep remote-tracking refs visible; hide raw commit SHAs.
+		if !strings.Contains(args[1], "/") {
+			args = args[:1]
+		}
 	}
 	return fmt.Sprintf("git -C %s %s", dir, strings.Join(args, " "))
 }
@@ -654,7 +679,7 @@ func runPlannedCommand(cmd PlannedCommand, relation string) error {
 	gitCmd := exec.Command("git", fullArgs...)
 	out, err := gitCmd.CombinedOutput()
 	if err != nil {
-		if relation == "diverged" && len(cmd.Args) > 0 && cmd.Args[0] == "rebase" {
+		if len(cmd.Args) > 0 && cmd.Args[0] == "rebase" && (relation == "diverged" || relation == "main-sync") {
 			abort := exec.Command("git", "-C", cmd.Dir, "rebase", "--abort")
 			abort.Run()
 			return fmt.Errorf("rebase conflict: %w\n%s", err, strings.TrimSpace(string(out)))
@@ -662,6 +687,41 @@ func runPlannedCommand(cmd PlannedCommand, relation string) error {
 		return fmt.Errorf("git %s: %w\n%s", strings.Join(cmd.Args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func prependCommands(plan MergeBackPlan, cmds []PlannedCommand) MergeBackPlan {
+	if len(cmds) == 0 {
+		return plan
+	}
+	out := make([]PlannedCommand, 0, len(cmds)+len(plan.Commands))
+	out = append(out, cmds...)
+	out = append(out, plan.Commands...)
+	plan.Commands = out
+	return plan
+}
+
+// prepareMainRemoteSync plans (and unless dryRun, runs) fetch+rebase of main
+// onto its upstream. Returns nil cmds when no remote is available.
+func prepareMainRemoteSync(mainRepo string, dryRun bool) ([]PlannedCommand, error) {
+	cmds, _, err := planMainRemoteSync(mainRepo)
+	if err != nil {
+		if errors.Is(err, errNoRemoteSync) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("main-sync: %w", err)
+	}
+	if dryRun || len(cmds) == 0 {
+		return cmds, nil
+	}
+	if err := IsClean(mainRepo); err != nil {
+		return nil, fmt.Errorf("main-sync: %w", err)
+	}
+	for _, c := range cmds {
+		if err := runPlannedCommand(c, "main-sync"); err != nil {
+			return nil, fmt.Errorf("main-sync: %w", err)
+		}
+	}
+	return cmds, nil
 }
 
 func executeRemove(plan MergeBackPlan, sourcePath, mainRepo, branch string) error {
