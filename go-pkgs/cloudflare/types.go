@@ -47,6 +47,8 @@ type SessionOptions struct {
 	Log        io.Writer
 	Runner     CommandRunner
 	DNSDeleter DNSDeleter
+	// Teardown: on Stop, after last host, also delete CF tunnel + creds + managed dir.
+	Teardown bool
 }
 
 // Session is a running named-tunnel session.
@@ -69,6 +71,7 @@ type Session struct {
 	// managed attach identity (Stop → Detach)
 	managed   bool
 	configDir string
+	teardown  bool
 }
 
 // StatusInfo reports cloudflared install / auth state.

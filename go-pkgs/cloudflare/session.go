@@ -18,6 +18,7 @@ func StartSession(opts SessionOptions) (*Session, error) {
 		Log:        opts.Log,
 		Runner:     opts.Runner,
 		DNSDeleter: opts.DNSDeleter,
+		Teardown:   opts.Teardown,
 	})
 }
 
@@ -47,6 +48,7 @@ func (s *Session) Stop() error {
 			Log:        s.log,
 			Runner:     s.runner,
 			DNSDeleter: s.dnsDeleter,
+			Teardown:   s.teardown,
 		})
 		// Session no longer owns a live process after managed detach/restart.
 		s.proc = nil

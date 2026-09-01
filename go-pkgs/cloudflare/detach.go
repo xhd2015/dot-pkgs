@@ -16,12 +16,18 @@ type DetachOptions struct {
 	Log        io.Writer
 	Runner     CommandRunner
 	DNSDeleter DNSDeleter // optional; best-effort
+	// Teardown, when the detached host was the last one, also deletes the CF
+	// tunnel, credential JSON, and managed-tunnels directory. DNS delete still
+	// runs whenever DNSDeleter is set (including sibling partial detach).
+	Teardown bool
 }
 
 // Detach removes one hostname from the managed tunnel registry.
 // Missing hosts are a no-op success. DNS delete failures are logged and do not
 // fail Detach. When hosts remain, the connector is restarted with the rewritten
 // config; when Hosts is empty, the connector is stopped and ConnectorPID is 0.
+// With Teardown and an empty host map, Detach also best-effort deletes the
+// Cloudflare tunnel, credentials file, and managed directory.
 func Detach(opts DetachOptions) error {
 	domain := strings.TrimSpace(opts.Domain)
 	if domain == "" {
@@ -79,6 +85,14 @@ func Detach(opts DetachOptions) error {
 	if st.TunnelName == "" {
 		st.TunnelName = name
 	}
+	credFile := st.CredentialsFile
+	tunnelRef := st.TunnelName
+	if tunnelRef == "" {
+		tunnelRef = name
+	}
+	if st.TunnelID != "" {
+		tunnelRef = st.TunnelID
+	}
 
 	cfg, err := BuildConfigFromState(st)
 	if err != nil {
@@ -89,7 +103,8 @@ func Detach(opts DetachOptions) error {
 		return err
 	}
 
-	if len(st.Hosts) == 0 {
+	lastHost := len(st.Hosts) == 0
+	if lastHost {
 		// Last host: stop connector and clear logical PID.
 		if runner == nil {
 			stopPID(st.ConnectorPID)
@@ -114,7 +129,44 @@ func Detach(opts DetachOptions) error {
 		}
 	}
 
-	fmt.Fprintf(logw, "cloudflare detach: tunnel=%s domain=%s hosts_left=%d\n", name, domain, len(st.Hosts))
+	hostsLeft := len(st.Hosts)
+	fmt.Fprintf(logw, "cloudflare detach: tunnel=%s domain=%s hosts_left=%d\n", name, domain, hostsLeft)
+
+	if !opts.Teardown || !lastHost {
+		return nil
+	}
+
+	// Full teardown (last host): unlock before deleting the managed dir so the
+	// flock file is not held open across RemoveAll.
+	unlock()
+	unlock = func() {}
+
+	if err := DeleteTunnel(runner, tunnelRef); err != nil {
+		fmt.Fprintf(logw, "warning: DeleteTunnel(%s): %v\n", tunnelRef, err)
+	}
+	if credFile != "" {
+		if err := os.Remove(credFile); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(logw, "warning: remove credentials %s: %v\n", credFile, err)
+		}
+	}
+	if err := os.RemoveAll(managedDir); err != nil {
+		fmt.Fprintf(logw, "warning: remove managed dir %s: %v\n", managedDir, err)
+	} else {
+		fmt.Fprintf(logw, "cloudflare teardown: removed tunnel=%s managed_dir=%s\n", name, managedDir)
+	}
+	return nil
+}
+
+// DeleteTunnel runs `cloudflared tunnel delete -f <tunnelRef>` (best-effort caller).
+func DeleteTunnel(runner CommandRunner, tunnelRef string) error {
+	ref := strings.TrimSpace(tunnelRef)
+	if ref == "" {
+		return fmt.Errorf("tunnel ref is required")
+	}
+	out, err := execCloudflared(runner, "tunnel", "delete", "-f", ref)
+	if err != nil {
+		return fmtCmdErr("tunnel delete", out, err)
+	}
 	return nil
 }
 

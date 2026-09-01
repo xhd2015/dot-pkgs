@@ -44,6 +44,11 @@ expected.
   `ConnectorPID == 0` and does not leave a logical connector alive.
 - **DNSDeleter** is optional best-effort cleanup. Delete failures are logged;
   Detach / Stop still return nil for DNS-only failures.
+- **Teardown** (opt-in on Attach/Detach/Session): when the last host is
+  detached, also `tunnel delete -f`, remove credentials JSON, and
+  `RemoveAll` the managed-tunnels directory. Sibling partial detach still
+  deletes DNS for that hostname when DNSDeleter is set, but does not delete
+  the tunnel or managed dir.
 
 **Behaviors**
 
@@ -64,6 +69,14 @@ Attach A; Stop(A)
 Detach/Stop with DNSDeleter error
   -> host removed from registry; API error is nil (DNS failure ignored)
 
+# teardown last host
+Attach A with Teardown; Stop(A)
+  -> DNS delete attempted; tunnel delete -f; managed dir removed; creds removed
+
+# teardown siblings
+Attach A+B with Teardown; Stop(A)
+  -> DNS delete for A; tunnel NOT deleted; managed dir remains; B still served
+
 # missing host
 Detach domain not in Hosts
   -> no-op success (preferred); registry unchanged for other hosts
@@ -82,6 +95,9 @@ tests/cloudflare-tunnel-detach/
 │   └── second-stop-clears/              # A+B, Stop A then B → empty; PID 0
 ├── dns/                                 # best-effort DeleteDNS
 │   └── delete-fails-ok/                 # DNS error; Stop/Detach still nil
+├── teardown/                            # Teardown=true full last-host cleanup
+│   ├── last-host-full/                  # Stop last host → dns+tunnel+dir gone
+│   └── siblings-keep-tunnel/            # Stop one of two → dns only; tunnel kept
 └── missing-host/                        # domain not in registry
     └── detach-noop/                     # Detach missing → success no-op
 ```
@@ -102,7 +118,9 @@ tests/cloudflare-tunnel-detach/
 | 2 | `last-host/single-host-stops` | Attach A, Stop(A): Hosts empty; ConnectorPID 0 |
 | 3 | `last-host/second-stop-clears` | A+B then Stop A then B: Hosts empty; ConnectorPID 0; no host rules |
 | 4 | `dns/delete-fails-ok` | Failing DNSDeleter; Detach/Stop returns nil; host removed; delete attempted |
-| 5 | `missing-host/detach-noop` | Detach unknown domain succeeds; existing hosts unchanged |
+| 5 | `teardown/last-host-full` | Teardown last host: DNS+tunnel delete; managed dir gone |
+| 6 | `teardown/siblings-keep-tunnel` | Teardown partial: DNS for A; tunnel/dir kept |
+| 7 | `missing-host/detach-noop` | Detach unknown domain succeeds; existing hosts unchanged |
 
 ## How to Run
 
@@ -127,6 +145,7 @@ type DetachOptions struct {
     Log        io.Writer
     Runner     CommandRunner
     DNSDeleter DNSDeleter // optional; best-effort
+    Teardown   bool       // last host → tunnel delete + rm creds + managed dir
 }
 
 // Detach removes one hostname from the managed tunnel registry.
@@ -138,13 +157,14 @@ func Detach(opts DetachOptions) error
 // - if hosts remain: restart connector (runner Exec run) with remaining hosts
 // - if hosts empty: stop real process if any; set ConnectorPID=0
 // - best-effort DeleteDNS(domain); DNS errors logged; Stop returns nil for DNS failures
+// - if Teardown && last host: tunnel delete -f, remove creds, RemoveAll managed dir
 ```
 
 ### Out of scope
 
 - StartSession rewrite coverage (separate tree)
 - spl CLI wiring
-- Cloudflare account prune / real DNS API
+- Real Cloudflare DNS HTTP (OriginCertDNSDeleter covered by package unit tests)
 - Real OS process StartProcess path (tests inject Runner only)
 
 ```go
@@ -195,6 +215,9 @@ type Request struct {
 	// FailDNS makes the injectable DNSDeleter return an error on DeleteHostname.
 	FailDNS bool
 
+	// Teardown enables full last-host cleanup on Attach sessions / Detach.
+	Teardown bool
+
 	// ExpectError: leaf expects final Stop/Detach (or Attach) to return error.
 	ExpectError bool
 
@@ -226,6 +249,12 @@ type Response struct {
 	// ManagedDir is ManagedTunnelDir(ConfigDir, resolved tunnel name).
 	ManagedDir string
 
+	// ManagedDirRemoved is true when Teardown deleted the managed directory.
+	ManagedDirRemoved bool
+
+	// CredFileRemoved is true when the tunnel credentials JSON is gone.
+	CredFileRemoved bool
+
 	// Runner is the fake used for this Run.
 	Runner *fakeCloudflared
 
@@ -239,6 +268,9 @@ type Response struct {
 
 	// RouteDNSCount is how many Exec calls looked like tunnel route dns.
 	RouteDNSCount int
+
+	// TunnelDeleteCount is how many Exec calls looked like tunnel delete.
+	TunnelDeleteCount int
 
 	// DNSDeleteCount is how many DeleteHostname calls the fake deleter saw.
 	DNSDeleteCount int
@@ -271,6 +303,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 
 	// --- Attach setup ---
 	var lastErr error
+	var credFile string
 	for i, step := range req.AttachSequence {
 		opts := cloudflare.AttachOptions{
 			Domain:     step.Domain,
@@ -279,20 +312,21 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 			ConfigDir:  req.ConfigDir,
 			Runner:     fake,
 			Log:        os.Stderr,
+			DNSDeleter: dns,
+			Teardown:   req.Teardown,
 		}
-		// Prefer wiring DNSDeleter onto Attach→Session when available so
-		// Session.Stop can best-effort delete DNS. DNS leaf uses Detach with
-		// DNSDeleter directly.
 		sess, err := cloudflare.Attach(opts)
 		lastErr = err
 		if err != nil {
 			resp.RunCount = fake.runCount()
 			resp.RouteDNSCount = fake.routeDNSCount()
+			resp.TunnelDeleteCount = fake.tunnelDeleteCount()
 			resp.DNSDeleteCount = dns.deleteCount()
 			return resp, err
 		}
 		resp.Sessions = append(resp.Sessions, sess)
 		resp.SessionByDomain[step.Domain] = sess
+		credFile = sess.CredFile
 		t.Logf("attach step %d ok domain=%q tunnel=%q config=%q", i, sess.Domain, sess.TunnelName, sess.ConfigPath)
 		if strings.TrimSpace(sess.TunnelName) != "" {
 			name = sess.TunnelName
@@ -306,6 +340,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	if derr != nil {
 		resp.RunCount = fake.runCount()
 		resp.RouteDNSCount = fake.routeDNSCount()
+		resp.TunnelDeleteCount = fake.tunnelDeleteCount()
 		resp.DNSDeleteCount = dns.deleteCount()
 		return resp, fmt.Errorf("ManagedTunnelDir: %w", derr)
 	}
@@ -322,6 +357,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 				ConfigDir:  req.ConfigDir,
 				Runner:     fake,
 				DNSDeleter: dns,
+				Teardown:   req.Teardown,
 				Log:        os.Stderr,
 			})
 			t.Logf("detach step %d domain=%q err=%v", i, step.Domain, err)
@@ -336,6 +372,7 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 					ConfigDir:  req.ConfigDir,
 					Runner:     fake,
 					DNSDeleter: dns,
+					Teardown:   req.Teardown,
 					Log:        os.Stderr,
 				})
 				t.Logf("stop step %d domain=%q (no session → Detach) err=%v", i, step.Domain, err)
@@ -351,20 +388,32 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 			_ = loadStateAndConfig(resp, dir)
 			resp.RunCount = fake.runCount()
 			resp.RouteDNSCount = fake.routeDNSCount()
+			resp.TunnelDeleteCount = fake.tunnelDeleteCount()
 			resp.DNSDeleteCount = dns.deleteCount()
 			return resp, err
 		}
 	}
 
-	if err := loadStateAndConfig(resp, dir); err != nil {
+	if _, sterr := os.Stat(dir); sterr != nil && os.IsNotExist(sterr) {
+		resp.ManagedDirRemoved = true
+		resp.State = &cloudflare.TunnelState{Hosts: map[string]*cloudflare.HostEntry{}}
+	} else if err := loadStateAndConfig(resp, dir); err != nil {
 		resp.RunCount = fake.runCount()
 		resp.RouteDNSCount = fake.routeDNSCount()
+		resp.TunnelDeleteCount = fake.tunnelDeleteCount()
 		resp.DNSDeleteCount = dns.deleteCount()
 		return resp, err
 	}
 
+	if credFile != "" {
+		if _, err := os.Stat(credFile); err != nil && os.IsNotExist(err) {
+			resp.CredFileRemoved = true
+		}
+	}
+
 	resp.RunCount = fake.runCount()
 	resp.RouteDNSCount = fake.routeDNSCount()
+	resp.TunnelDeleteCount = fake.tunnelDeleteCount()
 	resp.DNSDeleteCount = dns.deleteCount()
 	return resp, lastErr
 }
@@ -511,6 +560,12 @@ func (f *fakeCloudflared) Exec(name string, args ...string) ([]byte, error) {
 		return []byte("Added CNAME " + joined), nil
 	}
 
+	// tunnel delete [-f] <ref>
+	if containsArg(args, "delete") {
+		f.created = false
+		return []byte("Deleted tunnel " + joined + "\n"), nil
+	}
+
 	// tunnel … run …
 	if containsArg(args, "run") {
 		return []byte("fake connector running\n"), nil
@@ -551,6 +606,18 @@ func (f *fakeCloudflared) routeDNSCount() int {
 	n := 0
 	for _, c := range f.calls {
 		if containsArg(c.Args, "route") && containsArg(c.Args, "dns") {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *fakeCloudflared) tunnelDeleteCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.calls {
+		if containsArg(c.Args, "delete") {
 			n++
 		}
 	}

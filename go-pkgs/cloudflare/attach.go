@@ -20,6 +20,8 @@ type AttachOptions struct {
 	Runner     CommandRunner // nil = real cloudflared; non-nil = fake (tests)
 	DNSDeleter DNSDeleter    // optional; carried on Session for best-effort Stop DNS cleanup
 	OwnerPID   int           // optional; default os.Getpid()
+	// Teardown: carried on Session; Stop → Detach with full last-host cleanup.
+	Teardown bool
 }
 
 // Attach merges hostname into the managed tunnel registry and ensures a connector.
@@ -122,6 +124,7 @@ func Attach(opts AttachOptions) (*Session, error) {
 		publicURL:  "https://" + opts.Domain,
 		managed:    true,
 		configDir:  configDir,
+		teardown:   opts.Teardown,
 	}
 
 	needStart := false
