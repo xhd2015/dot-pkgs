@@ -107,7 +107,7 @@ func (s *session) readLoop() {
 			}
 			s.scrollback = append(s.scrollback, data...)
 			if len(s.scrollback) > maxScrollback {
-				s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
+				s.scrollback = trimScrollback(s.scrollback, maxScrollback)
 			}
 			writer := s.writerConn
 			observerSet := make([]*websocket.Conn, 0, len(s.observers))
@@ -483,7 +483,7 @@ func (s *session) appendExitMarker() {
 		_, _ = s.screen.Write(exitMarker)
 	}
 	if len(s.scrollback) > maxScrollback {
-		s.scrollback = s.scrollback[len(s.scrollback)-maxScrollback:]
+		s.scrollback = trimScrollback(s.scrollback, maxScrollback)
 	}
 }
 
