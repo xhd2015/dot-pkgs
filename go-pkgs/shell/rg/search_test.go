@@ -2,9 +2,12 @@ package rg
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseJSONMatches(t *testing.T) {
@@ -114,4 +117,68 @@ func containsArg(args []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// errEarlyStop stands in for a caller match cap (e.g. kb find's 200-hit limit).
+var errEarlyStop = errors.New("match cap")
+
+// TestSearchStreamEarlyStopUnblocksProducer encodes the kb-find deadlock:
+// emit returns early while the producer still has more NDJSON to write. Desired
+// behavior: SearchStream returns that emit error promptly and the producer is
+// unblocked (stdout closed / equivalent before Wait). Current code Waits with
+// the pipe still open → producer fills the pipe and hangs.
+func TestSearchStreamEarlyStopUnblocksProducer(t *testing.T) {
+	pr, pw := io.Pipe()
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		defer pw.Close()
+		// Flood past a typical pipe buffer so a reader that stops without
+		// closing leaves the writer blocked in Write.
+		for i := 1; i <= 100000; i++ {
+			line := fmt.Sprintf(
+				`{"type":"match","data":{"path":{"text":"f.md"},"lines":{"text":"hit %d\n"},"line_number":%d}}`+"\n",
+				i, i,
+			)
+			if _, err := io.WriteString(pw, line); err != nil {
+				return
+			}
+		}
+	}()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- SearchStream(context.Background(), SearchOpts{
+			Bin:     "/fake/rg",
+			Roots:   []string{"/hub"},
+			Pattern: "x",
+			RunStream: func(ctx context.Context, bin string, args []string) (io.ReadCloser, func() (int, error), error) {
+				return pr, func() (int, error) {
+					<-writerDone
+					return 0, nil
+				}, nil
+			},
+		}, func(m Match) error {
+			if m.LineNum >= 3 {
+				return errEarlyStop
+			}
+			return nil
+		})
+	}()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, errEarlyStop) {
+			t.Fatalf("want emit error %v, got %v", errEarlyStop, err)
+		}
+		select {
+		case <-writerDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("producer still blocked after SearchStream returned")
+		}
+	case <-time.After(2 * time.Second):
+		// Unblock hung writer/Wait so the test process can exit.
+		_ = pr.Close()
+		t.Fatal("SearchStream hung after emit error; stdout must be closed before Wait")
+	}
 }

@@ -51,6 +51,8 @@ func Search(ctx context.Context, opts SearchOpts) ([]Match, error) {
 // SearchStream runs rg and invokes emit for each match as soon as its JSON
 // line is parsed. Exit code 1 (no matches) is success with zero emits.
 // If emit returns a non-nil error, streaming stops and that error is returned.
+// Stdout is always closed before Wait so an early emit stop cannot deadlock
+// against a producer blocked on a full pipe.
 func SearchStream(ctx context.Context, opts SearchOpts, emit func(Match) error) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -95,6 +97,9 @@ func SearchStream(ctx context.Context, opts SearchOpts, emit func(Match) error) 
 	defer r.Close()
 
 	scanErr := parseJSONMatchesReader(r, emit)
+	// Close before Wait: early emit stop otherwise leaves the producer blocked
+	// on a full stdout pipe while we wait for it to exit (kb find deadlock).
+	_ = r.Close()
 	exitCode, waitErr := wait()
 	if scanErr != nil {
 		return scanErr

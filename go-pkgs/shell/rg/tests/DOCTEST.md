@@ -14,7 +14,7 @@ L1 Go tests live beside the package (`*_test.go`). This note indexes significanc
 | `FormatUsingNotice` | `using rg VER (path); also found …` |
 | `InstallLatest` | GitHub precompiled only; unsupported GOOS/GOARCH → error |
 | `Ensure` | missing → install; present → newest; no auto-upgrade |
-| `Search` / `SearchStream` | `-i -F --json` + globs; emit each match as parsed; exit 1 → empty |
+| `Search` / `SearchStream` | `-i -F --json` + globs; emit each match as parsed; exit 1 → empty; emit error → return promptly (close stdout before Wait) |
 
 ## Decision tree (covered by Go tests)
 
@@ -26,4 +26,5 @@ shell/rg/
 ├── ensure-missing     unsupported platform after not-found notice
 ├── install-tarball    extract rg from fake tar.gz via httptest
 └── search             json parse + literal CI flag argv
+    └── early-stop     emit error unblocks producer (no pipe-Wait deadlock)
 ```
