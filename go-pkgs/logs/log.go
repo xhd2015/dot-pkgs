@@ -316,6 +316,194 @@ func WatchFileEvents(ctx context.Context, filepath string, opts WatchFileEventsO
 	})
 }
 
+// WatchCreateMatchOptions controls WatchCreateMatch.
+type WatchCreateMatchOptions struct {
+	// MaxDepth limits auto-added directory watches under rootDir.
+	// Depth 0 is rootDir itself. 0 → 4 (sessions/YYYY/MM/DD/file).
+	MaxDepth int
+}
+
+// WatchCreateMatch watches rootDir for filesystem Create events.
+// Newly created directories under a watched path are added to the watcher
+// while depth ≤ MaxDepth. When a created path matches match, callback runs.
+//
+// If rootDir does not exist yet, its parent is watched until rootDir appears.
+// On start, any existing path under rootDir that already matches is delivered
+// once (covers create-before-watch races). match must not be nil.
+func WatchCreateMatch(ctx context.Context, rootDir string, opts WatchCreateMatchOptions, match func(path string) bool, callback func(path string) error) error {
+	if match == nil {
+		return fmt.Errorf("WatchCreateMatch: match is required")
+	}
+	if callback == nil {
+		return fmt.Errorf("WatchCreateMatch: callback is required")
+	}
+	rootDir = go_filepath.Clean(rootDir)
+	maxDepth := opts.MaxDepth
+	if maxDepth <= 0 {
+		maxDepth = 4
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create watcher: %w", err)
+	}
+	defer watcher.Close()
+
+	watched := map[string]int{} // abs path → depth from root
+	var mu sync.Mutex
+
+	deliver := func(path string) error {
+		path = go_filepath.Clean(path)
+		if !match(path) {
+			return nil
+		}
+		return callback(path)
+	}
+
+	var hydrate func(dir string, depth int) error
+	addDir := func(dir string, depth int) error {
+		dir = go_filepath.Clean(dir)
+		if real, err := go_filepath.EvalSymlinks(dir); err == nil {
+			dir = real
+		}
+		mu.Lock()
+		if _, ok := watched[dir]; ok {
+			mu.Unlock()
+			return nil
+		}
+		if depth > maxDepth {
+			mu.Unlock()
+			return nil
+		}
+		watched[dir] = depth
+		mu.Unlock()
+		if err := watcher.Add(dir); err != nil {
+			mu.Lock()
+			delete(watched, dir)
+			mu.Unlock()
+			return fmt.Errorf("failed to watch directory %s: %w", dir, err)
+		}
+		return nil
+	}
+
+	// hydrate watches dir and recursively adds children already present.
+	// Covers MkdirAll races where nested dirs appear before their parent
+	// watch is registered.
+	hydrate = func(dir string, depth int) error {
+		if err := addDir(dir, depth); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil
+		}
+		for _, e := range entries {
+			p := go_filepath.Join(dir, e.Name())
+			if e.IsDir() {
+				if depth+1 <= maxDepth {
+					if err := hydrate(p, depth+1); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if err := deliver(p); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	ensureRoot := func() error {
+		if st, err := os.Stat(rootDir); err == nil && st.IsDir() {
+			return hydrate(rootDir, 0)
+		}
+		parent := go_filepath.Dir(rootDir)
+		if parent == rootDir {
+			return fmt.Errorf("root directory does not exist: %s", rootDir)
+		}
+		return addDir(parent, -1) // parent tracked; depth -1 means "waiting for root"
+	}
+	if err := ensureRoot(); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+			if event.Op&fsnotify.Create == 0 {
+				continue
+			}
+			name := event.Name
+			info, err := os.Stat(name)
+			if err != nil {
+				// Created then quickly removed, or not yet visible.
+				if match(name) {
+					if err := deliver(name); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if info.IsDir() {
+				mu.Lock()
+				parentDepth := -2
+				parent := go_filepath.Dir(go_filepath.Clean(name))
+				if d, ok := watched[parent]; ok {
+					parentDepth = d
+				}
+				if parentDepth == -2 {
+					if real, err := go_filepath.EvalSymlinks(parent); err == nil {
+						if d, ok := watched[real]; ok {
+							parentDepth = d
+						}
+					}
+				}
+				mu.Unlock()
+
+				cleaned := go_filepath.Clean(name)
+				if cleaned == rootDir {
+					if err := hydrate(rootDir, 0); err != nil {
+						return err
+					}
+					continue
+				}
+				if real, err := go_filepath.EvalSymlinks(name); err == nil && real == rootDir {
+					if err := hydrate(rootDir, 0); err != nil {
+						return err
+					}
+					continue
+				}
+				if parentDepth >= -1 && parentDepth < maxDepth {
+					next := parentDepth + 1
+					if parentDepth == -1 {
+						next = 0
+					}
+					if err := hydrate(name, next); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if err := deliver(name); err != nil {
+				return err
+			}
+
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil
+			}
+			return fmt.Errorf("watcher error: %w", err)
+
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
 // Pipe monitors a file for changes and outputs new content to the provided
 // writer, prefixing each chunk with the specified prefix.
 //
