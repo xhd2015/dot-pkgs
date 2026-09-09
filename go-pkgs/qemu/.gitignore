@@ -1,0 +1,3 @@
+# Fat prebuilt helpers (placeholders stay tracked).
+prebuilt/*/qemu-cf-helper
+!prebuilt/*/placeholder.txt

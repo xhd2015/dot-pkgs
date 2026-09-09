@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildTunDNSConfigProxyHostBeforeFakeIP(t *testing.T) {
-	cfg := buildTunDNSConfig("shpdev-to-local.example.com", 11080, true)
+	cfg := buildTunDNSConfig("workdev-to-local.example.com", 11080, true)
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +25,7 @@ func TestBuildTunDNSConfigProxyHostBeforeFakeIP(t *testing.T) {
 		case "bootstrap":
 			if domains, ok := rule["domain"].([]any); ok {
 				for _, d := range domains {
-					if d == "shpdev-to-local.example.com" {
+					if d == "workdev-to-local.example.com" {
 						sawBootstrap = true
 						bootstrapIdx = i
 					}

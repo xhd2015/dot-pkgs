@@ -1,0 +1,3 @@
+module qemu-cf-helper
+
+go 1.22.0
