@@ -55,9 +55,9 @@ type session struct {
 	// screen is the persistent live VT (cell model). Source of truth for
 	// attach_mode=snapshot / screen export. Updated on every PTY output chunk
 	// and resized with the PTY; scrollback is secondary history only.
-	screen vt10x.Terminal
-	done   chan struct{}
-	exited bool
+	screen    vt10x.Terminal
+	done      chan struct{}
+	exited    bool
 	closeOnce sync.Once
 	waitOnce  sync.Once
 
@@ -73,6 +73,11 @@ type session struct {
 	oscPartial []byte
 	// Incomplete CSI 6n (DSR cursor) fragments across PTY read chunks.
 	dsrPartial []byte
+	// Incomplete OSC 10/11 / CSI 6n prefix not yet forwarded to attach clients.
+	probeDisplayPartial []byte
+	// Incomplete OSC 10/11 report / CPR prefix from client input (not yet
+	// classified as a duplicate report vs a keystroke).
+	inputFilterPartial []byte
 
 	// Copied from Manager.LifecycleLog at create; nil disables logging.
 	lifecycleLog io.Writer
@@ -105,9 +110,16 @@ func (s *session) readLoop() {
 				cprRow = cur.Y + 1
 				cprCol = cur.X + 1
 			}
-			s.scrollback = append(s.scrollback, data...)
-			if len(s.scrollback) > maxScrollback {
-				s.scrollback = trimScrollback(s.scrollback, maxScrollback)
+			// Do not forward OSC 10/11 or CSI 6n probes to attach clients; the
+			// server auto-replies. Forwarding them makes iTerm/xterm.js answer
+			// too, and those late reports become leftover keystrokes.
+			display, nextProbe := stripOutputProbes(s.probeDisplayPartial, data, !oscReplyDisabled(), !dsrReplyDisabled())
+			s.probeDisplayPartial = nextProbe
+			if len(display) > 0 {
+				s.scrollback = append(s.scrollback, display...)
+				if len(s.scrollback) > maxScrollback {
+					s.scrollback = trimScrollback(s.scrollback, maxScrollback)
+				}
 			}
 			writer := s.writerConn
 			observerSet := make([]*websocket.Conn, 0, len(s.observers))
@@ -127,7 +139,9 @@ func (s *session) readLoop() {
 				return werr
 			}, s.dsrPartial, data, cprRow, cprCol)
 
-			s.broadcastOutput(data, writer, observerSet, attacherSet)
+			if len(display) > 0 {
+				s.broadcastOutput(display, writer, observerSet, attacherSet)
+			}
 		}
 		if err != nil {
 			pid := s.childPID()
@@ -421,11 +435,19 @@ func (s *session) enqueueResize(cols, rows int) {
 	s.inputCh <- inputEvent{kind: inputEventResize, cols: cols, rows: rows}
 }
 
+func (s *session) writeClientInput(data []byte) {
+	keep, rest := filterInputReports(s.inputFilterPartial, data, !oscReplyDisabled(), !dsrReplyDisabled())
+	s.inputFilterPartial = rest
+	if len(keep) > 0 {
+		_, _ = s.ptmx.Write(keep)
+	}
+}
+
 func (s *session) inputLoop() {
 	for event := range s.inputCh {
 		switch event.kind {
 		case inputEventBytes:
-			_, _ = s.ptmx.Write(event.data)
+			s.writeClientInput(event.data)
 		case inputEventResize:
 			cols, rows := event.cols, event.rows
 			for {
@@ -441,7 +463,7 @@ func (s *session) inputLoop() {
 					}
 					s.resize(cols, rows)
 					if next.kind == inputEventBytes {
-						_, _ = s.ptmx.Write(next.data)
+						s.writeClientInput(next.data)
 					}
 					goto nextEvent
 				default:
