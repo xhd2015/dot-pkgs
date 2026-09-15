@@ -19,6 +19,74 @@ import (
 	shelllocalbin "github.com/xhd2015/dot-pkgs/go-pkgs/shell/localbin"
 )
 
+const (
+	// EnvInstallToDir is the env var install scripts honor to stage the binary
+	// into a caller-chosen directory instead of LookPath / ~/.local/bin.
+	EnvInstallToDir = "INSTALL_TO_DIR"
+	// EnvInstallGOOS is the target GOOS for the product binary. Callers such as
+	// remote-agent install set this instead of GOOS so `go run` of the install
+	// script stays host-native.
+	EnvInstallGOOS = "INSTALL_GOOS"
+	// EnvInstallGOARCH is the target GOARCH for the product binary.
+	EnvInstallGOARCH = "INSTALL_GOARCH"
+)
+
+// TargetGOOS returns INSTALL_GOOS, else GOOS, else runtime.GOOS.
+func TargetGOOS() string {
+	if v := strings.TrimSpace(os.Getenv(EnvInstallGOOS)); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("GOOS")); v != "" {
+		return v
+	}
+	return runtime.GOOS
+}
+
+// TargetGOARCH returns INSTALL_GOARCH, else GOARCH, else runtime.GOARCH.
+func TargetGOARCH() string {
+	if v := strings.TrimSpace(os.Getenv(EnvInstallGOARCH)); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("GOARCH")); v != "" {
+		return v
+	}
+	return runtime.GOARCH
+}
+
+// IsCross reports whether TargetGOOS/TargetGOARCH differ from the host.
+func IsCross() bool {
+	return TargetGOOS() != runtime.GOOS || TargetGOARCH() != runtime.GOARCH
+}
+
+// ProductBuildEnv returns env for `go build`/`go install` of the product:
+// GOOS/GOARCH from TargetGOOS/TargetGOARCH; CGO_ENABLED=0 and GOFLAGS
+// stripped when cross-compiling.
+func ProductBuildEnv(base []string) []string {
+	goos, goarch := TargetGOOS(), TargetGOARCH()
+	cross := goos != runtime.GOOS || goarch != runtime.GOARCH
+	drop := map[string]bool{
+		"GOOS":        true,
+		"GOARCH":      true,
+		"CGO_ENABLED": true,
+	}
+	if cross {
+		drop["GOFLAGS"] = true
+	}
+	out := make([]string, 0, len(base)+4)
+	for _, e := range base {
+		key, _, ok := strings.Cut(e, "=")
+		if ok && drop[key] {
+			continue
+		}
+		out = append(out, e)
+	}
+	out = append(out, "GOOS="+goos, "GOARCH="+goarch)
+	if cross {
+		out = append(out, "CGO_ENABLED=0")
+	}
+	return out
+}
+
 // Options controls a local binary install.
 type Options struct {
 	// Dir is the module root (working directory for go build). Required.
@@ -31,6 +99,10 @@ type Options struct {
 	// ModulePath is the go.mod module path. Empty → read from Dir/go.mod when
 	// needed to name a root-package install.
 	ModulePath string
+	// InstallToDir, when set, writes only <InstallToDir>/<bin> and skips
+	// LookPath extras, PATH ensure, and codesign. Empty → env INSTALL_TO_DIR,
+	// then the usual LookPath / ~/.local/bin flow.
+	InstallToDir string
 
 	// LookPath defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
@@ -58,11 +130,11 @@ type Options struct {
 
 // Result describes what Install wrote.
 type Result struct {
-	BinName  string
-	Primary  string
-	Extras   []string // additional existing-copy paths refreshed (not primary)
-	Signed   []string // paths that were codesigned successfully
-	PATHEnsured bool  // EnsurePATH ran for default ~/.local/bin
+	BinName     string
+	Primary     string
+	Extras      []string // additional existing-copy paths refreshed (not primary)
+	Signed      []string // paths that were codesigned successfully
+	PATHEnsured bool     // EnsurePATH ran for default ~/.local/bin
 }
 
 // Install builds Package into the resolved primary destination, refreshes
@@ -88,6 +160,10 @@ func Install(opts Options) (Result, error) {
 	binName, err := resolveBinName(opts)
 	if err != nil {
 		return zero, err
+	}
+
+	if destDir := stagingDir(opts); destDir != "" {
+		return installStaging(opts, binName, destDir, stdout, stderr)
 	}
 
 	homeFn := opts.UserHome
@@ -204,6 +280,31 @@ func writtenPaths(res Result) []string {
 	out := []string{res.Primary}
 	out = append(out, res.Extras...)
 	return out
+}
+
+func stagingDir(opts Options) string {
+	if d := strings.TrimSpace(opts.InstallToDir); d != "" {
+		return d
+	}
+	return strings.TrimSpace(os.Getenv(EnvInstallToDir))
+}
+
+func installStaging(opts Options, binName, destDir string, stdout, stderr io.Writer) (Result, error) {
+	_ = stderr
+	primary := filepath.Join(destDir, binName)
+	fmt.Fprintf(stdout, "==> Installing %s → %s (INSTALL_TO_DIR)\n", binName, primary)
+	build := opts.Build
+	if build == nil {
+		build = defaultBuild
+	}
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return Result{}, fmt.Errorf("install: mkdir %s: %w", destDir, err)
+	}
+	if err := build(opts.Dir, opts.Package, primary); err != nil {
+		return Result{}, fmt.Errorf("install: go build -o %s: %w", primary, err)
+	}
+	fmt.Fprintf(stdout, "\nInstalled %s\n", primary)
+	return Result{BinName: binName, Primary: primary}, nil
 }
 
 type resolveHooks struct {
@@ -396,6 +497,7 @@ func defaultGoEnv(name string) (string, error) {
 func defaultBuild(dir, pkg, out string) error {
 	cmd := exec.Command("go", "build", "-o", out, pkg)
 	cmd.Dir = dir
+	cmd.Env = ProductBuildEnv(os.Environ())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

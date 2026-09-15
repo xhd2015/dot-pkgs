@@ -250,3 +250,111 @@ func TestInstall_CodesignWarningContinues(t *testing.T) {
 		t.Fatalf("stderr=%s", stderr.String())
 	}
 }
+
+func TestInstall_StagingDirSkipsPATHAndExtras(t *testing.T) {
+	dir := t.TempDir()
+	modDir := filepath.Join(dir, "mod")
+	_ = os.MkdirAll(modDir, 0o755)
+	_ = os.WriteFile(filepath.Join(modDir, "go.mod"), []byte("module example.com/mytool\n"), 0o644)
+	stage := filepath.Join(dir, "stage")
+	home := filepath.Join(dir, "home")
+	pathHit := filepath.Join(dir, "path", "mytool")
+	_ = os.MkdirAll(filepath.Dir(pathHit), 0o755)
+	_ = os.WriteFile(pathHit, []byte("old"), 0o755)
+
+	var ensured bool
+	res, err := Install(Options{
+		Dir:          modDir,
+		Package:      ".",
+		InstallToDir: stage,
+		LookPath:     func(string) (string, error) { return pathHit, nil },
+		UserHome:     func() (string, error) { return home, nil },
+		Build: func(_, _, out string) error {
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("staged"), 0o755)
+		},
+		EnsurePATH: func(string, io.Writer) error {
+			ensured = true
+			return nil
+		},
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(stage, "mytool")
+	if res.Primary != want {
+		t.Fatalf("primary=%q want %q", res.Primary, want)
+	}
+	if len(res.Extras) != 0 {
+		t.Fatalf("extras=%v", res.Extras)
+	}
+	if res.PATHEnsured || ensured {
+		t.Fatal("staging must not EnsurePATH")
+	}
+	data, _ := os.ReadFile(pathHit)
+	if string(data) != "old" {
+		t.Fatalf("LookPath copy mutated: %q", data)
+	}
+}
+
+func TestTargetGOOSArch_PrefersInstallEnv(t *testing.T) {
+	t.Setenv(EnvInstallGOOS, "linux")
+	t.Setenv(EnvInstallGOARCH, "arm64")
+	t.Setenv("GOOS", "darwin")
+	t.Setenv("GOARCH", "amd64")
+	if TargetGOOS() != "linux" || TargetGOARCH() != "arm64" {
+		t.Fatalf("got %s/%s", TargetGOOS(), TargetGOARCH())
+	}
+}
+
+func TestProductBuildEnv_CrossStripsGOFLAGS(t *testing.T) {
+	t.Setenv(EnvInstallGOOS, "plan9")
+	t.Setenv(EnvInstallGOARCH, "amd64")
+	env := ProductBuildEnv([]string{"GOFLAGS=-linkmode=external", "PATH=/bin", "GOOS=darwin"})
+	joined := strings.Join(env, "\n")
+	if strings.Contains(joined, "GOFLAGS=") {
+		t.Fatalf("GOFLAGS should be stripped: %v", env)
+	}
+	if !strings.Contains(joined, "GOOS=plan9") || !strings.Contains(joined, "GOARCH=amd64") {
+		t.Fatalf("target missing: %v", env)
+	}
+	if !strings.Contains(joined, "CGO_ENABLED=0") {
+		t.Fatalf("want CGO_ENABLED=0: %v", env)
+	}
+}
+
+func TestInstall_StagingDirFromEnv(t *testing.T) {
+	dir := t.TempDir()
+	modDir := filepath.Join(dir, "mod")
+	_ = os.MkdirAll(modDir, 0o755)
+	_ = os.WriteFile(filepath.Join(modDir, "go.mod"), []byte("module example.com/x\n"), 0o644)
+	stage := filepath.Join(dir, "envstage")
+	t.Setenv(EnvInstallToDir, stage)
+	res, err := Install(Options{
+		Dir:     modDir,
+		Package: ".",
+		LookPath: func(string) (string, error) {
+			return "", fmt.Errorf("missing")
+		},
+		UserHome: func() (string, error) { return filepath.Join(dir, "home"), nil },
+		Build: func(_, _, out string) error {
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("e"), 0o755)
+		},
+		EnsurePATH: func(string, io.Writer) error { return nil },
+		Stdout:     io.Discard,
+		Stderr:     io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Primary != filepath.Join(stage, "x") {
+		t.Fatalf("primary=%q", res.Primary)
+	}
+}
