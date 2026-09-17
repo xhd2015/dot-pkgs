@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/vscode"
 	llsrun "github.com/xhd2015/lls/run"
 	"golang.org/x/term"
 )
@@ -235,10 +235,8 @@ func cmdPickAndVscode() error {
 	}
 	return runPicker(func(fullPath string) error {
 		fmt.Printf("%s -> %s\n", displayPath(fullPath), fullPath)
-		cmd := exec.Command("code", fullPath)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		// Wait for the CLI so a failed launch is reported, not swallowed.
+		if _, err := vscode.OpenConfig(fullPath, &vscode.Config{Run: vscode.WaitRunner}); err != nil {
 			return fmt.Errorf("open vscode: %w", err)
 		}
 		return nil

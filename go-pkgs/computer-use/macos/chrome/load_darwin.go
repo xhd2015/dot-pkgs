@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/open"
 )
 
 // nilCtx is used for timeout-bounded helpers without a parent cancel signal.
@@ -218,15 +220,15 @@ func runOSAscript(ctx context.Context, source string, timeout time.Duration) (st
 }
 
 func launchChromeBare(ctx context.Context, appName string) error {
-	cmd := exec.CommandContext(ctx, "open", "-a", appName)
-	var errBuf bytes.Buffer
-	cmd.Stderr = &errBuf
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(errBuf.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("chrome: could not open %q: %s", appName, msg)
+	// The argv shape comes from shell/open; ctx cancellation is kept by the
+	// injected runner.
+	run := func(args []string) (string, error) {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	if _, err := open.AppConfig(appName, "", &open.Config{Run: run}); err != nil {
+		return fmt.Errorf("chrome: could not open %q: %w", appName, err)
 	}
 	return nil
 }

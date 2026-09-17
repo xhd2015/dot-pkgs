@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/vscode"
 )
 
 func cmdVscode(src string) error {
@@ -22,10 +22,8 @@ func cmdVscode(src string) error {
 		return nil
 	}
 
-	cmd := exec.Command("code", lastLoc)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	// Wait for the CLI so a failed launch is reported, not swallowed.
+	if _, err := vscode.OpenConfig(lastLoc, &vscode.Config{Run: vscode.WaitRunner}); err != nil {
 		return fmt.Errorf("open vscode: %w", err)
 	}
 	return nil

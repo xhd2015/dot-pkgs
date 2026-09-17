@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/getclipboard"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/open"
 	"github.com/xhd2015/less-flags"
 )
 
@@ -27,7 +27,8 @@ Options:
 
 // openCmd runs macOS open for a path. Overridable in tests.
 var openCmd = func(path string) error {
-	return exec.Command("open", path).Run()
+	_, err := open.Path(path)
+	return err
 }
 
 func main() {

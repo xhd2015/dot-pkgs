@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/iterm2"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/open"
 )
 
 const (
@@ -87,13 +88,20 @@ func OpenConfig(dir string, cfg *Config) (*Result, error) {
 	return &Result{Via: ViaTerminal, AppPath: terminalApp}, nil
 }
 
-// TerminalOpenArgs returns argv for `open -a <appPath> <absDir>`. It does not exec.
+// TerminalOpenArgs returns argv for `open -a <appPath> <absDir>`. It does not
+// exec; the argv shape is owned by shell/open.
 func TerminalOpenArgs(appPath, dir string) []string {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		absDir = dir
 	}
-	return []string{"open", "-a", appPath, absDir}
+	argv, err := open.AppArgs(appPath, absDir, "darwin")
+	if err != nil {
+		// Only an empty app path can fail here; keep the literal argv so the
+		// helper still describes the command for a caller-supplied app.
+		return []string{"open", "-a", appPath, absDir}
+	}
+	return argv
 }
 
 func validateDir(dir string) error {

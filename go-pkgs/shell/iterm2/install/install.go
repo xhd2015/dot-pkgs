@@ -26,6 +26,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/open"
 )
 
 const (
@@ -532,9 +534,8 @@ func defaultClearQuarantine(appPath string) error {
 
 // defaultOpen launches appPath with the macOS open(1) utility.
 func defaultOpen(appPath string) error {
-	cmd := exec.Command("open", appPath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("open %s: %w (%s)", appPath, err, strings.TrimSpace(string(out)))
+	if _, err := open.Path(appPath); err != nil {
+		return fmt.Errorf("open %s: %w", appPath, err)
 	}
 	return nil
 }
