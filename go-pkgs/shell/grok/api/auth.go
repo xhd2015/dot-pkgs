@@ -1,4 +1,5 @@
-// Package api is the low-level Grok CLI auth and HTTP transport.
+// Package api is the low-level Grok CLI auth, HTTP transport, and
+// loopback reverse-proxy handler for cli-chat-proxy.grok.com.
 // It does not invent product "usage %" semantics.
 package api
 
@@ -43,16 +44,34 @@ type authEntry struct {
 	PrincipalID  string `json:"principal_id"`
 }
 
-// DefaultAuthPath returns $GROK_HOME/auth.json or ~/.grok/auth.json.
-func DefaultAuthPath() (string, error) {
+// DefaultHome returns $GROK_HOME or ~/.grok.
+func DefaultHome() (string, error) {
 	if home := strings.TrimSpace(os.Getenv("GROK_HOME")); home != "" {
-		return filepath.Join(home, "auth.json"), nil
+		return home, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("grok api: user home: %w", err)
 	}
-	return filepath.Join(home, ".grok", "auth.json"), nil
+	return filepath.Join(home, ".grok"), nil
+}
+
+// DefaultAuthPath returns $GROK_HOME/auth.json or ~/.grok/auth.json.
+func DefaultAuthPath() (string, error) {
+	home, err := DefaultHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "auth.json"), nil
+}
+
+// AuthPath returns home/auth.json. Empty home uses DefaultHome.
+func AuthPath(home string) (string, error) {
+	home = strings.TrimSpace(home)
+	if home == "" {
+		return DefaultAuthPath()
+	}
+	return filepath.Join(home, "auth.json"), nil
 }
 
 // LoadAuth reads and parses a Grok auth.json file.

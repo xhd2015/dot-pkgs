@@ -16,7 +16,7 @@ const (
 	BillingCreditsURL = BillingURL + "?format=credits"
 
 	// DefaultUserAgent identifies Grok CLI-style clients to the proxy.
-	DefaultUserAgent = "GrokCLI/1.0.5"
+	DefaultUserAgent = "GrokCLI/" + DefaultClientVersion
 )
 
 // GetOpts configures a backend GET.

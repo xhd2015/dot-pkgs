@@ -63,6 +63,16 @@ func TestParseAuthJSON_Empty(t *testing.T) {
 	}
 }
 
+func TestAuthPath(t *testing.T) {
+	got, err := AuthPath("/tmp/grok-home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Join("/tmp/grok-home", "auth.json") {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestLoadAuth_FromTempFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
