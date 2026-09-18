@@ -142,21 +142,29 @@ func baseIsHome(baseEval, baseAbs string) bool {
 	return baseEval == homeEval || baseAbs == homeAbs || baseAbs == home || baseEval == home
 }
 
-// Expand converts a display path (with ~ prefix) back to an absolute path
-// for filesystem operations. Non-display paths are returned unchanged.
+// Expand converts the current user's display path ("~" or "~/...") back
+// to a filesystem path. Other paths, including unsupported "~user" forms,
+// are returned unchanged.
 func Expand(path string) string {
-	if path == "" || !strings.HasPrefix(path, "~") {
+	if path == "" || path == "~" {
+		if path == "" {
+			return path
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return home
+	}
+	prefix := "~" + string(filepath.Separator)
+	if !strings.HasPrefix(path, prefix) {
 		return path
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return path
 	}
-	if path == "~" {
-		return home
-	}
-	suffix := strings.TrimPrefix(path, "~")
-	suffix = strings.TrimPrefix(suffix, string(filepath.Separator))
+	suffix := strings.TrimPrefix(path, prefix)
 	if suffix == "" {
 		return home
 	}
