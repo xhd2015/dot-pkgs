@@ -16,6 +16,11 @@ import (
 type Options struct {
 	// Dir is the working directory for air (usually module root). Required.
 	Dir string
+	// TmpDir isolates Air build diagnostics for concurrent development runs.
+	TmpDir string
+	// SendInterrupt gives the backend an opportunity to run cleanup on rebuild.
+	SendInterrupt bool
+	KillDelay     time.Duration
 	// BuildCmd is passed to --build.cmd. Required.
 	BuildCmd string
 	// Entrypoint is passed to --build.entrypoint (relative path preferred). Required.
@@ -43,6 +48,8 @@ type Options struct {
 
 	Stdout io.Writer
 	Stderr io.Writer
+	// Env is appended to the inherited environment for Air and its backend.
+	Env []string
 
 	// Command builds the air exec.Cmd. Nil → default with Setpgid.
 	// Tests inject a fake command here.
@@ -83,6 +90,10 @@ func Start(ctx context.Context, opts Options) (*Process, error) {
 	if stderr == nil {
 		stderr = os.Stderr
 	}
+	// Child stream copying and lifecycle messages can write concurrently.
+	var outputMu sync.Mutex
+	stdout = &lockedWriter{mu: &outputMu, dst: stdout}
+	stderr = &lockedWriter{mu: &outputMu, dst: stderr}
 
 	bin := strings.TrimSpace(opts.Bin)
 	if bin == "" {
@@ -129,7 +140,15 @@ func Start(ctx context.Context, opts Options) (*Process, error) {
 		return c
 	}
 
-	cmd := buildCmd(ctx, bin, args, opts.Dir, stdout, stderr)
+	// Cancellation must give Air time to terminate its independently grouped
+	// backend. CommandContext's default SIGKILL would orphan that backend.
+	cmd := buildCmd(context.WithoutCancel(ctx), bin, args, opts.Dir, stdout, stderr)
+	if opts.Env != nil {
+		cmd.Env = append(os.Environ(), opts.Env...)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	fmt.Fprintf(stderr, "starting air (BE watch)...\n")
 	fmt.Fprintf(stderr, "  build: %s\n", opts.BuildCmd)
 	fmt.Fprintf(stderr, "  run:   %s %s\n", opts.Entrypoint, strings.Join(opts.ArgsBin, " "))
@@ -150,14 +169,33 @@ func Start(ctx context.Context, opts Options) (*Process, error) {
 		stopTimeout = 5 * time.Second
 	}
 
-	return &Process{
+	proc := &Process{
 		Exited:      exited,
 		cmd:         cmd,
 		done:        done,
 		stderr:      stderr,
 		stopTimeout: stopTimeout,
 		onStop:      opts.OnStop,
-	}, nil
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			proc.Stop()
+		case <-done:
+		}
+	}()
+	return proc, nil
+}
+
+type lockedWriter struct {
+	mu  *sync.Mutex
+	dst io.Writer
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.dst.Write(p)
 }
 
 // Stop terminates the air process group (SIGTERM, then SIGKILL) and runs OnStop once.

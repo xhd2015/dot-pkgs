@@ -43,6 +43,15 @@ func BuildArgs(opts Options) ([]string, error) {
 	if len(opts.IncludeDir) > 0 {
 		args = append(args, "--build.include_dir", strings.Join(opts.IncludeDir, ","))
 	}
+	if opts.TmpDir != "" {
+		args = append(args, "--tmp_dir", opts.TmpDir)
+	}
+	if opts.SendInterrupt {
+		args = append(args, "--build.send_interrupt", "true")
+	}
+	if opts.KillDelay > 0 {
+		args = append(args, "--build.kill_delay", opts.KillDelay.String())
+	}
 	if len(opts.ExcludeDir) > 0 {
 		args = append(args, "--build.exclude_dir", strings.Join(opts.ExcludeDir, ","))
 	}
