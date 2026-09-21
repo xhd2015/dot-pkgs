@@ -273,6 +273,37 @@ func TestRunAutoUnstageSubModuleWithRegularFile(t *testing.T) {
 	}
 }
 
+func TestRunAutoUnstageSubModuleOnFreshRepo(t *testing.T) {
+	// Zero commits: no HEAD for git restore --staged; the unstage must
+	// fall back to git rm --cached.
+	repo := initGitRepo(t)
+	t.Chdir(repo)
+
+	writeFile(t, filepath.Join(repo, "README.md"), "hello\n")
+	smDir := filepath.Join(repo, "vendor", "libfoo")
+	mustRun(t, repo, "mkdir", "-p", filepath.Join(smDir, "src"))
+	writeFile(t, filepath.Join(smDir, "src", "main.c"), "int main() { return 0; }\n")
+	os.MkdirAll(filepath.Join(smDir, ".git"), 0755)
+	mustRun(t, repo, "git", "add", "README.md", "vendor/libfoo/src/main.c")
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{"--auto-unstage"}, &out)
+	if err != nil {
+		t.Fatalf("expected no error with --auto-unstage on repo without commits, got %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "auto-unstaged 1 file(s) (kept on disk)") {
+		t.Fatalf("expected auto-unstaged note in output, got:\n%s", out.String())
+	}
+
+	staged := getStagedFileNames(t)
+	if containsString(staged, "vendor/libfoo/src/main.c") {
+		t.Errorf("submodule file should have been unstaged")
+	}
+	if !containsString(staged, "README.md") {
+		t.Errorf("README.md should still be staged")
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()

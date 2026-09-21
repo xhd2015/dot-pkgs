@@ -10,7 +10,6 @@ import (
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/git/submodule"
 	"github.com/xhd2015/gitops/git"
-	"github.com/xhd2015/gitops/gitwrite"
 	lessflags "github.com/xhd2015/less-flags"
 )
 
@@ -89,9 +88,10 @@ func runWithOutput(args []string, out io.Writer) error {
 					}
 				}
 			}
-			if err := gitwrite.RestoreStaged(".", paths...); err != nil {
+			if err := githook.UnstageFiles(paths...); err != nil {
 				return err
 			}
+			fmt.Fprintf(out, "auto-unstaged %d file(s) (kept on disk)\n", len(paths))
 			return nil
 		}
 		fmt.Fprintln(out, "\nUse git restore --staged <file> to unstage, or use git submodule instead.")

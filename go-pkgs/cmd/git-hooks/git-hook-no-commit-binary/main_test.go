@@ -303,6 +303,76 @@ func TestRunAutoUnstageBinaryNoOffendingFiles(t *testing.T) {
 	}
 }
 
+func TestRunAutoUnstageBinaryOnFreshRepo(t *testing.T) {
+	// A repo with zero commits has no HEAD, so git restore --staged fails;
+	// the unstage must fall back to git rm --cached.
+	repo := initGitRepo(t)
+	t.Chdir(repo)
+
+	writeTextFile(t, filepath.Join(repo, "README.md"), "hello\n")
+	writeBinaryFile(t, filepath.Join(repo, "program.bin"), 1024)
+	mustRun(t, repo, "git", "add", "README.md", "program.bin")
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{"--auto-unstage"}, &out)
+	if err != nil {
+		t.Fatalf("expected no error with --auto-unstage on repo without commits, got %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "auto-unstaged 1 file(s) (kept on disk)") {
+		t.Fatalf("expected auto-unstaged note in output, got:\n%s", out.String())
+	}
+
+	staged := getStagedFileNames(t)
+	if containsString(staged, "program.bin") {
+		t.Errorf("program.bin should have been unstaged")
+	}
+	if !containsString(staged, "README.md") {
+		t.Errorf("README.md should still be staged")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "program.bin")); err != nil {
+		t.Errorf("program.bin must remain on disk: %v", err)
+	}
+}
+
+func TestRunAutoUnstageRestoresModifiedTrackedBinary(t *testing.T) {
+	// For tracked files the unstage must use restore --staged semantics:
+	// the index resets to HEAD and the file stays tracked. git rm --cached
+	// here would untrack the file and drop it from the repository.
+	repo := initGitRepoWithCommit(t)
+	t.Chdir(repo)
+
+	// Hermetic test: the developer's global core.hooksPath would otherwise
+	// auto-unstage the binary during the git commit below, so the file
+	// never reaches HEAD.
+	mustRun(t, repo, "git", "config", "core.hooksPath", filepath.Join(t.TempDir(), "no-hooks"))
+
+	writeBinaryFile(t, filepath.Join(repo, "asset.bin"), 256)
+	mustRun(t, repo, "git", "add", "asset.bin")
+	mustRun(t, repo, "git", "commit", "-m", "add asset")
+
+	writeBinaryFile(t, filepath.Join(repo, "asset.bin"), 512)
+	mustRun(t, repo, "git", "add", "asset.bin")
+
+	var out bytes.Buffer
+	err := runWithOutput([]string{"--auto-unstage"}, &out)
+	if err != nil {
+		t.Fatalf("expected no error with --auto-unstage, got %v\n%s", err, out.String())
+	}
+
+	staged := getStagedFileNames(t)
+	if containsString(staged, "asset.bin") {
+		t.Errorf("asset.bin modification should have been unstaged")
+	}
+	cmd := exec.Command("git", "ls-files", "--", "asset.bin")
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(output)) == "" {
+		t.Errorf("asset.bin must remain tracked (restore --staged, not rm --cached)")
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()

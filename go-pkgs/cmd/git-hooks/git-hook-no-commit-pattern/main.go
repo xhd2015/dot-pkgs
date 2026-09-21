@@ -10,7 +10,6 @@ import (
 
 	githook "github.com/xhd2015/dot-pkgs/go-pkgs/git-hook"
 	"github.com/xhd2015/gitops/git"
-	"github.com/xhd2015/gitops/gitwrite"
 	lessflags "github.com/xhd2015/less-flags"
 )
 
@@ -86,9 +85,10 @@ func runWithOutput(args []string, out io.Writer) error {
 	}
 	if len(matched) > 0 {
 		if cfg.autoUnstage {
-			if err := gitwrite.RestoreStaged(".", matched...); err != nil {
+			if err := githook.UnstageFiles(matched...); err != nil {
 				return err
 			}
+			fmt.Fprintf(out, "auto-unstaged %d file(s) (kept on disk)\n", len(matched))
 			return nil
 		}
 		return errPatternsMatched
