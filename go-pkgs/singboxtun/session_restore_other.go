@@ -2,8 +2,6 @@
 
 package singboxtun
 
-type serviceProxyState struct{}
-
 func saveTunSessionSnapshot(service string, previousDNS []string, dnsTouched bool, previousProxy serviceProxyState, proxyTouched bool) error {
 	return nil
 }

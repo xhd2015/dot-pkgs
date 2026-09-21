@@ -430,7 +430,7 @@ func buildSingBoxFullTunConfig(opts *BuildConfigOptions) ([]byte, error) {
 	routeRules := []map[string]any{{"action": "sniff"}}
 	routeRules = append(routeRules, map[string]any{
 		"type": "logical", "mode": "or",
-		"rules": []map[string]any{{"protocol": "dns"}, {"port": 53}},
+		"rules":  []map[string]any{{"protocol": "dns"}, {"port": 53}},
 		"action": "hijack-dns",
 	})
 	routeRules = appendBuiltinBypassRules(routeRules, proxyHost)

@@ -11,8 +11,8 @@ import (
 const BrewInstallSingBoxCmd = "brew install sing-box"
 
 const (
-	defaultCacheDirName = "singboxtun"
-	defaultSudoersName  = "singboxtun"
+	defaultCacheDirName  = "singboxtun"
+	defaultSudoersName   = "singboxtun"
 	defaultDNSHijackHint = "Retry with --dns-hijack"
 )
 
