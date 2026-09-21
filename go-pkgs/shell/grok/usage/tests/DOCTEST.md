@@ -26,7 +26,8 @@ scenario copy beyond public product URLs used as API constants.
 - **`NormalizeJSON(raw, source)`** — map monthly `used`/`monthlyLimit` and/or
   credits `creditUsagePercent` / `currentPeriod` into `Snapshot`.
 - **`SelectPreferred`** — monthly wins when `MonthlyLimit > 0`; else weekly when
-  `UsedPercent >= 0`; else monthly uncapped; else weekly.
+  `UsedPercent >= 0`; else weekly when its period parsed (`PeriodType` set, even
+  without a percent); else monthly uncapped; else weekly.
 - **`Snapshot`** — `Used`, `MonthlyLimit`, `UsedPercent` / `RemainingPercent`
   (`-1` when unknown), `ResetAt`, `PeriodType` (`monthly`/`weekly`), `Source`
   (`billing`), `Email`.
@@ -38,7 +39,9 @@ scenario copy beyond public product URLs used as API constants.
 
 - Monthly capped + weekly present → prefer monthly percents / `PeriodType=monthly`
 - Monthly uncapped + weekly credits → prefer weekly percents / `PeriodType=weekly`
-- Monthly uncapped only (credits same shape / no percent) → percents `-1`
+- Monthly uncapped + weekly period parsed without percent → prefer weekly (reset
+  visible), percents still `-1`
+- Monthly uncapped only (credits same shape / no percent / no period) → percents `-1`
 - `ForceRefresh=true` → Ensure called with ForceRefresh
 - GET 401 then OK after forced refresh → success
 - Both GETs fail → error

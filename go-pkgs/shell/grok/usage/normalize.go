@@ -183,7 +183,9 @@ func periodTypeFromAPI(s string) string {
 }
 
 // SelectPreferred chooses monthly when it has a numeric cap; otherwise weekly
-// credits when a percent is known; otherwise the monthly snapshot (possibly uncapped).
+// credits when a percent is known; otherwise weekly credits when its period
+// parsed (period carries the weekly reset, even without a percent); otherwise
+// the monthly snapshot (possibly uncapped).
 func SelectPreferred(monthly, weekly Snapshot, monthlyOK, weeklyOK bool) (Snapshot, bool) {
 	if monthlyOK && monthly.MonthlyLimit > 0 && monthly.UsedPercent >= 0 {
 		out := monthly
@@ -193,6 +195,16 @@ func SelectPreferred(monthly, weekly Snapshot, monthlyOK, weeklyOK bool) (Snapsh
 		return out, true
 	}
 	if weeklyOK && weekly.UsedPercent >= 0 {
+		out := weekly
+		if out.PeriodType == "" {
+			out.PeriodType = PeriodWeekly
+		}
+		return out, true
+	}
+	// Weekly credits period parsed without a percent (e.g. uncapped SuperGrok):
+	// still prefer it over the uncapped monthly fallback so the weekly reset
+	// stays visible.
+	if weeklyOK && weekly.PeriodType != "" {
 		out := weekly
 		if out.PeriodType == "" {
 			out.PeriodType = PeriodWeekly

@@ -118,6 +118,15 @@ func TestSelectPreferred(t *testing.T) {
 		t.Fatalf("weekly should win when monthly uncapped: %+v ok=%v", got, ok)
 	}
 
+	// Weekly period parsed without a percent (uncapped SuperGrok): prefer the
+	// weekly snapshot so the weekly reset stays visible over the raw monthly
+	// used count.
+	weeklyNoPercent := Snapshot{UsedPercent: -1, PeriodType: PeriodWeekly}
+	got, ok = SelectPreferred(monthlyOpen, weeklyNoPercent, true, true)
+	if !ok || got.PeriodType != PeriodWeekly {
+		t.Fatalf("weekly with parsed period should win over uncapped monthly: %+v ok=%v", got, ok)
+	}
+
 	got, ok = SelectPreferred(monthlyOpen, Snapshot{}, true, false)
 	if !ok || got.Used != 73 || got.UsedPercent != -1 {
 		t.Fatalf("uncapped monthly fallback: %+v ok=%v", got, ok)
