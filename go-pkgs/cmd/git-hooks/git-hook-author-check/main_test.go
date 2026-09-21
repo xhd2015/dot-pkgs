@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -89,6 +90,43 @@ func TestExcludeOriginDomainGate(t *testing.T) {
 	err := runWithOutput([]string{"--exclude-origin-domain", "other.example.com", "--name", "wrong"}, &out)
 	if !errors.Is(err, errAuthorCheckFailed) {
 		t.Fatalf("expected non-excluded origin domain to scan, got %v", err)
+	}
+}
+
+func TestExcludeRepoGate(t *testing.T) {
+	repo := initGitRepo(t, "Xxx User", "xxx@xx.xx")
+	t.Chdir(repo)
+	mustRun(t, repo, "git", "remote", "add", "origin", "git@git.xxx.com:team/legacy.git")
+
+	var out bytes.Buffer
+	// The scp remote normalizes to git.xxx.com/team/legacy, so the glob
+	// hits the origin and the check is skipped entirely.
+	if err := runWithOutput([]string{"--exclude-repo", "git.xxx.com/team/*", "--name", "wrong"}, &out); err != nil {
+		t.Fatalf("expected excluded origin repo to skip, got %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no output when repo is excluded, got:\n%s", out.String())
+	}
+
+	// Repeatable flags OR together; a dir pattern on the repo toplevel
+	// excludes too. git reports the symlink-resolved toplevel, so the
+	// pattern uses the resolved spelling.
+	resolved, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithOutput([]string{"--exclude-repo", "git.other.com/*", "--exclude-repo", "dir:" + resolved, "--name", "wrong"}, &out); err != nil {
+		t.Fatalf("expected dir-pattern exclusion to skip, got %v", err)
+	}
+
+	err = runWithOutput([]string{"--exclude-repo", "git.other.com/*", "--name", "wrong"}, &out)
+	if !errors.Is(err, errAuthorCheckFailed) {
+		t.Fatalf("expected non-matching pattern to scan, got %v", err)
+	}
+
+	err = runWithOutput([]string{"--exclude-repo", ""}, &out)
+	if err == nil || !strings.Contains(err.Error(), "pattern must not be empty") {
+		t.Fatalf("expected empty pattern error, got %v", err)
 	}
 }
 

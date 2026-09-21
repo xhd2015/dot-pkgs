@@ -11,6 +11,10 @@ import (
 type DomainFilter struct {
 	OriginDomain        string
 	ExcludeOriginDomain string
+	// ExcludeRepos lists --exclude-repo glob patterns; a repo whose origin
+	// URL or top-level directory matches any pattern is skipped. See
+	// MatchRepoPatterns for the pattern syntax.
+	ExcludeRepos []string
 }
 
 func ParseDomainFlag(args []string, i int, filter *DomainFilter) (bool, int, error) {
@@ -56,6 +60,13 @@ func (f *DomainFilter) Normalize() error {
 		}
 		f.ExcludeOriginDomain = domain
 	}
+	if len(f.ExcludeRepos) > 0 {
+		cleaned, err := normalizeRepoPatterns(f.ExcludeRepos)
+		if err != nil {
+			return err
+		}
+		f.ExcludeRepos = cleaned
+	}
 	return nil
 }
 
@@ -75,6 +86,15 @@ func (f DomainFilter) ShouldRun() (bool, error) {
 			return false, err
 		}
 		if ok {
+			return false, nil
+		}
+	}
+	if len(f.ExcludeRepos) > 0 {
+		excluded, err := f.repoExcluded()
+		if err != nil {
+			return false, err
+		}
+		if excluded {
 			return false, nil
 		}
 	}

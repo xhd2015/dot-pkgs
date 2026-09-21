@@ -22,6 +22,7 @@ Reject local path replace directives in go.mod files.
 Options:
   --origin-domain DOMAIN            only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
+  --exclude-repo PATTERN            skip when origin URL or repo dir matches PATTERN (repeatable, glob, origin:/dir: prefix)
   --strict                          block all local replaces (including intra-repo)
   -h,--help                         show help message
 `
@@ -99,11 +100,13 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	var cfg config
 	var originDomain *string
 	var excludeOriginDomain *string
+	var excludeRepos []string
 	var strict *bool
 
 	remaining, err := lessflags.
 		String("--origin-domain", &originDomain).
 		String("--exclude-origin-domain", &excludeOriginDomain).
+		StringSlice("--exclude-repo", &excludeRepos).
 		Bool("--strict", &strict).
 		HelpFunc("-h,--help", func() {
 			fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
@@ -127,6 +130,7 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	if excludeOriginDomain != nil {
 		cfg.domainFilter.ExcludeOriginDomain = *excludeOriginDomain
 	}
+	cfg.domainFilter.ExcludeRepos = excludeRepos
 	if strict != nil {
 		cfg.strict = *strict
 	}

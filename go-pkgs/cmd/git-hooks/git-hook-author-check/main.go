@@ -23,6 +23,7 @@ Options:
   --not-email CONDITION             require author email not to match CONDITION
   --origin-domain DOMAIN            only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN    skip when remote origin host matches DOMAIN
+  --exclude-repo PATTERN            skip when origin URL or repo dir matches PATTERN (repeatable, glob, origin:/dir: prefix)
   -h,--help                         show help message
 
 Conditions:
@@ -127,6 +128,7 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	var cfg config
 	var originDomain *string
 	var excludeOriginDomain *string
+	var excludeRepos []string
 	var names []string
 	var emails []string
 	var notNames []string
@@ -135,6 +137,7 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	remaining, err := lessflags.
 		String("--origin-domain", &originDomain).
 		String("--exclude-origin-domain", &excludeOriginDomain).
+		StringSlice("--exclude-repo", &excludeRepos).
 		StringSlice("--name", &names).
 		StringSlice("--email", &emails).
 		StringSlice("--not-name", &notNames).
@@ -161,6 +164,7 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	if excludeOriginDomain != nil {
 		cfg.domainFilter.ExcludeOriginDomain = *excludeOriginDomain
 	}
+	cfg.domainFilter.ExcludeRepos = excludeRepos
 
 	// Preserve relative order within each flag family; process families in
 	// declaration order matching common CLI usage.

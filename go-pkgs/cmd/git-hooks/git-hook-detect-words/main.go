@@ -23,6 +23,7 @@ Detect forbidden keywords in staged added or updated lines.
 Options:
   --origin-domain DOMAIN           only run when remote origin host matches DOMAIN
   --exclude-origin-domain DOMAIN   skip when remote origin host matches DOMAIN
+  --exclude-repo PATTERN           skip when origin URL or repo dir matches PATTERN (repeatable, glob, origin:/dir: prefix)
   -h,--help                        show help message
 `
 
@@ -102,10 +103,12 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	var cfg config
 	var originDomain *string
 	var excludeOriginDomain *string
+	var excludeRepos []string
 
 	remaining, err := lessflags.
 		String("--origin-domain", &originDomain).
 		String("--exclude-origin-domain", &excludeOriginDomain).
+		StringSlice("--exclude-repo", &excludeRepos).
 		HelpFunc("-h,--help", func() {
 			fmt.Fprint(out, strings.TrimPrefix(help, "\n"))
 		}).
@@ -125,6 +128,7 @@ func parseArgs(args []string, out io.Writer) (config, error) {
 	if excludeOriginDomain != nil {
 		cfg.domainFilter.ExcludeOriginDomain = *excludeOriginDomain
 	}
+	cfg.domainFilter.ExcludeRepos = excludeRepos
 	cfg.keywords = remaining
 
 	if err := cfg.domainFilter.Normalize(); err != nil {
