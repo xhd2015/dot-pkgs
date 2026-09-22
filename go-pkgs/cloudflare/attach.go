@@ -168,6 +168,10 @@ func Attach(opts AttachOptions) (*Session, error) {
 			if perr != nil {
 				return nil, perr
 			}
+			if err := waitConnectorAlive(proc.PID(), logPath); err != nil {
+				_ = proc.Stop()
+				return nil, err
+			}
 			sess.proc = proc
 			st.ConnectorPID = proc.PID()
 		}
@@ -219,4 +223,34 @@ func stopPID(pid int) {
 	// Prefer process-group kill (StartProcess uses Setpgid).
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
 	_ = syscall.Kill(pid, syscall.SIGTERM)
+}
+
+// waitConnectorAlive fails if cloudflared exits immediately (missing creds, bad config).
+func waitConnectorAlive(pid int, logPath string) error {
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if processAlive(pid) {
+			time.Sleep(150 * time.Millisecond)
+			if processAlive(pid) {
+				return nil
+			}
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if processAlive(pid) {
+		return nil
+	}
+	tail := ""
+	if b, err := os.ReadFile(logPath); err == nil {
+		s := string(b)
+		if len(s) > 2048 {
+			s = s[len(s)-2048:]
+		}
+		tail = strings.TrimSpace(s)
+	}
+	if tail != "" {
+		return fmt.Errorf("cloudflared exited: %s", tail)
+	}
+	return fmt.Errorf("cloudflared exited immediately after start")
 }

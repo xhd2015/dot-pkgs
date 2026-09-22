@@ -172,13 +172,12 @@ func ensureTunnelForSession(runner CommandRunner, preferredName string) (name, t
 		return "", "", "", fmt.Errorf("could not determine tunnel ID for %q", name)
 	}
 	if credFile == "" {
-		// allow missing file path default for config write (session tests provide real path from create)
 		if cfgDir, derr := DefaultConfigDir(); derr == nil {
 			credFile = filepath.Join(cfgDir, tunnelID+".json")
 		}
 	}
-	if credFile == "" {
-		return "", "", "", fmt.Errorf("could not find credentials file for tunnel %q", name)
+	if credFile == "" || fileMissing(credFile) {
+		return "", "", "", fmt.Errorf("credentials file not found for tunnel %q (id: %s): %s", name, tunnelID, credFile)
 	}
 	return name, tunnelID, credFile, nil
 }

@@ -55,19 +55,19 @@ type SessionOptions struct {
 // Sessions from Attach are managed: Stop detaches one host via Detach rather
 // than wiping a single-host WorkDir.
 type Session struct {
-	TunnelName  string
-	Domain      string
-	WorkDir     string
-	ConfigPath  string
-	TunnelID    string
-	CredFile    string
-	ownWorkDir  bool
-	proc        *Process
-	runner      CommandRunner
-	dnsDeleter  DNSDeleter
-	log         io.Writer
-	publicURL   string
-	runnerMode  bool // process was "started" via Runner.Exec rather than real OS process
+	TunnelName string
+	Domain     string
+	WorkDir    string
+	ConfigPath string
+	TunnelID   string
+	CredFile   string
+	ownWorkDir bool
+	proc       *Process
+	runner     CommandRunner
+	dnsDeleter DNSDeleter
+	log        io.Writer
+	publicURL  string
+	runnerMode bool // process was "started" via Runner.Exec rather than real OS process
 	// managed attach identity (Stop → Detach)
 	managed   bool
 	configDir string
