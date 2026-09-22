@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	"github.com/xhd2015/dot-pkgs/go-pkgs/getclipboard"
+	"github.com/xhd2015/dot-pkgs/go-pkgs/ocr"
 	"github.com/xhd2015/dot-pkgs/go-pkgs/shell/open"
 	"github.com/xhd2015/less-flags"
 )
@@ -17,11 +19,13 @@ Usage: get-clipboard [OPTIONS]
 Read system clipboard content:
   - Plain text is printed to stdout
   - Image, SVG, HTML, and other binary formats are saved to a file
+  - With --ocr, image content is recognized (macOS Vision) and printed as text
 
 Options:
   -o, --output FILE   output file path (by default a timestamped name with auto extension)
   -n, --name NAME     write under /tmp/NAME.<ext>; if exists, use NAME-1.<ext>, NAME-2.<ext>, ...
       --open          after saving a file, run: open <path>
+      --ocr           OCR image clipboard content to stdout (macOS Vision; no file write)
   -h, --help          show this help message
 `
 
@@ -29,6 +33,15 @@ Options:
 var openCmd = func(path string) error {
 	_, err := open.Path(path)
 	return err
+}
+
+// ocrImage recognizes text in image bytes. Overridable in tests.
+var ocrImage = func(ctx context.Context, data []byte, ext string) (string, error) {
+	res, err := ocr.RecognizeBytes(ctx, data, ext, ocr.Options{})
+	if err != nil {
+		return "", err
+	}
+	return res.Text, nil
 }
 
 func main() {
@@ -39,16 +52,18 @@ func main() {
 }
 
 func run(args []string) error {
-	return runWithOutput(args, os.Stdout)
+	return runWithOutput(args, os.Stdout, getclipboard.System())
 }
 
-func runWithOutput(args []string, out io.Writer) error {
+func runWithOutput(args []string, out io.Writer, src getclipboard.Source) error {
 	var output string
 	var name string
 	var doOpen bool
+	var doOCR bool
 	_, err := lessflags.String("-o,--output", &output).
 		String("-n,--name", &name).
 		Bool("--open", &doOpen).
+		Bool("--ocr", &doOCR).
 		Help("-h,--help", help).
 		Parse(args)
 	if err != nil {
@@ -58,6 +73,12 @@ func runWithOutput(args []string, out io.Writer) error {
 	if output != "" && name != "" {
 		return fmt.Errorf("--name and --output are mutually exclusive")
 	}
+	if doOCR && (output != "" || name != "") {
+		return fmt.Errorf("--ocr is mutually exclusive with --output and --name")
+	}
+	if doOCR && doOpen {
+		return fmt.Errorf("--ocr is mutually exclusive with --open")
+	}
 	if name != "" {
 		name, err = getclipboard.ValidateName(name)
 		if err != nil {
@@ -65,7 +86,7 @@ func runWithOutput(args []string, out io.Writer) error {
 		}
 	}
 
-	c, err := getclipboard.Read(getclipboard.System())
+	c, err := getclipboard.Read(src)
 	if err != nil {
 		return err
 	}
@@ -79,10 +100,23 @@ func runWithOutput(args []string, out io.Writer) error {
 		}
 		return fmt.Errorf("clipboard contains unsupported content")
 	case getclipboard.KindText:
-		// --open is ignored for plain text (no file to open) — CLI prints text.
+		// --ocr is ignored for plain text (already text).
 		fmt.Fprint(out, string(c.Data))
 		return nil
 	default:
+		if doOCR {
+			if c.Kind != getclipboard.KindImage {
+				return fmt.Errorf("--ocr requires image clipboard content (got %s)", c.Kind)
+			}
+			text, err := ocrImage(context.Background(), c.Data, c.Ext)
+			if err != nil {
+				return err
+			}
+			if text != "" {
+				fmt.Fprintln(out, text)
+			}
+			return nil
+		}
 		res, err := c.Dump(getclipboard.DumpOptions{Output: output, Name: name, Dir: "/tmp"})
 		if err != nil {
 			return err
