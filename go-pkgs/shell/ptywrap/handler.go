@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -148,6 +149,11 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 	}
 
 	s.registerConn(conn, role)
+	// An idle shell writes nothing, and the visitor connection usually crosses a
+	// public proxy that closes a WebSocket carrying no traffic for about two
+	// minutes, so ping it to keep the terminal attached.
+	stopKeepalive := startWSKeepalive(conn)
+	defer stopKeepalive()
 	mgr.logLifecycle("attach",
 		"session_id", s.id,
 		"pid", strconv.Itoa(s.childPID()),
@@ -302,6 +308,38 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 	case result := <-wsCloseCh:
 		handleWriterClose(result)
 	}
+}
+
+// keepaliveInterval is how often an attached terminal WebSocket is pinged. It
+// sits well below the roughly two minute idle reaper a public proxy applies to
+// a WebSocket that carries no traffic.
+const keepaliveInterval = 30 * time.Second
+
+// startWSKeepalive pings conn every keepaliveInterval until stop is called, so
+// an idle terminal stays attached across a public proxy. The ping is a control
+// frame, so it interleaves safely with the session's output writes, and every
+// compliant client answers it with a pong.
+func startWSKeepalive(conn *websocket.Conn) (stop func()) {
+	if conn == nil {
+		return func() {}
+	}
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		ticker := time.NewTicker(keepaliveInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	return func() { once.Do(func() { close(done) }) }
 }
 
 func handleSessions(w http.ResponseWriter, r *http.Request, mgr *Manager) {
