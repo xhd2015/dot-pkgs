@@ -3,7 +3,7 @@ module github.com/xhd2015/dot-pkgs/go-pkgs/cmd
 go 1.25.10
 
 require (
-	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.175
+	github.com/xhd2015/dot-pkgs/go-pkgs v0.0.186
 	github.com/xhd2015/gitops v0.0.31
 	github.com/xhd2015/less-flags v1.0.5
 	github.com/xhd2015/lls v0.0.9
