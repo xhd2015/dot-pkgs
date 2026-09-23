@@ -57,6 +57,19 @@ func setupWithRemoteBehind(t *testing.T, req *Request) {
 	req.SourcePath = featureWT
 }
 
+// landFeatureThenDirtyMain fast-forwards feature into main (already included)
+// then leaves an uncommitted file on main. Sets Remove so MergeBack is --done.
+func landFeatureThenDirtyMain(t *testing.T, req *Request) {
+	t.Helper()
+	runGit(t, req.MainRepo, "merge", "--ff-only", "feature")
+	if err := os.WriteFile(filepath.Join(req.MainRepo, "dirty-main.txt"), []byte("x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	req.Remove = true
+}
+
+var _ = landFeatureThenDirtyMain
+
 func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	setupWithRemoteBehind(t, req)
 	return nil

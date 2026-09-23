@@ -117,14 +117,6 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 		return nil, fmt.Errorf("target does not share the same main repository")
 	}
 
-	// Refresh main from its upstream (or origin/<branch>) before comparing /
-	// landing, so push after land is not a non-FF surprise. Skip only when no
-	// remote can be resolved (local fixtures without origin).
-	syncCmds, err := prepareMainRemoteSync(targetAbs, opts.DryRun)
-	if err != nil {
-		return nil, err
-	}
-
 	branch, err := ReadBranch(sourceAbs)
 	if err != nil {
 		return nil, err
@@ -158,15 +150,7 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	relation, included := relationFromCompare(compare.Relation)
-
-	result := &MergeBackResult{
-		SourcePath: sourceAbs,
-		TargetPath: targetAbs,
-		Branch:     branch,
-		Relation:   relation,
-	}
 
 	// Dirty check: only required when --rm (Remove: true) because the worktree
 	// will be deleted. When Remove is false, the worktree stays — dirtiness is
@@ -175,6 +159,32 @@ func MergeBack(opts MergeBackOptions) (*MergeBackResult, error) {
 	dirty := dirtyErr != nil
 	if dirty && opts.Remove {
 		return nil, dirtyErr
+	}
+
+	// Refresh main from its upstream (or origin/<branch>) before landing, so
+	// push after land is not a non-FF surprise. Skip when the worktree HEAD is
+	// already included in local main (remove/noop does not mutate main) or when
+	// no remote can be resolved.
+	var syncCmds []PlannedCommand
+	if !included {
+		syncCmds, err = prepareMainRemoteSync(targetAbs, opts.DryRun)
+		if err != nil {
+			return nil, err
+		}
+		if !opts.DryRun && len(syncCmds) > 0 {
+			compare, err = git.CompareBranches(targetAbs, compareRef, "HEAD")
+			if err != nil {
+				return nil, err
+			}
+			relation, included = relationFromCompare(compare.Relation)
+		}
+	}
+
+	result := &MergeBackResult{
+		SourcePath: sourceAbs,
+		TargetPath: targetAbs,
+		Branch:     branch,
+		Relation:   relation,
 	}
 
 	plan, err := buildMergeBackPlan(mergeBackPlanInput{
@@ -701,7 +711,8 @@ func prependCommands(plan MergeBackPlan, cmds []PlannedCommand) MergeBackPlan {
 }
 
 // prepareMainRemoteSync plans (and unless dryRun, runs) fetch+rebase of main
-// onto its upstream. Returns nil cmds when no remote is available.
+// onto its upstream. Returns nil cmds when no remote is available. Callers skip
+// this when the source is already included in local main.
 func prepareMainRemoteSync(mainRepo string, dryRun bool) ([]PlannedCommand, error) {
 	cmds, _, err := planMainRemoteSync(mainRepo)
 	if err != nil {
