@@ -30,6 +30,10 @@ type Config struct {
 	GOOS string
 	// Run executes argv and returns its combined output. nil → exec.
 	Run func(args []string) (string, error)
+	// DefaultBrowser resolves the system default browser's application name,
+	// used when BrowserConfig is given no app. nil → DefaultBrowserApp, which
+	// reads the user's LaunchServices preferences.
+	DefaultBrowser func() (string, error)
 }
 
 func (c *Config) goos() string {
@@ -44,6 +48,13 @@ func (c *Config) run() func(args []string) (string, error) {
 		return c.Run
 	}
 	return execRun
+}
+
+func (c *Config) defaultBrowser() func() (string, error) {
+	if c != nil && c.DefaultBrowser != nil {
+		return c.DefaultBrowser
+	}
+	return DefaultBrowserApp
 }
 
 func execRun(args []string) (string, error) {

@@ -39,8 +39,10 @@ Targets are three:
 - **`ResolveBrowserApp(name)`** — pure alias → macOS application name.
 - **`BrowserArgs(url, app, newWindow, goos)`** — pure argv for a browser, asking
   for a new window when requested.
-- **`BrowserApps()`** — the alias list, so help text and tests read the same
-  table the resolver does.
+- **`BrowserApps()` / `BrowserNames()`** — the alias list, and the canonical id
+  per browser, so help text and tests read the same table the resolver does.
+- **`DefaultBrowserApp()`** — impure: the system default http handler's
+  application name, or `""` when it cannot be named.
 - **`PathConfig` / `URLConfig` / `AppConfig` / `BrowserConfig`** — build argv,
   then call the runner once; `Path` / `URL` / `App` / `Browser` are the
   nil-Config forms.
@@ -76,11 +78,29 @@ and switches Spaces to reach it.
 - Firefox → `{"open", "-na", "Firefox", "--args", "-new-window", url}` — one
   dash, not two.
 - Safari → `{"osascript", "-e", <make new document …>}`; it has no usable switch.
-- Empty app → `{"open", "-n", url}` (the OS default handler, new instance).
+- Empty app (`BrowserArgs`) → `{"open", "-n", url}`, the document form.
 - Unknown app → `{"open", "-na", <app>, url}`, the document form: guessing
   `--new-window` would hand the flag to a non-Chromium app as a filename.
 - Any non-darwin platform → the default handler argv; the app is ignored.
 - `newWindow` false with a named app → `{"open", "-a", <app>, url}`.
+
+**Default handler (`Browser` / `BrowserConfig`)**
+
+`BrowserArgs` stays pure, so an empty app is still the document form. The wrapper
+resolves the system default browser first, because the document form hands the
+URL to the running browser as a tab in its existing window — the same
+Space-switching bug, reached without `--browser`:
+
+- Known default (the plist's `LSHandlerRoleAll` maps through the table) → that
+  browser's new-window argv, so an empty app behaves like `--browser=<default>`.
+- Unnameable default, resolver error, or a default the table does not list →
+  `{"open", "-n", url}`, the document form.
+- `NewWindow` off, or an app named explicitly → the default is never resolved.
+
+`httpHandlerBundleID` is the pure part: it takes the last `http` entry of a
+LaunchServices preferences document. `DefaultBrowserApp` is the impure part
+(plutil plus the user's preferences), injected through `Config.DefaultBrowser`
+so no case reads the real preferences.
 
 **Rules**
 
@@ -123,6 +143,7 @@ shell/open/tests/
     ├── path-success/                      # argv + Out
     ├── url-success/                       # argv + Out
     ├── app-success/                       # argv + Out
+    ├── browser-default-handler/           # flagless open → new window in the default browser
     └── runner-error/                      # error surfaces
 ```
 
@@ -154,7 +175,8 @@ shell/open/tests/
 | 12 | `run/path-success` | PathConfig | argv + Out |
 | 13 | `run/url-success` | URLConfig | argv + Out |
 | 14 | `run/app-success` | AppConfig | argv + Out |
-| 15 | `run/runner-error` | PathConfig | runner error surfaces; no Result |
+| 15 | `run/browser-default-handler` | BrowserConfig | empty app → default browser's new-window argv |
+| 16 | `run/runner-error` | PathConfig | runner error surfaces; no Result |
 
 ## How to Run
 
@@ -180,8 +202,9 @@ type Result struct {
 }
 
 type Config struct {
-	GOOS string
-	Run  func(args []string) (string, error)
+	GOOS           string
+	Run            func(args []string) (string, error)
+	DefaultBrowser func() (string, error)
 }
 
 func Args(target, goos string) ([]string, error)
@@ -190,7 +213,9 @@ func AppArgs(app, path, goos string) ([]string, error)
 
 func ResolveBrowserApp(name string) string
 func BrowserApps() []string
+func BrowserNames() []string
 func BrowserArgs(url, app string, newWindow bool, goos string) ([]string, error)
+func DefaultBrowserApp() (string, error)
 
 func Path(path string) (*Result, error)
 func PathConfig(path string, cfg *Config) (*Result, error)
@@ -232,6 +257,10 @@ type Request struct {
 	Browser   string
 	NewWindow bool
 
+	// DefaultBrowser is what Config.DefaultBrowser reports, so no case reads
+	// the real LaunchServices preferences. Empty means "cannot be named".
+	DefaultBrowser string
+
 	// RunnerErr non-empty → the injected runner returns errors.New(that).
 	RunnerErr string
 }
@@ -263,6 +292,9 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 	case "run":
 		cfg := &open.Config{
 			GOOS: req.GOOS,
+			DefaultBrowser: func() (string, error) {
+				return req.DefaultBrowser, nil
+			},
 			Run: func(args []string) (string, error) {
 				resp.Runs = append(resp.Runs, args)
 				if req.RunnerErr != "" {

@@ -62,6 +62,7 @@ func Setup(t *testing.T, d *session.Doctest, req *Request) error {
 	req.GOOS = ""
 	req.Browser = ""
 	req.NewWindow = false
+	req.DefaultBrowser = ""
 	req.RunnerErr = ""
 	return nil
 }

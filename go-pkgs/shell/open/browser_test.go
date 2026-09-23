@@ -1,6 +1,7 @@
 package open
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -202,5 +203,163 @@ func TestBrowserConfigInjectedRunner(t *testing.T) {
 	want := []string{"open", "-na", "Google Chrome", "--args", "--new-window", "http://example/"}
 	if !reflect.DeepEqual(ran, want) {
 		t.Fatalf("%v", ran)
+	}
+}
+
+func TestHTTPHandlerBundleID(t *testing.T) {
+	// The shape plutil produces for the real preferences file, including a
+	// non-http handler that must be ignored and a later http entry that wins.
+	doc := []byte(`{"LSHandlers":[
+		{"LSHandlerURLScheme":"mailto","LSHandlerRoleAll":"com.apple.mail"},
+		{"LSHandlerURLScheme":"http","LSHandlerRoleAll":"com.google.Chrome"},
+		{"LSHandlerURLScheme":"https","LSHandlerRoleAll":"com.brave.Browser"},
+		{"LSHandlerURLScheme":"http","LSHandlerRoleAll":"com.operasoftware.opera"}
+	]}`)
+	got, err := httpHandlerBundleID(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "com.operasoftware.opera" {
+		t.Fatalf("got %q, want the last http handler", got)
+	}
+}
+
+func TestHTTPHandlerBundleIDErrors(t *testing.T) {
+	if _, err := httpHandlerBundleID([]byte(`not json`)); err == nil {
+		t.Error("expected a parse error")
+	}
+	if _, err := httpHandlerBundleID([]byte(`{"LSHandlers":[]}`)); err == nil {
+		t.Error("expected an error when no http handler is registered")
+	}
+	if _, err := httpHandlerBundleID([]byte(`{"LSHandlers":[{"LSHandlerURLScheme":"mailto","LSHandlerRoleAll":"com.apple.mail"}]}`)); err == nil {
+		t.Error("expected an error when only non-http handlers exist")
+	}
+}
+
+func TestLookupBundleIDIsCaseInsensitive(t *testing.T) {
+	// LaunchServices records lowercase while the bundle declares mixed case.
+	for _, id := range []string{"com.operasoftware.opera", "com.operasoftware.Opera", "COM.OPERASOFTWARE.OPERA"} {
+		spec, ok := lookupBundleID(id)
+		if !ok || spec.app != "Opera" || spec.family != familyChromium {
+			t.Errorf("lookupBundleID(%q) = %+v, %v", id, spec, ok)
+		}
+	}
+	if _, ok := lookupBundleID("com.example.Unknown"); ok {
+		t.Error("unknown bundle id should not resolve")
+	}
+	if _, ok := lookupBundleID("  "); ok {
+		t.Error("blank bundle id should not resolve")
+	}
+}
+
+// TestBrowserConfigResolvesDefaultBrowser is the regression for a bare
+// `eluc open`: with no --browser the default handler used to get
+// `open -n <url>`, which hands the URL to the running browser as a tab.
+func TestBrowserConfigResolvesDefaultBrowser(t *testing.T) {
+	var ran []string
+	cfg := &Config{
+		GOOS:           "darwin",
+		DefaultBrowser: func() (string, error) { return "Opera", nil },
+		Run: func(args []string) (string, error) {
+			ran = append([]string{}, args...)
+			return "ok", nil
+		},
+	}
+	if _, err := BrowserConfig("http://example/", "", true, cfg); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"open", "-na", "Opera", "--args", "--new-window", "http://example/"}
+	if !reflect.DeepEqual(ran, want) {
+		t.Fatalf("ran %#v, want %#v", ran, want)
+	}
+}
+
+func TestBrowserConfigDefaultBrowserFallbacks(t *testing.T) {
+	cases := []struct {
+		name     string
+		resolver func() (string, error)
+		want     []string
+	}{
+		{
+			name:     "unnameable default keeps the document form",
+			resolver: func() (string, error) { return "", nil },
+			want:     []string{"open", "-n", "http://example/"},
+		},
+		{
+			name:     "resolver error keeps the document form",
+			resolver: func() (string, error) { return "", errors.New("no plist") },
+			want:     []string{"open", "-n", "http://example/"},
+		},
+		{
+			name:     "unlisted default browser still resolves through the table",
+			resolver: func() (string, error) { return "Firefox", nil },
+			want:     []string{"open", "-na", "Firefox", "--args", "-new-window", "http://example/"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var ran []string
+			cfg := &Config{
+				GOOS:           "darwin",
+				DefaultBrowser: c.resolver,
+				Run: func(args []string) (string, error) {
+					ran = append([]string{}, args...)
+					return "ok", nil
+				},
+			}
+			if _, err := BrowserConfig("http://example/", "", true, cfg); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(ran, c.want) {
+				t.Fatalf("ran %#v, want %#v", ran, c.want)
+			}
+		})
+	}
+}
+
+// TestBrowserConfigNamedAppSkipsDefaultResolution keeps the default lookup off
+// the path when a browser was named explicitly.
+func TestBrowserConfigNamedAppSkipsDefaultResolution(t *testing.T) {
+	called := false
+	var ran []string
+	cfg := &Config{
+		GOOS: "darwin",
+		DefaultBrowser: func() (string, error) {
+			called = true
+			return "Opera", nil
+		},
+		Run: func(args []string) (string, error) {
+			ran = append([]string{}, args...)
+			return "ok", nil
+		},
+	}
+	if _, err := BrowserConfig("http://example/", "brave", true, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Error("default browser must not be resolved when an app is given")
+	}
+	if want := []string{"open", "-na", "Brave Browser", "--args", "--new-window", "http://example/"}; !reflect.DeepEqual(ran, want) {
+		t.Fatalf("ran %#v, want %#v", ran, want)
+	}
+}
+
+// TestBrowserConfigNoNewWindowSkipsDefaultResolution: the `open -a` form and
+// the default handler are unrelated.
+func TestBrowserConfigNoNewWindowSkipsDefaultResolution(t *testing.T) {
+	called := false
+	cfg := &Config{
+		GOOS: "darwin",
+		DefaultBrowser: func() (string, error) {
+			called = true
+			return "Opera", nil
+		},
+		Run: func(args []string) (string, error) { return "ok", nil },
+	}
+	if _, err := BrowserConfig("http://example/", "", false, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Error("default browser must not be resolved when newWindow is off")
 	}
 }
