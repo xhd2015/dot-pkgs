@@ -36,8 +36,14 @@ Targets are three:
 - **`URLArgs(url, goos)`** — `Args` for a URL.
 - **`AppArgs(app, path, goos)`** — pure argv for `open -a`; empty `path`
   launches the app itself.
-- **`PathConfig` / `URLConfig` / `AppConfig`** — build argv, then call the
-  runner once; `Path` / `URL` / `App` are the nil-Config forms.
+- **`ResolveBrowserApp(name)`** — pure alias → macOS application name.
+- **`BrowserArgs(url, app, newWindow, goos)`** — pure argv for a browser, asking
+  for a new window when requested.
+- **`BrowserApps()`** — the alias list, so help text and tests read the same
+  table the resolver does.
+- **`PathConfig` / `URLConfig` / `AppConfig` / `BrowserConfig`** — build argv,
+  then call the runner once; `Path` / `URL` / `App` / `Browser` are the
+  nil-Config forms.
 - **`Config`** — `GOOS` (empty → `runtime.GOOS`), `Run` (nil → exec and
   collect combined output).
 - **`Result`** — `Args` (what ran) and `Out` (runner output).
@@ -57,6 +63,30 @@ Targets are three:
 - Empty or whitespace-only target → error; runner not called.
 - Empty app name → error; runner not called.
 - `open -a` on a non-darwin platform → error; runner not called.
+
+**Browser, new window (darwin)**
+
+The point of the browser argv is *not* to reuse a tab: `open -na <app> <url>`
+hands the URL to the running instance, which opens a tab in its existing window
+and switches Spaces to reach it.
+
+- Chromium alias (`brave`, `chrome`, `edge`, `opera`, `vivaldi`, `chromium`,
+  `arc`) → `{"open", "-na", <app>, "--args", "--new-window", url}`. `-n` is what
+  makes `--args` reach a running browser.
+- Firefox → `{"open", "-na", "Firefox", "--args", "-new-window", url}` — one
+  dash, not two.
+- Safari → `{"osascript", "-e", <make new document …>}`; it has no usable switch.
+- Empty app → `{"open", "-n", url}` (the OS default handler, new instance).
+- Unknown app → `{"open", "-na", <app>, url}`, the document form: guessing
+  `--new-window` would hand the flag to a non-Chromium app as a filename.
+- Any non-darwin platform → the default handler argv; the app is ignored.
+- `newWindow` false with a named app → `{"open", "-a", <app>, url}`.
+
+**Rules**
+
+- Every alias resolves to an application *and* a family. A browser known to the
+  alias table but missing from the family classification used to fall through to
+  the document form; both now live on one row.
 
 **Route**
 
@@ -84,7 +114,9 @@ shell/open/tests/
 │   ├── unknown-platform/                  # error; no argv
 │   ├── app-with-path/                     # open -a <app> <path>
 │   ├── app-without-path/                  # open -a <app>
-│   └── app-non-darwin/                    # error; no argv
+│   ├── app-non-darwin/                    # error; no argv
+│   ├── browser-chromium-new-window/       # open -na <app> --args --new-window <url>
+│   └── browser-firefox-new-window/        # open -na Firefox --args -new-window <url>
 └── run/                                   # Config.Run injection
     ├── reject-empty-path/                 # error; runner not called
     ├── reject-empty-app/                  # error; runner not called
@@ -97,10 +129,12 @@ shell/open/tests/
 ### Parameter significance (high → low)
 
 1. **Operation** — args (pure) | run (injected runner)
-2. **Kind** — path | url | app (selects the builder)
+2. **Kind** — path | url | app | browser (selects the builder)
 3. **Platform** — darwin | linux | windows | unknown
 4. **Validity** — empty target / empty app / non-darwin `open -a`
-5. **Runner outcome** — success | injected error
+5. **Browser** — chromium | firefox | safari | unknown
+6. **NewWindow** — true (new window) | false (`open -a` form)
+7. **Runner outcome** — success | injected error
 
 ## Test Index
 
@@ -113,12 +147,14 @@ shell/open/tests/
 | 5 | `args/app-with-path` | AppArgs | `open -a <app> <path>` |
 | 6 | `args/app-without-path` | AppArgs | `open -a <app>` |
 | 7 | `args/app-non-darwin` | AppArgs | `open -a` on linux → error |
-| 8 | `run/reject-empty-path` | PathConfig | empty path → error; no runner |
-| 9 | `run/reject-empty-app` | AppConfig | empty app → error; no runner |
-| 10 | `run/path-success` | PathConfig | argv + Out |
-| 11 | `run/url-success` | URLConfig | argv + Out |
-| 12 | `run/app-success` | AppConfig | argv + Out |
-| 13 | `run/runner-error` | PathConfig | runner error surfaces; no Result |
+| 8 | `args/browser-chromium-new-window` | BrowserArgs | Opera → `--new-window`, not a reused tab |
+| 9 | `args/browser-firefox-new-window` | BrowserArgs | Firefox → single-dash `-new-window` |
+| 10 | `run/reject-empty-path` | PathConfig | empty path → error; no runner |
+| 11 | `run/reject-empty-app` | AppConfig | empty app → error; no runner |
+| 12 | `run/path-success` | PathConfig | argv + Out |
+| 13 | `run/url-success` | URLConfig | argv + Out |
+| 14 | `run/app-success` | AppConfig | argv + Out |
+| 15 | `run/runner-error` | PathConfig | runner error surfaces; no Result |
 
 ## How to Run
 
@@ -152,12 +188,18 @@ func Args(target, goos string) ([]string, error)
 func URLArgs(url, goos string) ([]string, error)
 func AppArgs(app, path, goos string) ([]string, error)
 
+func ResolveBrowserApp(name string) string
+func BrowserApps() []string
+func BrowserArgs(url, app string, newWindow bool, goos string) ([]string, error)
+
 func Path(path string) (*Result, error)
 func PathConfig(path string, cfg *Config) (*Result, error)
 func URL(url string) (*Result, error)
 func URLConfig(url string, cfg *Config) (*Result, error)
 func App(app, path string) (*Result, error)
 func AppConfig(app, path string, cfg *Config) (*Result, error)
+func Browser(url, app string) (*Result, error)
+func BrowserConfig(url, app string, newWindow bool, cfg *Config) (*Result, error)
 ```
 
 ```go
@@ -174,7 +216,7 @@ import (
 // Request is filled root→leaf. Kind selects which public API Run calls.
 type Request struct {
 	Operation string // args | run
-	Kind      string // path | url | app
+	Kind      string // path | url | app | browser
 
 	// WorkDir is an isolated temp root; Target is a path inside it.
 	WorkDir string
@@ -184,6 +226,11 @@ type Request struct {
 	AppName string
 	AppPath string
 	GOOS    string
+
+	// Browser is a --browser alias or app name; NewWindow requests a new
+	// window rather than the `open -a` document form.
+	Browser   string
+	NewWindow bool
 
 	// RunnerErr non-empty → the injected runner returns errors.New(that).
 	RunnerErr string
@@ -233,6 +280,8 @@ func Run(t *testing.T, d *session.Doctest, req *Request) (*Response, error) {
 			res, err = open.URLConfig(req.URL, cfg)
 		case "app":
 			res, err = open.AppConfig(req.AppName, req.AppPath, cfg)
+		case "browser":
+			res, err = open.BrowserConfig(req.URL, req.Browser, req.NewWindow, cfg)
 		default:
 			t.Fatalf("unknown Kind %q for Operation run", req.Kind)
 		}
@@ -256,6 +305,8 @@ func buildArgs(req *Request) ([]string, error) {
 		return open.URLArgs(req.URL, req.GOOS)
 	case "app":
 		return open.AppArgs(req.AppName, req.AppPath, req.GOOS)
+	case "browser":
+		return open.BrowserArgs(req.URL, req.Browser, req.NewWindow, req.GOOS)
 	default:
 		return nil, errors.New("unknown Kind " + req.Kind)
 	}
