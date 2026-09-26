@@ -117,15 +117,22 @@ func ReadMainRepo(linkedPath string) (string, error) {
 }
 
 // ReadBranch returns the current branch name, or "HEAD" when detached.
+// Unborn HEAD (git init, no commits yet) still returns the branch name
+// because the symbolic ref exists before the first commit.
 func ReadBranch(worktreePath string) (string, error) {
 	return ReadBranchCtx(context.Background(), worktreePath)
 }
 
 // ReadBranchCtx is ReadBranch with cancellation support.
 func ReadBranchCtx(ctx context.Context, worktreePath string) (string, error) {
-	branch, err := cmd.Run(ctx, worktreePath, "rev-parse", "--abbrev-ref", "HEAD")
+	// symbolic-ref names the branch even when HEAD is unborn.
+	// rev-parse --abbrev-ref HEAD fatals in that case ("unknown revision").
+	branch, ok, err := cmd.RunOptional(ctx, worktreePath, "symbolic-ref", "--short", "-q", "HEAD")
 	if err != nil {
-		return "", fmt.Errorf("git rev-parse --abbrev-ref HEAD: %w", err)
+		return "", fmt.Errorf("git symbolic-ref --short HEAD: %w", err)
+	}
+	if !ok || branch == "" {
+		return "HEAD", nil
 	}
 	return branch, nil
 }
