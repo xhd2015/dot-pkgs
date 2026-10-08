@@ -1,6 +1,7 @@
 package qemu
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -63,12 +64,32 @@ func (m *Manager) runGuest(action string, extra ...string) error {
 }
 
 func (m *Manager) runGuestOut(action string, extra ...string) (string, error) {
+	return m.runGuestLines(context.Background(), action, nil, extra...)
+}
+
+// StatusLines is Status, calling onLine for each stdout line before the script exits.
+func (m *Manager) StatusLines(ctx context.Context, onLine LineHandler) (map[string]string, error) {
+	out, err := m.runGuestLines(ctx, "status", onLine)
+	return ParseKV(out), err
+}
+
+// CFStatusLines is CFStatus, calling onLine for each stdout line before the helper exits.
+func (m *Manager) CFStatusLines(ctx context.Context, origin string, onLine LineHandler) (map[string]string, error) {
+	out, err := m.runCFLines(ctx, "status", onLine, m.cfOrigin(origin))
+	return ParseKV(out), err
+}
+
+func (m *Manager) runGuestLines(ctx context.Context, action string, onLine LineHandler, extra ...string) (string, error) {
 	if m.DryRun {
-		fmt.Fprintf(m.stdout(), "[dry-run] would %s\n", m.dryLine(GuestStartScriptPlaceholder, action, extra...))
+		line := "[dry-run] would " + m.dryLine(GuestStartScriptPlaceholder, action, extra...)
+		fmt.Fprintln(m.stdout(), line)
+		if onLine != nil {
+			onLine(line)
+		}
 		return "", nil
 	}
 	args := append([]string{"-c", m.Cfg.GuestStartScript(), "--", action}, extra...)
-	return m.host().Output("bash", args...)
+	return m.outputLines(ctx, "bash", args, onLine)
 }
 
 func (m *Manager) runCF(action string, extra ...string) error {
@@ -86,8 +107,16 @@ func (m *Manager) runCF(action string, extra ...string) error {
 }
 
 func (m *Manager) runCFOut(action string, extra ...string) (string, error) {
+	return m.runCFLines(context.Background(), action, nil, extra...)
+}
+
+func (m *Manager) runCFLines(ctx context.Context, action string, onLine LineHandler, extra ...string) (string, error) {
 	if m.DryRun {
-		fmt.Fprintf(m.stdout(), "[dry-run] would %s\n", m.dryLineHelper(action, extra...))
+		line := "[dry-run] would " + m.dryLineHelper(action, extra...)
+		fmt.Fprintln(m.stdout(), line)
+		if onLine != nil {
+			onLine(line)
+		}
 		return "", nil
 	}
 	bin, err := m.EnsureHelper()
@@ -96,7 +125,25 @@ func (m *Manager) runCFOut(action string, extra ...string) (string, error) {
 	}
 	args := append(HelperFlags(m.Cfg), action)
 	args = append(args, extra...)
-	return m.host().Output(bin, args...)
+	return m.outputLines(ctx, bin, args, onLine)
+}
+
+func (m *Manager) outputLines(ctx context.Context, name string, args []string, onLine LineHandler) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if sh, ok := m.host().(StreamingHost); ok {
+		return sh.OutputLines(ctx, name, args, onLine)
+	}
+	out, err := m.host().Output(name, args...)
+	if onLine != nil {
+		for _, line := range strings.Split(strings.TrimSuffix(out, "\n"), "\n") {
+			if line != "" {
+				onLine(line)
+			}
+		}
+	}
+	return out, err
 }
 
 // Status probes qemu pid, guest ssh, and disk.
