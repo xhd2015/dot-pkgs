@@ -18,10 +18,10 @@ Like `go.mod replace`, wrk worktrees point at the brought tree:
 "@xhd2015/dot-pkgs-react-diagrams": "file:../../external/dot-pkgs/react/diagrams"
 ```
 
-After this directory is on GitHub, the committed spec can be:
+GitHub (root package.json re-exports this directory; pin a tag):
 
 ```json
-"@xhd2015/dot-pkgs-react-diagrams": "github:xhd2015/dot-pkgs#path:react/diagrams"
+"@xhd2015/dot-pkgs-react-diagrams": "github:xhd2015/dot-pkgs#v0.0.12"
 ```
 
 Keep a Vite alias to `external/dot-pkgs/react/diagrams` when that folder exists so npm `file:` still hot-reloads.
