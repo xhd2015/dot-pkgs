@@ -1,0 +1,93 @@
+/*
+ * The frame around the drawing: the breadcrumb, the scroll frame, the hint and
+ * the empty state. ProcessDiagram renders all of it, and ProcessGraph draws what
+ * goes inside .pf-canvas.
+ */
+.pf-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pf-empty {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+.pf-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.pf-crumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pf-crumb {
+  border: 0;
+  background: transparent;
+  color: #1677ff;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.pf-crumb:hover {
+  background: rgba(22, 119, 255, 0.08);
+}
+
+.pf-crumb.current {
+  color: rgba(0, 0, 0, 0.88);
+  font-weight: 600;
+  cursor: default;
+}
+
+.pf-sep {
+  color: rgba(0, 0, 0, 0.25);
+  padding: 0 2px;
+}
+
+.pf-canvas {
+  position: relative;
+  overflow: auto;
+  padding: 20px 12px 28px;
+  background-color: #fff;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  min-height: 360px;
+}
+
+.pf-hint {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* The copy a tech design carries sits inside another card: no 360px floor, and
+   the cards inside it are narrower than a top-level one. The card sizes itself
+   (ProcessNodeCard.css reads these), so embed mode only states what it wants. */
+.pf-embed {
+  --pf-node-min-width: 220px;
+  --pf-node-max-width: 380px;
+}
+
+.pf-embed .pf-canvas {
+  min-height: 0;
+  padding: 16px 12px 20px;
+}
+
+

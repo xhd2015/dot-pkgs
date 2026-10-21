@@ -1,0 +1,68 @@
+/*
+ * The measured graph: the canvas-sized box the layout produces, the connector
+ * layer and its labels, and the frame a nested breakdown opens in. The cards
+ * themselves are ProcessNodeCard's DOM — a nest tunes them through tokens
+ * rather than selecting into them.
+ */
+.pf-graph {
+  position: relative;
+}
+
+.pf-graph-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.pf-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pf-edge {
+  fill: none;
+  stroke: #bfbfbf;
+  stroke-width: 2;
+}
+
+.pf-edge.pf-mark-add, .pf-edge.pf-mark-change {
+  stroke: #389e0d;
+}
+
+.pf-edge.pf-mark-remove {
+  stroke: #cf1322;
+}
+
+.pf-edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  max-width: 92px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.55);
+  line-height: 1.3;
+  text-align: center;
+  background: #fff;
+  pointer-events: none;
+}
+
+.pf-nest {
+  /* A nested card is ProcessNodeCard's DOM, so the nest asks for what it wants
+     with tokens: a full-width card with a wider cap than a top-level one. The
+     cap has to clear the breakdown inside an expanded card, which is wider than
+     the cap and would otherwise be clipped by .pf-node's overflow:hidden —
+     stages of the copy disappearing off the node. */
+  --pf-node-width: 100%;
+  --pf-node-max-width: 480px;
+  margin: 0 12px 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #91caff;
+}

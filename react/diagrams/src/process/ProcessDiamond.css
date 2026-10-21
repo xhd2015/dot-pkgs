@@ -1,0 +1,92 @@
+/*
+ * The rhombus both surfaces draw. Only the geometry lives here: a box, an
+ * inscribed outline, and a copy that stays inside the slants. Fill, stroke and
+ * type come from the skin, so the product pages and the fixture gallery can
+ * each supply their own tokens.
+ */
+.pd-branch {
+  position: relative;
+  /* The rhombus fills the box it is given, so the card around it and the shape
+     inside it are one rectangle. */
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: none;
+  border: 0;
+}
+
+.pd-branch-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.pd-branch-outline polygon {
+  fill: var(--pd-branch-fill, transparent);
+  stroke: var(--pd-branch-border, currentColor);
+  stroke-width: var(--pd-branch-border-width, 1);
+  /* A stretched viewBox would scale the stroke with the box; the outline is a
+     hairline in CSS pixels whatever the rhombus is stretched to. */
+  vector-effect: non-scaling-stroke;
+}
+
+/* The diamond puts the button role on this element itself when the card can be
+   opened, so the cursor needs no class from the skin. */
+.pd-branch-copy[role='button'] {
+  cursor: pointer;
+}
+
+.pd-branch-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Half the width: the other half is what the slants take. */
+  max-width: 50%;
+  text-align: center;
+}
+
+/* The decision copy: wrapping, colour and alignment are the shape's defaults,
+   and any skin class a card passes in (.pf-ttl) may override them. */
+.pd-branch-title {
+  max-width: 100%;
+  color: var(--pd-title-color, inherit);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* The scale, though, is the shape's own and not the skin's: a question sits
+   inside the slants rather than in a box, so it reads a step smaller than a card
+   title. Stated through the rhombus so it wins on specificity — the bare class
+   would tie with the skin class the card passes in, and the tie would go to
+   whichever stylesheet loaded last. */
+.pd-branch .pd-branch-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.pd-branch-sub {
+  max-width: 100%;
+  margin-top: 2px;
+  color: var(--pd-meta-color, inherit);
+  font-family: var(--pd-meta-font, inherit);
+  font-size: var(--pd-branch-sub-size, 10px);
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.pd-branch .pd-branch-sub {
+  margin-top: 2px;
+  font-size: var(--pd-branch-sub-size, 10px);
+}

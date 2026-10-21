@@ -1,0 +1,36 @@
+{
+  "name": "@xhd2015/dot-pkgs-react-diagrams",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    "./sequence": "./src/sequence/index.ts",
+    "./process": "./src/process/index.ts",
+    "./drawio": "./src/drawio/index.ts"
+  },
+  "scripts": {
+    "test": "sh -c 'fail=0; for f in src/*/*.test.ts; do bun run \"$f\" || fail=1; done; exit $fail'"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@maxgraph/core": "^0.25.0",
+    "d3": "^7.9.0",
+    "fflate": "^0.8.3",
+    "mermaid": "^11.10.1"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "typescript": "~5.8.3"
+  }
+}

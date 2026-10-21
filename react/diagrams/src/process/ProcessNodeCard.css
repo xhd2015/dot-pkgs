@@ -1,0 +1,204 @@
+/*
+ * The product card: the box, the row inside it (kind icon, copy, chips), the
+ * fold control and the change marks. Both shapes are ProcessStep and
+ * ProcessDiamond; the skin for the rhombus is passed down as tokens, because
+ * that DOM belongs to ProcessDiamond.css.
+ */
+.pf-node {
+  /* A nest widens the cards inside it (ProcessGraph.css sets these); the
+     defaults are the top-level card. */
+  width: var(--pf-node-width, max-content);
+  min-width: var(--pf-node-min-width, 280px);
+  max-width: var(--pf-node-max-width, 440px);
+  border-radius: 12px;
+  background: #fff;
+  border: 1.5px solid #d9d9d9;
+  overflow: hidden;
+  transition: width 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pf-has {
+  border-color: #91caff;
+}
+
+.pf-expanded {
+  width: max-content;
+  min-width: 280px;
+  max-width: none;
+  border-color: #1677ff;
+  box-shadow: 0 0 0 1px rgba(22, 119, 255, 0.15), 0 6px 16px rgba(0, 0, 0, 0.06);
+  background: #f0f5ff;
+}
+
+.pf-response {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+}
+
+/* The decision box: the rhombus inside it sizes itself from its own question,
+   and this box just hugs it. The layout measures this element, so the box dagre
+   places and the shape the reader sees are the same rectangle. */
+.pf-node.pf-decision {
+  /* The rhombus is ProcessDiamond's DOM, so its skin travels as tokens and is
+     never selected from here. The mark rules below re-set the same tokens. */
+  --pd-branch-fill: #f8faff;
+  --pd-branch-border: #69b1ff;
+  --pd-branch-border-width: 2px;
+  --pd-branch-sub-size: 11px;
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  clip-path: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: none;
+}
+
+.pf-node.pf-decision .pf-fold {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1677ff;
+  white-space: nowrap;
+}
+
+/* The shared step card: the box is .pf-node, the measured row inside it is
+   .pf-head, and the copy sits beside the kind icon. A change chip, when there
+   is one, takes a third column; the row does not reserve it otherwise. */
+.pf-node > .pf-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, auto);
+  gap: 10px;
+  align-items: start;
+  padding: 12px 14px;
+  cursor: default;
+  /* The icon stays out of a drag. The label and summary opt back in below. */
+  user-select: none;
+}
+
+.pf-node > .pf-head:has(> .pf-pills) {
+  grid-template-columns: 28px minmax(0, auto) max-content;
+}
+
+.pf-has > .pf-head {
+  cursor: pointer;
+}
+
+.pf-has > .pf-head:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.pf-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677ff;
+}
+
+.pf-response .pf-icon {
+  background: rgba(82, 196, 26, 0.12);
+  color: #389e0d;
+}
+
+.pf-ttl {
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: break-word;
+  user-select: text;
+}
+
+.pf-sub {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-top: 2px;
+  line-height: 1.35;
+  user-select: text;
+}
+
+.pf-pill {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  padding: 2px 8px;
+  align-self: start;
+}
+
+.pf-pills {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* A node, edge or link a tech design marks. The colours are chapter 3's, so a
+   change reads the same in a process copy as it does in a sequence diagram. */
+.pf-node.pf-mark-add, .pf-node.pf-mark-change {
+  border-color: #389e0d;
+  background: #f6ffed;
+}
+
+.pf-node.pf-mark-remove {
+  border-color: #cf1322;
+  background: #fff1f0;
+}
+
+.pf-node.pf-decision.pf-mark-add, .pf-node.pf-decision.pf-mark-change {
+  background: transparent;
+}
+
+.pf-node.pf-decision.pf-mark-remove {
+  background: transparent;
+}
+
+.pf-node.pf-decision.pf-mark-add,
+.pf-node.pf-decision.pf-mark-change {
+  --pd-branch-border: #389e0d;
+  --pd-branch-fill: #f6ffed;
+}
+
+.pf-node.pf-decision.pf-mark-remove {
+  --pd-branch-border: #cf1322;
+  --pd-branch-fill: #fff1f0;
+}
+
+.pf-node.pf-expanded.pf-mark-add, .pf-node.pf-expanded.pf-mark-change, .pf-node.pf-expanded.pf-mark-remove {
+  box-shadow: none;
+}
+
+.pf-pill-mark {
+  color: #fff;
+  border-color: transparent;
+}
+
+/* The badge reads the same palette as the tables' ChangeKindTag, so the word carries
+   one colour wherever it appears: green to add, blue to change, red to remove. */
+.pf-pill-mark.pf-mark-add {
+  background: #389e0d;
+}
+
+.pf-pill-mark.pf-mark-change {
+  background: #1677ff;
+}
+
+.pf-pill-mark.pf-mark-remove {
+  background: #cf1322;
+}
+
