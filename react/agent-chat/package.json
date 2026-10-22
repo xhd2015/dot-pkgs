@@ -1,0 +1,26 @@
+{
+  "name": "@xhd2015/dot-pkgs-react-agent-chat",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "sh -c 'fail=0; for f in src/*.test.ts; do bun run \"$f\" || fail=1; done; exit $fail'"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "typescript": "~5.8.3"
+  }
+}
