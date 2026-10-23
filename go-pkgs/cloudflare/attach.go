@@ -136,12 +136,15 @@ func Attach(opts AttachOptions) (*Session, error) {
 		}
 	} else {
 		alive := processAlive(st.ConnectorPID)
-		if !alive {
+		if alive && !ingressChanged {
+			sweepConfigConnectors(configPath, st.ConnectorPID)
+		} else {
 			needStart = true
-		} else if ingressChanged {
-			stopPID(st.ConnectorPID)
-			st.ConnectorPID = 0
-			needStart = true
+			if alive {
+				stopAndWaitPID(st.ConnectorPID)
+				st.ConnectorPID = 0
+			}
+			sweepConfigConnectors(configPath, 0)
 		}
 	}
 
@@ -174,6 +177,10 @@ func Attach(opts AttachOptions) (*Session, error) {
 			}
 			sess.proc = proc
 			st.ConnectorPID = proc.PID()
+			proc.SetOnPID(func(pid int) {
+				st.ConnectorPID = pid
+				_ = SaveTunnelState(managedDir, st)
+			})
 		}
 	} else if runner != nil {
 		sess.runnerMode = true
@@ -206,23 +213,6 @@ func flockManagedDir(dir string) (unlock func(), err error) {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		_ = f.Close()
 	}, nil
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil
-}
-
-func stopPID(pid int) {
-	if pid <= 0 {
-		return
-	}
-	// Prefer process-group kill (StartProcess uses Setpgid).
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
-	_ = syscall.Kill(pid, syscall.SIGTERM)
 }
 
 // waitConnectorAlive fails if cloudflared exits immediately (missing creds, bad config).
