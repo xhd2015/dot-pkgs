@@ -107,6 +107,7 @@ func Detach(opts DetachOptions) error {
 	if lastHost {
 		// Last host: stop connector and clear logical PID.
 		if runner == nil {
+			stopRegisteredProcess(configPath)
 			stopAndWaitPID(st.ConnectorPID)
 			sweepConfigConnectors(configPath, 0)
 		}
@@ -185,21 +186,6 @@ func restartManagedConnector(st *TunnelState, runner CommandRunner, configPath, 
 		return nil
 	}
 
-	// Real process: stop previous (wait + sweep extras) then start a new one.
-	stopAndWaitPID(st.ConnectorPID)
-	st.ConnectorPID = 0
-	sweepConfigConnectors(configPath, 0)
-
-	logPath := filepath.Join(managedDir, "cloudflared.log")
-	logFile, lerr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if lerr != nil {
-		return lerr
-	}
-	proc, perr := StartProcess(configPath, name, logFile)
-	_ = logFile.Close()
-	if perr != nil {
-		return perr
-	}
-	st.ConnectorPID = proc.PID()
-	return nil
+	_, err := startRegisteredConnector(st, configPath, name, managedDir)
+	return err
 }

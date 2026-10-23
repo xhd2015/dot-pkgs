@@ -140,11 +140,6 @@ func Attach(opts AttachOptions) (*Session, error) {
 			sweepConfigConnectors(configPath, st.ConnectorPID)
 		} else {
 			needStart = true
-			if alive {
-				stopAndWaitPID(st.ConnectorPID)
-				st.ConnectorPID = 0
-			}
-			sweepConfigConnectors(configPath, 0)
 		}
 	}
 
@@ -161,26 +156,11 @@ func Attach(opts AttachOptions) (*Session, error) {
 				st.ConnectorPID = 1
 			}
 		} else {
-			logPath := filepath.Join(managedDir, "cloudflared.log")
-			logFile, lerr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-			if lerr != nil {
-				return nil, lerr
-			}
-			proc, perr := StartProcess(configPath, name, logFile)
-			_ = logFile.Close()
+			proc, perr := startRegisteredConnector(st, configPath, name, managedDir)
 			if perr != nil {
 				return nil, perr
 			}
-			if err := waitConnectorAlive(proc.PID(), logPath); err != nil {
-				_ = proc.Stop()
-				return nil, err
-			}
 			sess.proc = proc
-			st.ConnectorPID = proc.PID()
-			proc.SetOnPID(func(pid int) {
-				st.ConnectorPID = pid
-				_ = SaveTunnelState(managedDir, st)
-			})
 		}
 	} else if runner != nil {
 		sess.runnerMode = true
