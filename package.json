@@ -1,7 +1,7 @@
 {
   "name": "@xhd2015/dot-pkgs-react-diagrams",
   "private": true,
-  "version": "0.0.12",
+  "version": "0.0.16",
   "type": "module",
   "sideEffects": [
     "**/*.css"
@@ -9,7 +9,8 @@
   "exports": {
     "./sequence": "./react/diagrams/src/sequence/index.ts",
     "./process": "./react/diagrams/src/process/index.ts",
-    "./drawio": "./react/diagrams/src/drawio/index.ts"
+    "./drawio": "./react/diagrams/src/drawio/index.ts",
+    "./terminal": "./react/terminal/src/index.ts"
   },
   "peerDependencies": {
     "react": ">=18",
@@ -18,6 +19,9 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@maxgraph/core": "^0.25.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
     "d3": "^7.9.0",
     "fflate": "^0.8.3",
     "mermaid": "^11.10.1"
