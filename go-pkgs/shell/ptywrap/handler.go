@@ -89,6 +89,14 @@ func HandleTerminalWebSocket(w http.ResponseWriter, r *http.Request, mgr *Manage
 		s = mgr.get(sessionID)
 	}
 
+	if s == nil && sessionID != "" && attachMode == "web" {
+		// Reconnect must never silently replace a missing terminal or rerun a
+		// command in a fresh shell. Legacy/CLI modes retain their old policy.
+		_ = conn.WriteJSON(map[string]string{"type": "session_state", "status": "missing", "session_id": sessionID})
+		_ = conn.Close()
+		return
+	}
+
 	if s == nil {
 		// Evidence for leak diagnosis: client asked to reattach but session was
 		// gone (or never sent id) → createShell allocates a new PTY.
@@ -132,8 +140,19 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 	}
 
 	role := s.claimRole(attachMode)
-	s.sendRoleHandshake(conn, role)
-	s.sendInitialFrame(conn, attachMode)
+	isWeb := attachMode == "web"
+	if isWeb {
+		// Expire half-open browser attachments, never their PTY. Browsers
+		// answer protocol pings even when the foreground command is silent.
+		_ = conn.SetReadDeadline(time.Now().Add(75 * time.Second))
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(75 * time.Second))
+		})
+		s.attachWeb(conn)
+	} else {
+		s.sendRoleHandshake(conn, role)
+		s.sendInitialFrame(conn, attachMode)
+	}
 
 	if role == roleSnapshot {
 		mgr.logLifecycle("attach",
@@ -148,7 +167,10 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 		return
 	}
 
-	s.registerConn(conn, role)
+	if !isWeb {
+		s.registerConn(conn, role)
+	}
+	defer conn.Close()
 	// An idle shell writes nothing, and the visitor connection usually crosses a
 	// public proxy that closes a WebSocket carrying no traffic for about two
 	// minutes, so ping it to keep the terminal attached.
@@ -202,6 +224,11 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 				var msg ControlMessage
 				if err := json.Unmarshal(message, &msg); err == nil && msg.Type != "" {
 					switch msg.Type {
+					case "ping":
+						if isWeb {
+							s.sendWebPong(conn)
+						}
+						continue
 					case "resize":
 						if canWrite {
 							s.enqueueResize(msg.Cols, msg.Rows)
@@ -282,6 +309,13 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 		}
 	}
 
+	if alreadyExited && isWeb {
+		// The replay contains the exit marker; state, not socket openness, is
+		// authoritative. Closing lets browsers release their transport resources.
+		s.sendWebState(conn, "exited")
+		s.unregisterConn(conn)
+		return
+	}
 	if alreadyExited {
 		result := <-wsCloseCh
 		handleWriterClose(result)
@@ -290,6 +324,9 @@ func ServeSessionWebSocket(conn *websocket.Conn, sessionID, attachMode string, m
 
 	select {
 	case <-s.done:
+		if isWeb {
+			s.sendWebState(conn, "exited")
+		}
 		// Shell exited: send a normal close frame so clients see 1000
 		// rather than abnormal closure 1006 from a bare TCP tear-down.
 		s.unregisterConn(conn)

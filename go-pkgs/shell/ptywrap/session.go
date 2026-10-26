@@ -50,6 +50,8 @@ type session struct {
 	cols int
 	rows int
 
+	// Serializes data writes (including web control frames) with PTY output.
+	outputMu   sync.Mutex
 	mu         sync.Mutex
 	scrollback []byte
 	// screen is the persistent live VT (cell model). Source of truth for
@@ -174,26 +176,30 @@ func (s *session) readLoop() {
 }
 
 func (s *session) broadcastOutput(data []byte, writer *websocket.Conn, observers, attachers []*websocket.Conn) {
+	s.outputMu.Lock()
+	defer s.outputMu.Unlock()
 	if writer != nil {
-		_ = writer.WriteMessage(websocket.BinaryMessage, data)
+		_ = writeFrame(writer, websocket.BinaryMessage, data)
 	}
 	for _, conn := range observers {
-		_ = conn.WriteMessage(websocket.BinaryMessage, data)
+		_ = writeFrame(conn, websocket.BinaryMessage, data)
 	}
 	for _, conn := range attachers {
-		_ = conn.WriteMessage(websocket.BinaryMessage, data)
+		_ = writeFrame(conn, websocket.BinaryMessage, data)
 	}
 }
 
 func (s *session) broadcastText(data []byte, writer *websocket.Conn, observers, attachers []*websocket.Conn) {
+	s.outputMu.Lock()
+	defer s.outputMu.Unlock()
 	if writer != nil {
-		_ = writer.WriteMessage(websocket.TextMessage, data)
+		_ = writeFrame(writer, websocket.TextMessage, data)
 	}
 	for _, conn := range observers {
-		_ = conn.WriteMessage(websocket.TextMessage, data)
+		_ = writeFrame(conn, websocket.TextMessage, data)
 	}
 	for _, conn := range attachers {
-		_ = conn.WriteMessage(websocket.TextMessage, data)
+		_ = writeFrame(conn, websocket.TextMessage, data)
 	}
 }
 
@@ -231,7 +237,9 @@ func (s *session) claimRole(attachMode string) attachRole {
 		return roleObserver
 	case "snapshot":
 		return roleSnapshot
-	case "attach":
+	case "attach", "web":
+		// Web attachments are durable, writable joins, never owners of the
+		// process lifetime. A suspended browser may leave its old socket alive.
 		return roleAttacher
 	// open: agent-run --open (OpenCloseExits). Writer lifecycle (bare close →
 	// stopChild) with attach-like raw scrollback first frame (see sendInitialFrame).
@@ -408,7 +416,7 @@ func (s *session) sendRoleHandshake(conn *websocket.Conn, role attachRole) {
 		"cols":        cols,
 		"rows":        rows,
 	})
-	_ = conn.WriteMessage(websocket.TextMessage, payload)
+	_ = writeFrame(conn, websocket.TextMessage, payload)
 }
 
 func (s *session) isWriter(conn *websocket.Conn) bool {
