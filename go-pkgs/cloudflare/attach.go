@@ -22,6 +22,9 @@ type AttachOptions struct {
 	OwnerPID   int           // optional; default os.Getpid()
 	// Teardown: carried on Session; Stop → Detach with full last-host cleanup.
 	Teardown bool
+	// SkipDNS lets a caller use separately verified, non-overwriting DNS
+	// management (for example a wildcard ingress with individual DNS records).
+	SkipDNS bool
 }
 
 // Attach merges hostname into the managed tunnel registry and ensures a connector.
@@ -79,8 +82,10 @@ func Attach(opts AttachOptions) (*Session, error) {
 	}
 	name = resolvedName
 
-	if err := RouteDNS(runner, name, opts.Domain); err != nil {
-		return nil, err
+	if !opts.SkipDNS {
+		if err := RouteDNS(runner, name, opts.Domain); err != nil {
+			return nil, err
+		}
 	}
 
 	st, err := LoadTunnelState(managedDir)

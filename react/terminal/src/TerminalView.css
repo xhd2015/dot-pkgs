@@ -1,0 +1,11 @@
+.dotpkgs-terminal-host,
+.dotpkgs-terminal {
+    height: 100%;
+    width: 100%;
+    background: #000;
+}
+
+.dotpkgs-terminal .xterm {
+    height: 100%;
+    padding: 4px;
+}

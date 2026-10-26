@@ -1,0 +1,28 @@
+.dotpkgs-terminal-keys {
+    position: fixed;
+    z-index: 2000;
+    height: 36px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 0 6px;
+    overflow-x: auto;
+    background: rgba(32, 32, 32, .92);
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 18px;
+}
+
+.dotpkgs-terminal-keys button {
+    flex: none;
+    height: 26px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 13px;
+    background: transparent;
+    color: #eee;
+    font: 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dotpkgs-terminal-keys button.is-on {
+    background: #1677ff;
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@xhd2015/dot-pkgs-react-terminal",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "sideEffects": ["**/*.css", "**/*.tsx"],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "typescript": "~5.8.3"
+  }
+}
