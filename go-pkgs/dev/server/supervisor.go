@@ -39,6 +39,14 @@ func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\'
 
 func supervise(ctx context.Context, cfg Config, opts options) error {
 	var err error
+	if opts.strictPorts {
+		if opts.port == 0 {
+			opts.port = cfg.BackendPort
+		}
+		if opts.vitePort == 0 {
+			opts.vitePort = cfg.FrontendPort
+		}
+	}
 	opts.port, err = selectPort(opts.port, cfg.BackendPort, opts.vitePort, cfg, "backend")
 	if err != nil {
 		return err

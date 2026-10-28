@@ -16,8 +16,9 @@ import (
 )
 
 type options struct {
-	port, vitePort           int
-	noOpen, noAir, serveOnly bool
+	port, vitePort                 int
+	noOpen, noAir, serveOnly, kill bool
+	strictPorts                    bool
 }
 
 // Main parses the shared command contract and supervises until Ctrl-C.
@@ -34,10 +35,12 @@ func Main(args []string, cfg Config) error {
 	help := fmt.Sprintf(`Usage: go run %s [options]
 Start %s with Go/Air hot reload and optional Vite HMR.
 Missing Air is installed via brew install go-air, then go install as fallback.
+If either port flag is supplied, both requested/default ports must be free.
 
 Options:
   --port <n>       Backend port (default: first free from %d)
   --vite-port <n>  Frontend port (default: first free from %d)
+  --kill           Stop the dev supervisor for this directory
   --no-open       Do not open a browser
   --use-air       Enable Air (default; compatibility alias)
   --no-use-air    Disable backend hot reload
@@ -45,10 +48,15 @@ Options:
   -h, --help      Show help
 `, cfg.BuildPackage, cfg.Name, cfg.BackendPort, cfg.FrontendPort)
 	var opts options
+	for _, arg := range args {
+		if arg == "--port" || strings.HasPrefix(arg, "--port=") || arg == "--vite-port" || strings.HasPrefix(arg, "--vite-port=") {
+			opts.strictPorts = true
+		}
+	}
 	var useAir bool
 	remain, err := lessflags.Int("--port", &opts.port).Int("--vite-port", &opts.vitePort).
 		Bool("--no-open", &opts.noOpen).Bool("--use-air", &useAir).
-		Bool("--no-use-air", &opts.noAir).Bool("--serve-only", &opts.serveOnly).
+		Bool("--no-use-air", &opts.noAir).Bool("--serve-only", &opts.serveOnly).Bool("--kill", &opts.kill).
 		HelpFunc("-h,--help", func() { fmt.Fprint(cfg.Stdout, help) }).HelpNoExit().Parse(args)
 	if errors.Is(err, lessflags.ErrHelp) {
 		return nil
@@ -63,7 +71,7 @@ Options:
 		return fmt.Errorf("--use-air conflicts with --no-use-air and --serve-only")
 	}
 	if opts.port < 0 || opts.port > 65535 || opts.vitePort < 0 || opts.vitePort > 65535 {
-		return fmt.Errorf("ports must be between 1 and 65535; 0 selects automatically")
+		return fmt.Errorf("ports must be between 1 and 65535; 0 uses the default")
 	}
 	if cfg.Root == "" || cfg.BackendHandler == nil || cfg.BuildPackage == "" {
 		return fmt.Errorf("Root, BuildPackage and BackendHandler are required")
@@ -90,6 +98,26 @@ Options:
 		}
 		return serve(ctx, cfg, opts, os.Getenv(runEnv))
 	}
+	control, err := openDirectoryControl(cfg.Root)
+	if err != nil {
+		return err
+	}
+	defer control.unlock()
+	found, err := control.stopExisting(cfg)
+	if err != nil {
+		return err
+	}
+	if opts.kill {
+		if !found {
+			message(cfg.Stdout, "90", "No dev supervisor found for %s.\n", cfg.Root)
+		}
+		return nil
+	}
+	if err := control.start(cancel); err != nil {
+		return err
+	}
+	defer control.close()
+	control.unlock()
 	err = supervise(ctx, cfg, opts)
 	if ctx.Err() != nil {
 		return nil
