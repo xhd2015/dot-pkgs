@@ -27,7 +27,11 @@ func selectPort(requested, first, reserved int, cfg Config, label string) (int, 
 		}
 		if _, err := port.FindAvailablePort(p, 1); err == nil {
 			if p != start {
-				message(cfg.Stderr, "33", "warning: %s port %d is occupied; using %d\n", label, start, p)
+				if start == reserved {
+					message(cfg.Stderr, "33", "warning: %s port %d is reserved for the other server; using %d\n", label, start, p)
+				} else {
+					message(cfg.Stderr, "33", "warning: %s port %d is occupied; using %d\n", label, start, p)
+				}
 			}
 			return p, nil
 		}
@@ -37,25 +41,25 @@ func selectPort(requested, first, reserved int, cfg Config, label string) (int, 
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 
-func supervise(ctx context.Context, cfg Config, opts options) error {
+func selectPorts(cfg Config, opts options) (options, error) {
 	var err error
-	if opts.strictPorts {
-		if opts.port == 0 {
-			opts.port = cfg.BackendPort
-		}
-		if opts.vitePort == 0 {
-			opts.vitePort = cfg.FrontendPort
-		}
-	}
 	opts.port, err = selectPort(opts.port, cfg.BackendPort, opts.vitePort, cfg, "backend")
 	if err != nil {
-		return err
+		return opts, err
 	}
 	if cfg.Frontend != nil {
 		opts.vitePort, err = selectPort(opts.vitePort, cfg.FrontendPort, opts.port, cfg, "frontend")
 		if err != nil {
-			return err
+			return opts, err
 		}
+	}
+	return opts, nil
+}
+
+func supervise(ctx context.Context, cfg Config, opts options) error {
+	opts, err := selectPorts(cfg, opts)
+	if err != nil {
+		return err
 	}
 	bytes := make([]byte, 24)
 	if _, err := rand.Read(bytes); err != nil {

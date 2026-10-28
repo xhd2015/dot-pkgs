@@ -18,7 +18,6 @@ import (
 type options struct {
 	port, vitePort                 int
 	noOpen, noAir, serveOnly, kill bool
-	strictPorts                    bool
 }
 
 // Main parses the shared command contract and supervises until Ctrl-C.
@@ -35,7 +34,7 @@ func Main(args []string, cfg Config) error {
 	help := fmt.Sprintf(`Usage: go run %s [options]
 Start %s with Go/Air hot reload and optional Vite HMR.
 Missing Air is installed via brew install go-air, then go install as fallback.
-If either port flag is supplied, both requested/default ports must be free.
+Each nonzero port flag is strict; unspecified ports are selected automatically.
 
 Options:
   --port <n>       Backend port (default: first free from %d)
@@ -48,11 +47,6 @@ Options:
   -h, --help      Show help
 `, cfg.BuildPackage, cfg.Name, cfg.BackendPort, cfg.FrontendPort)
 	var opts options
-	for _, arg := range args {
-		if arg == "--port" || strings.HasPrefix(arg, "--port=") || arg == "--vite-port" || strings.HasPrefix(arg, "--vite-port=") {
-			opts.strictPorts = true
-		}
-	}
 	var useAir bool
 	remain, err := lessflags.Int("--port", &opts.port).Int("--vite-port", &opts.vitePort).
 		Bool("--no-open", &opts.noOpen).Bool("--use-air", &useAir).
@@ -71,7 +65,7 @@ Options:
 		return fmt.Errorf("--use-air conflicts with --no-use-air and --serve-only")
 	}
 	if opts.port < 0 || opts.port > 65535 || opts.vitePort < 0 || opts.vitePort > 65535 {
-		return fmt.Errorf("ports must be between 1 and 65535; 0 uses the default")
+		return fmt.Errorf("ports must be between 1 and 65535; 0 selects automatically")
 	}
 	if cfg.Root == "" || cfg.BackendHandler == nil || cfg.BuildPackage == "" {
 		return fmt.Errorf("Root, BuildPackage and BackendHandler are required")

@@ -67,25 +67,57 @@ func TestMainReplacesAndKillsSameDirectory(t *testing.T) {
 	}
 }
 
-func TestExplicitEitherPortMakesPairStrict(t *testing.T) {
+func TestPortSelectionIndependentPerFlag(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer listener.Close()
 	occupied := listener.Addr().(*net.TCPAddr).Port
-	cfg := testConfig(t.TempDir(), freePort(t), occupied)
+	if occupied == 65535 {
+		t.Skip("no higher port to test automatic selection")
+	}
+	free := freePort(t)
+	cfg := testConfig(t.TempDir(), free, occupied)
 	cfg.Frontend = &Vite{Dir: "unused"}
-	if err := Main([]string{"--port", strconv.Itoa(cfg.BackendPort), "--no-open"}, cfg); err == nil {
-		t.Fatal("accepted occupied default frontend in explicit mode")
+
+	// Only the backend is explicit: Vite must skip the occupied default.
+	chosen, err := selectPorts(cfg, options{port: free})
+	if err != nil || chosen.port != free || chosen.vitePort == occupied {
+		t.Fatalf("explicit backend: %+v, %v", chosen, err)
 	}
-	cfg.BackendPort, cfg.FrontendPort = occupied, freePort(t)
-	if err := Main([]string{"--vite-port", strconv.Itoa(cfg.FrontendPort), "--no-open"}, cfg); err == nil {
-		t.Fatal("accepted occupied default backend in explicit mode")
+	// Only Vite is explicit: the backend must skip its occupied default.
+	cfg.BackendPort, cfg.FrontendPort = occupied, free
+	chosen, err = selectPorts(cfg, options{vitePort: free})
+	if err != nil || chosen.vitePort != free || chosen.port == occupied || chosen.port == free {
+		t.Fatalf("explicit Vite: %+v, %v", chosen, err)
 	}
-	cfg.BackendPort = cfg.FrontendPort
-	if err := Main([]string{"--port", strconv.Itoa(cfg.BackendPort), "--vite-port", strconv.Itoa(cfg.FrontendPort)}, cfg); err == nil {
-		t.Fatal("accepted equal backend and frontend ports")
+	// Both automatic, and zero-valued flags, follow the same search path.
+	chosen, err = selectPorts(cfg, options{port: 0, vitePort: 0})
+	if err != nil || chosen.port == occupied || chosen.port == chosen.vitePort {
+		t.Fatalf("automatic ports: %+v, %v", chosen, err)
+	}
+	// A Vite port explicitly equal to the backend default is reserved for Vite.
+	if free < 65535 {
+		cfg.BackendPort = free
+		chosen, err = selectPorts(cfg, options{vitePort: free})
+		if err != nil || chosen.port == free || chosen.vitePort != free {
+			t.Fatalf("reserved Vite port: %+v, %v", chosen, err)
+		}
+	}
+	// Explicitly requested occupied ports and duplicate ports must fail.
+	for _, opts := range []options{{port: occupied}, {vitePort: occupied}, {port: free, vitePort: free}} {
+		if _, err := selectPorts(cfg, opts); err == nil {
+			t.Fatalf("accepted invalid explicit ports: %+v", opts)
+		}
+	}
+	otherFree := freePort(t)
+	for otherFree == free {
+		otherFree = freePort(t)
+	}
+	chosen, err = selectPorts(cfg, options{port: free, vitePort: otherFree})
+	if err != nil || chosen.port == chosen.vitePort {
+		t.Fatalf("two distinct explicit ports: %+v, %v", chosen, err)
 	}
 	conn, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
