@@ -199,8 +199,8 @@ func TestFrontendExitCleansArtifacts(t *testing.T) {
 	if err := supervise(context.Background(), cfg, options{noOpen: true}); err == nil {
 		t.Fatal("expected frontend failure")
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "tmp"))
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("artifacts left: %v %v", entries, err)
+	// Build artifacts live in the system temp dir, not the repository.
+	if _, err := os.Stat(filepath.Join(root, "tmp")); !os.IsNotExist(err) {
+		t.Fatalf("repo artifacts left: %v", err)
 	}
 }

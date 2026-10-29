@@ -20,7 +20,10 @@ type Config struct {
 	BrowserPath               string
 	WatchDirs                 []string
 	Frontend                  *Vite
-	BackendHandler            func(context.Context, Backend) (http.Handler, error)
+	// FrontendBuild switches RunMain from a served dev frontend to a one-shot
+	// production build; nil keeps the run backend-only.
+	FrontendBuild  *FrontendBuild
+	BackendHandler func(context.Context, Backend) (http.Handler, error)
 	// OnListen registers application discovery after binding and initialization.
 	// Its cleanup runs before the child exits, including on Air rebuilds.
 	OnListen       func(Backend) (func(), error)
@@ -38,6 +41,14 @@ type Vite struct {
 	ConfigFile string   // relative to Dir; e.g. vite.config.ts
 	Install    []string // e.g. pnpm install --frozen-lockfile
 	Command    []string // e.g. pnpm exec vite (flags are appended)
+}
+
+// FrontendBuild describes a one-shot production build of the frontend,
+// mirroring the install and command shape of Vite.
+type FrontendBuild struct {
+	Dir     string
+	Install []string // e.g. bun install
+	Command []string // e.g. bun run build (flags are appended)
 }
 
 // FindRoot walks upwards looking for go.mod plus a project-specific marker.

@@ -66,10 +66,9 @@ func supervise(ctx context.Context, cfg Config, opts options) error {
 		return err
 	}
 	id := hex.EncodeToString(bytes)
-	if err := os.MkdirAll(filepath.Join(cfg.Root, "tmp"), 0755); err != nil {
-		return err
-	}
-	runDir, err := os.MkdirTemp(filepath.Join(cfg.Root, "tmp"), "dev-")
+	// Build artifacts live in the system temp dir: they never appear inside
+	// the repository, and $TMPDIR stays the escape hatch when /tmp is noexec.
+	runDir, err := os.MkdirTemp("", "dot-pkgs-dev-")
 	if err != nil {
 		return err
 	}
