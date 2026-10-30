@@ -17,15 +17,26 @@ import (
 // are created on demand. Adding/expiring sibling ports does NOT restart the
 // connector, so existing WebSockets and streams remain connected.
 type ManagedPublisher struct {
-	TunnelName     string
-	ConfigDir      string
-	DNS            DNSController
-	Log            io.Writer
+	TunnelName string
+	ConfigDir  string
+	DNS        DNSController
+	Log        io.Writer
+	// Step optionally receives one progress line per publish stage, e.g.
+	// "verifying Cloudflare domain example.com". Publish calls it while
+	// holding its lock: the callback must not re-enter the publisher, and a
+	// slow body delays provisioning.
+	Step           func(format string, args ...any)
 	mu             sync.Mutex
 	hosts          map[string]map[string]bool
 	ensureTunnelFn func(context.Context) (string, error)
 	attachFn       func(context.Context, string, string) error
 	detachFn       func(context.Context, string) error
+}
+
+func (p *ManagedPublisher) step(format string, args ...any) {
+	if p.Step != nil {
+		p.Step(format, args...)
+	}
 }
 
 // DNSController permits fake API tests as well as the origin-cert DNS client.
@@ -98,13 +109,16 @@ func (p *ManagedPublisher) Publish(ctx context.Context, host, origin string) err
 	}
 	domain := host[dot+1:]
 	wildcard := "*." + domain
+	p.step("verifying Cloudflare domain %s…", domain)
 	if err := p.dns().VerifyDomain(ctx, domain); err != nil {
 		return err
 	}
+	p.step("ensuring dedicated tunnel %s…", p.TunnelName)
 	tunnelID, err := p.ensureTunnel(ctx)
 	if err != nil {
 		return err
 	}
+	p.step("publishing DNS %s…", host)
 	if err := p.dns().EnsureTunnelCNAME(ctx, host, tunnelID); err != nil {
 		return err
 	}
@@ -112,6 +126,7 @@ func (p *ManagedPublisher) Publish(ctx context.Context, host, origin string) err
 		p.hosts = map[string]map[string]bool{}
 	}
 	if len(p.hosts[wildcard]) == 0 {
+		p.step("starting tunnel connector…")
 		err = p.attach(ctx, wildcard, origin)
 		if err != nil {
 			return err

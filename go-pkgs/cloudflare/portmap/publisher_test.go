@@ -54,3 +54,44 @@ func TestManagedPublisherRefusesConflictBeforeIngress(t *testing.T) {
 		t.Fatal("expected conflict")
 	}
 }
+
+func TestManagedPublisherStepsReportEachPublishStage(t *testing.T) {
+	var steps []string
+	p := &ManagedPublisher{TunnelName: "eluc-ports-test", DNS: &fakeDNS{},
+		ensureTunnelFn: func(context.Context) (string, error) { return "tunnel-id", nil },
+		attachFn:       func(context.Context, string, string) error { return nil },
+		Step:           func(format string, args ...any) { steps = append(steps, fmt.Sprintf(format, args...)) }}
+	ctx := context.Background()
+	for _, h := range []string{"dev-port-1.example.com", "dev-port-2.example.com"} {
+		if err := p.Publish(ctx, h, "http://127.0.0.1:9999"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{
+		"verifying Cloudflare domain example.com…",
+		"ensuring dedicated tunnel eluc-ports-test…",
+		"publishing DNS dev-port-1.example.com…",
+		"starting tunnel connector…",
+		// The sibling port reuses the live connector: no second start line.
+		"verifying Cloudflare domain example.com…",
+		"ensuring dedicated tunnel eluc-ports-test…",
+		"publishing DNS dev-port-2.example.com…",
+	}
+	if len(steps) != len(want) {
+		t.Fatalf("steps=%v", steps)
+	}
+	for i := range want {
+		if steps[i] != want[i] {
+			t.Fatalf("step %d: got %q, want %q (all: %v)", i, steps[i], want[i], steps)
+		}
+	}
+}
+
+func TestManagedPublisherStepIsOptional(t *testing.T) {
+	p := &ManagedPublisher{TunnelName: "eluc-ports-test", DNS: &fakeDNS{},
+		ensureTunnelFn: func(context.Context) (string, error) { return "id", nil },
+		attachFn:       func(context.Context, string, string) error { return nil }}
+	if err := p.Publish(context.Background(), "dev-port-1.example.com", "http://127.0.0.1:9999"); err != nil {
+		t.Fatal(err)
+	}
+}
