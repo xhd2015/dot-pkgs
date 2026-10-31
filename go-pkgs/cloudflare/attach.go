@@ -150,8 +150,8 @@ func Attach(opts AttachOptions) (*Session, error) {
 
 	if needStart {
 		if runner != nil {
-			if _, err := runner.Exec("cloudflared", "tunnel", "--config", configPath, "run", name); err != nil {
-				if _, err2 := runner.Exec("cloudflared", "tunnel", "run", "--config", configPath, name); err2 != nil {
+			if _, err := runner.Exec("cloudflared", tunnelRunArgs(configPath, name)...); err != nil {
+				if _, err2 := runner.Exec("cloudflared", tunnelRunArgsAlt(configPath, name)...); err2 != nil {
 					return nil, fmt.Errorf("start cloudflared via runner: %v / %v", err, err2)
 				}
 			}

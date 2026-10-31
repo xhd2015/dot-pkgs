@@ -175,8 +175,8 @@ func DeleteTunnel(runner CommandRunner, tunnelRef string) error {
 // restartManagedConnector restarts the cloudflared connector after ingress change.
 func restartManagedConnector(st *TunnelState, runner CommandRunner, configPath, name, managedDir string) error {
 	if runner != nil {
-		if _, err := runner.Exec("cloudflared", "tunnel", "--config", configPath, "run", name); err != nil {
-			if _, err2 := runner.Exec("cloudflared", "tunnel", "run", "--config", configPath, name); err2 != nil {
+		if _, err := runner.Exec("cloudflared", tunnelRunArgs(configPath, name)...); err != nil {
+			if _, err2 := runner.Exec("cloudflared", tunnelRunArgsAlt(configPath, name)...); err2 != nil {
 				return fmt.Errorf("restart cloudflared via runner: %v / %v", err, err2)
 			}
 		}

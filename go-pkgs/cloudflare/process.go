@@ -34,9 +34,29 @@ type Process struct {
 	onPID      func(int)
 }
 
+// DefaultTunnelProtocol pins the cloudflared edge transport for HTTP origins.
+// The "auto" default tries QUIC first, which is blocked or degraded on many
+// corporate networks: QUIC dial timeouts delay connector startup for minutes
+// and long-lived h2 fallback connections still decay on lossy paths. http2
+// matches the ai-critic unified_tunnel default.
+const DefaultTunnelProtocol = "http2"
+
+// tunnelRunArgs is the canonical `tunnel run` argv. All connector spawn sites
+// (process registry, attach, restart-after-ingress-change) must go through it
+// so every connector gets the pinned protocol.
+func tunnelRunArgs(configPath, tunnelName string) []string {
+	return []string{"tunnel", "--config", configPath, "--protocol", DefaultTunnelProtocol, "run", tunnelName}
+}
+
+// tunnelRunArgsAlt is the fallback argv shape used when the primary form is
+// rejected (older cloudflared builds expect `run` before `--config`).
+func tunnelRunArgsAlt(configPath, tunnelName string) []string {
+	return []string{"tunnel", "run", "--config", configPath, "--protocol", DefaultTunnelProtocol, tunnelName}
+}
+
 // startCommand is replaced in tests.
 var startCommand = func(configPath, tunnelName string) *exec.Cmd {
-	return exec.Command("cloudflared", "tunnel", "--config", configPath, "run", tunnelName)
+	return exec.Command("cloudflared", tunnelRunArgs(configPath, tunnelName)...)
 }
 
 // StartProcess launches `cloudflared tunnel --config <config> run <tunnel>`
