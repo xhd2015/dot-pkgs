@@ -32,6 +32,9 @@ type Options struct {
 	// OnChange receives the history after a route is published, stopped, or removed.
 	// It must not publish anything.
 	OnChange func([]Route)
+	// Wrap, when set, is the HTTP handler the relay serves. The argument is the
+	// manager (per-host reverse proxy). Used for a token login hop.
+	Wrap func(http.Handler) http.Handler
 }
 
 const (
@@ -93,7 +96,11 @@ func New(opts Options) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{routes: map[string]*entry{}, publisher: opts.Publisher, idle: opts.IdleTimeout, now: opts.Now, listener: l, origin: origin, cleanup: cleanup, onChange: opts.OnChange}
-	m.server = &http.Server{Handler: m, ReadHeaderTimeout: 10 * time.Second}
+	handler := http.Handler(m)
+	if opts.Wrap != nil {
+		handler = opts.Wrap(m)
+	}
+	m.server = &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = m.server.Serve(l) }()
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
