@@ -1,3 +1,5 @@
 export { DrawioDiagram } from './DrawioDiagram'
 export type { DrawioDiagramProps } from './DrawioDiagram'
+export type { DrawioFitMode } from './drawioViewport'
+export type { DrawioDiagramHandle } from './drawioViewportController'
 export { extractMxGraphModel, inflateDrawioPayload } from './drawioXml'
