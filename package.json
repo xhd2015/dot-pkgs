@@ -1,7 +1,7 @@
 {
   "name": "@xhd2015/dot-pkgs-react-diagrams",
   "private": true,
-  "version": "0.0.16",
+  "version": "0.0.20",
   "type": "module",
   "sideEffects": [
     "**/*.css"

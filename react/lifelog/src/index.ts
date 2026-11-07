@@ -1,11 +1,15 @@
 /**
  * Public entry for the shared weekly schedule.
  *
- * Import as `@xhd2015/dot-pkgs-react-diagrams/lifelog`. The stylesheet is
- * imported here so a single import gives a working, themed view.
+ * Import as `@xhd2015/dot-pkgs-react-diagrams/lifelog`.
+ *
+ * `schedule.css` is imported by `WeeklyScheduleView.tsx`, not here: a bare
+ * `import './schedule.css'` inside this barrel is dropped by rolldown, which
+ * treats a module listed in the package's `sideEffects` array as further
+ * shakeable and collapses the barrel away. Keeping the import next to the
+ * component that needs the styles survives tree-shaking and keeps the CSS in
+ * the chunk that renders the schedule.
  */
-import './schedule.css';
-
 export { WeeklyScheduleView } from './WeeklyScheduleView.tsx';
 export type { WeeklyScheduleViewProps } from './WeeklyScheduleView.tsx';
 export { WeekHeader } from './WeekHeader.tsx';

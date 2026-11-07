@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
+import './schedule.css';
+
 import { DayList } from './DayList.tsx';
 import { GoalPanel } from './GoalPanel.tsx';
 import { WeekHeader } from './WeekHeader.tsx';
