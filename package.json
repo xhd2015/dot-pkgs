@@ -10,7 +10,8 @@
     "./sequence": "./react/diagrams/src/sequence/index.ts",
     "./process": "./react/diagrams/src/process/index.ts",
     "./drawio": "./react/diagrams/src/drawio/index.ts",
-    "./terminal": "./react/terminal/src/index.ts"
+    "./terminal": "./react/terminal/src/index.ts",
+    "./lifelog": "./react/lifelog/src/index.ts"
   },
   "peerDependencies": {
     "react": ">=18",
