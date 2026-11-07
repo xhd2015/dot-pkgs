@@ -179,9 +179,10 @@ func (m *Manager) Ensure(ctx context.Context, hostname string, port int) (Route,
 		request.Header.Set("X-Forwarded-Host", publicHost)
 		request.Header.Set("X-Forwarded-Proto", "https")
 	}
-	// Do not cache app errors or HTML at the Cloudflare edge. Upgraded streams
-	// retain ServeHTTP ownership until their connection is closed.
-	e.proxy.ModifyResponse = func(r *http.Response) error { r.Header.Set("Cache-Control", "no-store"); return nil }
+	// Preserve explicit browser-cache policies without allowing a shared cache
+	// to bypass authentication wrapping this relay. Upgraded streams retain
+	// ServeHTTP ownership until their connection is closed.
+	e.proxy.ModifyResponse = relayResponseCacheControl
 	m.routes[hostname] = e
 	m.mu.Unlock()
 	if err := m.publisher.Publish(ctx, hostname, m.origin); err != nil {
