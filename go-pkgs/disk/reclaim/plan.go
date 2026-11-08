@@ -2,9 +2,12 @@ package reclaim
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -173,6 +176,104 @@ func stepFlag(id string, tier Tier) string {
 // Scan measures every step without changing anything. Selection fields in opts
 // (Only / Include / Include* / Aggressive) only drive PlanStep.Selected.
 func Scan(opts Options) (*Plan, error) {
+	return scanPlan(opts, nil)
+}
+
+// StepInfo is the public registry metadata: what a host UI needs to list every
+// cleanup class without measuring any of them.
+type StepInfo struct {
+	ID         string `json:"id"`
+	Group      string `json:"group"`
+	Summary    string `json:"summary"`
+	NeedsAdmin bool   `json:"needsAdmin,omitempty"`
+	ReadOnly   bool   `json:"readOnly,omitempty"`
+	// Actions is the display projection of the step (same ops a dry-run JSON
+	// reports), so a UI can render `rm -rf ...` / `go clean -cache` without
+	// running a scan.
+	Actions []Op     `json:"actions"`
+	Paths   []string `json:"paths,omitempty"`
+}
+
+// StepInfos returns every cleanup class in display order: default, aggressive,
+// system (admin), then the read-only inventory rows. No filesystem work beyond
+// resolving paths.
+func StepInfos(home string) []StepInfo {
+	opts := Options{Home: home}
+	ops := stepOps(opts)
+	infos := make([]StepInfo, 0, 24)
+	add := func(info StepInfo) {
+		info.Actions = ops[info.ID]
+		if info.Paths == nil {
+			info.Paths = opPaths(info.Actions)
+		}
+		infos = append(infos, info)
+	}
+	for _, def := range allSteps() {
+		group := GroupDefault
+		if def.Tier == TierAggressive {
+			group = GroupAggressive
+		}
+		add(StepInfo{ID: def.ID, Group: group, Summary: stepMetas[def.ID].summary})
+	}
+	add(StepInfo{ID: stepIOSSimRuntimes, Group: GroupSystem, Summary: "iOS 模拟器运行时（全部）", NeedsAdmin: true})
+	add(StepInfo{ID: stepIOSSimMobileAsst, Group: GroupSystem, Summary: "iOS 模拟器 MobileAsset 缓存（SIP 常拦截）", NeedsAdmin: true})
+	add(StepInfo{ID: stepDirsCleaner, Group: GroupSystem, Summary: "系统临时目录回收站（开机搬入的 /tmp 与 $TMPDIR）", NeedsAdmin: true})
+	add(StepInfo{ID: "shipit", Group: GroupInventory, Summary: "应用自动更新缓存（*.ShipIt）— 只列出，永不删除", ReadOnly: true})
+	add(StepInfo{ID: "go-mod-cache", Group: GroupInventory, Summary: "Go 模块缓存 — 只列出，永不删除（清了要重新下载全部模块）", ReadOnly: true})
+	for i := range infos {
+		if !infos[i].NeedsAdmin && infos[i].Group != GroupInventory {
+			for _, op := range infos[i].Actions {
+				if op.Sudo {
+					infos[i].NeedsAdmin = true
+				}
+			}
+		}
+	}
+	return infos
+}
+
+// opPaths collects the concrete paths of a step's ops (deduped, in order).
+func opPaths(ops []Op) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, op := range ops {
+		for _, p := range op.Paths {
+			if p == "" || seen[p] {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// ScanSteps measures only the requested step IDs. The system tail (xcrun
+// runtimes, MobileAsset, dirs_cleaner) and ShipIt are measured only when their
+// IDs are requested, so a host UI can size the classes it shows without
+// shelling out to xcrun or reading the unified log.
+//
+// Step order follows the registry, so ScanSteps(ids) is a subset of Scan().
+func ScanSteps(opts Options, ids []string) (*Plan, error) {
+	ids = splitIDList(ids)
+	if len(ids) == 0 {
+		return nil, errors.New("ScanSteps: no step ids")
+	}
+	known := scanStepIDs()
+	for _, id := range ids {
+		if !containsString(known, id) {
+			return nil, fmt.Errorf("ScanSteps: unknown step %q (known: %s)", id, strings.Join(known, ", "))
+		}
+	}
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	return scanPlan(opts, want)
+}
+
+// scanPlan is Scan with an optional step filter. want == nil means all steps.
+func scanPlan(opts Options, want map[string]bool) (*Plan, error) {
 	if opts.Home == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -189,6 +290,9 @@ func Scan(opts Options) (*Plan, error) {
 	ops := stepOps(opts)
 
 	for _, def := range allSteps() {
+		if want != nil && !want[def.ID] {
+			continue
+		}
 		meta := stepMetas[def.ID]
 		size := def.Measure(opts)
 		group := GroupDefault
@@ -238,77 +342,100 @@ func Scan(opts Options) (*Plan, error) {
 		plan.Steps = append(plan.Steps, ps)
 	}
 
-	// iOS Simulator runtimes.
-	inv := measureIOSSim(opts)
-	iosStep := PlanStep{
-		ID: stepIOSSimRuntimes, Group: GroupSystem, Summary: "iOS 模拟器运行时（全部）",
-		Display:  ops[stepIOSSimRuntimes],
-		Flag:     stepFlag(stepIOSSimRuntimes, TierDefault),
-		Selected: opts.IncludeIOSSim,
+	if want == nil || want[stepIOSSimRuntimes] {
+		// iOS Simulator runtimes.
+		inv := measureIOSSim(opts)
+		iosStep := PlanStep{
+			ID: stepIOSSimRuntimes, Group: GroupSystem, Summary: "iOS 模拟器运行时（全部）",
+			Display:  ops[stepIOSSimRuntimes],
+			Flag:     stepFlag(stepIOSSimRuntimes, TierDefault),
+			Selected: opts.IncludeIOSSim,
+		}
+		iosStep.Command, iosStep.Paths = headlineOps(iosStep.Display)
+		iosSize := inv.TotalSize
+		iosStep.SizeBytes = &iosSize
+		switch {
+		case inv.ToolMissing:
+			iosStep.Notes = append(iosStep.Notes, "未找到 xcrun")
+		case inv.Err != nil:
+			iosStep.Notes = append(iosStep.Notes, "simctl 失败: "+inv.Err.Error())
+		}
+		for _, r := range inv.Runtimes {
+			iosStep.Details = append(iosStep.Details, r.Name+" ("+r.Build+")  "+humanSize(r.SizeBytes))
+		}
+		plan.Steps = append(plan.Steps, iosStep)
 	}
-	iosStep.Command, iosStep.Paths = headlineOps(iosStep.Display)
-	iosSize := inv.TotalSize
-	iosStep.SizeBytes = &iosSize
-	switch {
-	case inv.ToolMissing:
-		iosStep.Notes = append(iosStep.Notes, "未找到 xcrun")
-	case inv.Err != nil:
-		iosStep.Notes = append(iosStep.Notes, "simctl 失败: "+inv.Err.Error())
-	}
-	for _, r := range inv.Runtimes {
-		iosStep.Details = append(iosStep.Details, r.Name+" ("+r.Build+")  "+humanSize(r.SizeBytes))
-	}
-	plan.Steps = append(plan.Steps, iosStep)
 
-	// MobileAsset (sudo; SIP usually blocks).
-	assetRoot, assetSize, assetErr := measureIOSSimAssets(opts)
-	assetStep := PlanStep{
-		ID: stepIOSSimMobileAsst, Group: GroupSystem, Summary: "iOS 模拟器 MobileAsset 缓存（SIP 常拦截）",
-		Display:    ops[stepIOSSimMobileAsst],
-		Flag:       stepFlag(stepIOSSimMobileAsst, TierDefault),
-		SizeBytes:  &assetSize,
-		Selected:   opts.IncludeIOSSimAssets,
-		NeedsAdmin: true,
-		Notes:      []string{"SIP 拦截时：恢复模式 → csrutil disable → rm → csrutil enable"},
+	if want == nil || want[stepIOSSimMobileAsst] {
+		// MobileAsset (sudo; SIP usually blocks).
+		assetRoot, assetSize, assetErr := measureIOSSimAssets(opts)
+		assetStep := PlanStep{
+			ID: stepIOSSimMobileAsst, Group: GroupSystem, Summary: "iOS 模拟器 MobileAsset 缓存（SIP 常拦截）",
+			Display:    ops[stepIOSSimMobileAsst],
+			Flag:       stepFlag(stepIOSSimMobileAsst, TierDefault),
+			SizeBytes:  &assetSize,
+			Selected:   opts.IncludeIOSSimAssets,
+			NeedsAdmin: true,
+			Notes:      []string{"SIP 拦截时：恢复模式 → csrutil disable → rm → csrutil enable"},
+		}
+		assetStep.Command, assetStep.Paths = headlineOps(assetStep.Display)
+		if assetRoot != "" {
+			assetStep.Paths = []string{assetRoot}
+		}
+		if assetErr != nil {
+			assetStep.Notes = append(assetStep.Notes, assetErr.Error())
+		}
+		plan.Steps = append(plan.Steps, assetStep)
 	}
-	assetStep.Command, assetStep.Paths = headlineOps(assetStep.Display)
-	if assetRoot != "" {
-		assetStep.Paths = []string{assetRoot}
-	}
-	if assetErr != nil {
-		assetStep.Notes = append(assetStep.Notes, assetErr.Error())
-	}
-	plan.Steps = append(plan.Steps, assetStep)
 
-	// dirs_cleaner.
-	dc := DirsCleanerBasic(opts)
-	plan.DirsCleaner = dc
-	dcStep := PlanStep{
-		ID: stepDirsCleaner, Group: GroupSystem, Summary: "系统临时目录回收站（开机搬入的 /tmp 与 $TMPDIR）",
-		Display:    ops[stepDirsCleaner],
-		Flag:       stepFlag(stepDirsCleaner, TierDefault),
-		SizeBytes:  dc.SizeBytes,
-		Selected:   opts.IncludeDirsCleaner,
-		NeedsAdmin: true,
-		Notes:      []string{"保留目录本身，只删内容；诊断见 dirs_cleaner 标签页 / clear-tmp dirs-cleaner status"},
+	if want == nil || want[stepDirsCleaner] {
+		// dirs_cleaner.
+		dc := DirsCleanerBasic(opts)
+		plan.DirsCleaner = dc
+		dcStep := PlanStep{
+			ID: stepDirsCleaner, Group: GroupSystem, Summary: "系统临时目录回收站（开机搬入的 /tmp 与 $TMPDIR）",
+			Display:    ops[stepDirsCleaner],
+			Flag:       stepFlag(stepDirsCleaner, TierDefault),
+			SizeBytes:  dc.SizeBytes,
+			Selected:   opts.IncludeDirsCleaner,
+			NeedsAdmin: true,
+			Notes:      []string{"保留目录本身，只删内容；诊断见 dirs_cleaner 标签页 / clear-tmp dirs-cleaner status"},
+		}
+		dcStep.Command, dcStep.Paths = headlineOps(dcStep.Display)
+		dcStep.Paths = []string{dc.Root}
+		plan.Steps = append(plan.Steps, dcStep)
 	}
-	dcStep.Command, dcStep.Paths = headlineOps(dcStep.Display)
-	dcStep.Paths = []string{dc.Root}
-	plan.Steps = append(plan.Steps, dcStep)
 
-	// ShipIt: inventory only.
-	ship := measureShipIt(opts.Home)
-	shipStep := PlanStep{
-		ID: "shipit", Group: GroupInventory, Summary: "应用自动更新缓存（*.ShipIt）— 只列出，永不删除",
-		Display:   ops["shipit"],
-		SizeBytes: &ship.Total,
-		ReadOnly:  true,
+	if want == nil || want["shipit"] {
+		// ShipIt: inventory only.
+		ship := measureShipIt(opts.Home)
+		shipStep := PlanStep{
+			ID: "shipit", Group: GroupInventory, Summary: "应用自动更新缓存（*.ShipIt）— 只列出，永不删除",
+			Display:   ops["shipit"],
+			SizeBytes: &ship.Total,
+			ReadOnly:  true,
+		}
+		shipStep.Command, shipStep.Paths = headlineOps(shipStep.Display)
+		for _, e := range ship.Entries {
+			shipStep.Details = append(shipStep.Details, e.Name+"  "+humanSize(e.Size)+"  → "+e.Hint)
+		}
+		plan.Steps = append(plan.Steps, shipStep)
 	}
-	shipStep.Command, shipStep.Paths = headlineOps(shipStep.Display)
-	for _, e := range ship.Entries {
-		shipStep.Details = append(shipStep.Details, e.Name+"  "+humanSize(e.Size)+"  → "+e.Hint)
+
+	if want == nil || want["go-mod-cache"] {
+		// Go module cache: inventory only. Removing it forces a network
+		// re-fetch of every module, which costs far more than the space.
+		size := measureGoModCache(opts)
+		modStep := PlanStep{
+			ID: "go-mod-cache", Group: GroupInventory, Summary: "Go 模块缓存 — 只列出，永不删除（清了要重新下载全部模块）",
+			Display:   ops["go-mod-cache"],
+			SizeBytes: &size,
+			ReadOnly:  true,
+			Notes:     []string{"清了要重新下载全部模块；clear-tmp 不清理它"},
+		}
+		modStep.Command, modStep.Paths = headlineOps(modStep.Display)
+		plan.Steps = append(plan.Steps, modStep)
 	}
-	plan.Steps = append(plan.Steps, shipStep)
 
 	if v, ok := volumeInfo(opts.Home); ok {
 		plan.Volume = &v

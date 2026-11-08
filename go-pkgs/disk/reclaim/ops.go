@@ -100,6 +100,7 @@ func stepOps(opts Options) map[string][]Op {
 		"ios-sim-mobileasset":  {mobileAssetOp(opts)},
 		"dirs-cleaner":         {{Kind: OpExec, Paths: []string{dirsCleanerRoot(opts)}, Sudo: true, Text: DirsCleanerPurgeCommand(opts)}},
 		"shipit":               {{Kind: OpNone, Paths: []string{j(h, "Library", "Caches", "*.ShipIt")}, Text: "（无；在对应应用里检查更新即可释放）"}},
+		"go-mod-cache":         {{Kind: OpNone, Paths: []string{goModCachePath(opts.Home)}, Text: "go clean -modcache"}},
 	}
 }
 

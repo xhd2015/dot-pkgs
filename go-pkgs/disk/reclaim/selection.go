@@ -22,6 +22,13 @@ func knownStepIDs() []string {
 	return append(ids, stepIOSSimRuntimes, stepIOSSimMobileAsst, stepDirsCleaner)
 }
 
+// scanStepIDs are the ids ScanSteps accepts: the CLI-known steps plus the
+// read-only inventory rows (shipit, go-mod-cache). Inventory rows can be
+// measured but never run, so `--only` keeps rejecting them.
+func scanStepIDs() []string {
+	return append(knownStepIDs(), "shipit", "go-mod-cache")
+}
+
 // defaultStepIDs lists the TierDefault registry IDs (always run without --only).
 func defaultStepIDs() []string {
 	var ids []string

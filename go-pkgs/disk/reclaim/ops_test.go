@@ -40,7 +40,11 @@ func TestStepDisplayMatchesMeta(t *testing.T) {
 // TestScanEveryStepHasDisplay keeps the report UI honest: a row without a
 // typed display would fall back to a bare string and lose its badge.
 func TestScanEveryStepHasDisplay(t *testing.T) {
-	plan, err := Scan(Options{Home: t.TempDir(), DryRun: true, PathEnv: t.TempDir()})
+	home := t.TempDir()
+	// Keep the inventory-only Go module cache inside the sandbox HOME: the
+	// developer's real GOMODCACHE (GOPATH) must never be walked by tests.
+	t.Setenv("GOMODCACHE", filepath.Join(home, "go", "pkg", "mod"))
+	plan, err := Scan(Options{Home: home, DryRun: true, PathEnv: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

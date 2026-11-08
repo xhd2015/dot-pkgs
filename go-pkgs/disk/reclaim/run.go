@@ -58,6 +58,9 @@ type Options struct {
 	Elevate func(purpose, script string) ([]byte, error)
 	// ElevateMode chooses sudo (CLI, needs a TTY) or the osascript dialog (web).
 	ElevateMode string
+	// ElevatePrompt is the sudo/dialog prompt prefix. Empty -> "clear-tmp";
+	// hosts embedding the engine pass their own name.
+	ElevatePrompt string
 
 	// OnStep receives progress events (web streaming). Nil → none.
 	OnStep func(StepEvent)

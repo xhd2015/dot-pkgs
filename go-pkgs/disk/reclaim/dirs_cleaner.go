@@ -475,7 +475,7 @@ func runDirsCleanerScript(opts Options, purpose, script string, write bool) ([]b
 		if root != defaultDirsCleanerRoot {
 			return nil, fmt.Errorf("refusing to elevate for non-default dirs_cleaner root %q", root)
 		}
-		return osascriptElevate(purpose, script)
+		return osascriptElevate(opts, purpose, script)
 	}
 	if !isInteractiveTTY(opts) {
 		return nil, fmt.Errorf("%s requires admin privileges; re-run in a terminal or under sudo", purpose)
@@ -494,6 +494,7 @@ func runShellScript(opts Options, script string) ([]byte, error) {
 func sudoScript(opts Options, purpose, script string) ([]byte, error) {
 	return elevate.Run(elevate.Config{
 		Purpose: purpose,
+		Prompt:  opts.ElevatePrompt,
 		Script:  script,
 		Mode:    elevate.ModeSudo,
 		Stderr:  opts.Stderr,
@@ -503,11 +504,13 @@ func sudoScript(opts Options, purpose, script string) ([]byte, error) {
 // osascriptElevate shows the macOS administrator dialog. The script travels
 // base64-encoded so no AppleScript quoting is involved; the password never
 // passes through clear-tmp.
-func osascriptElevate(purpose, script string) ([]byte, error) {
+func osascriptElevate(opts Options, purpose, script string) ([]byte, error) {
 	return elevate.Run(elevate.Config{
 		Purpose: purpose,
+		Prompt:  opts.ElevatePrompt,
 		Script:  script,
 		Mode:    elevate.ModeOsaScript,
+		Stderr:  opts.Stderr,
 	})
 }
 

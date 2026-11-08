@@ -293,6 +293,25 @@ func goBuildCachePath(home string) string {
 	return filepath.Join(home, "Library", "Caches", "go-build")
 }
 
+// goModCachePath resolves GOMODCACHE from the environment (GOMODCACHE, then
+// GOPATH) and falls back to the historical $HOME/go/pkg/mod. It never shells out
+// to `go env`: path resolution must stay cheap and pure, and a stubbed HOME in
+// tests must never measure the developer's real module cache.
+func goModCachePath(home string) string {
+	if dir := os.Getenv("GOMODCACHE"); dir != "" {
+		return dir
+	}
+	if dir := os.Getenv("GOPATH"); dir != "" {
+		if list := filepath.SplitList(dir); len(list) > 0 && list[0] != "" {
+			return filepath.Join(list[0], "pkg", "mod")
+		}
+	}
+	return filepath.Join(home, "go", "pkg", "mod")
+}
+
+// measureGoModCache sizes the inventory-only Go module cache.
+func measureGoModCache(opts Options) int64 { return pathSize(goModCachePath(opts.Home)) }
+
 // pnpmStorePath is the default pnpm content-addressable store.
 func pnpmStorePath(home string) string {
 	return filepath.Join(home, "Library", "pnpm", "store")
