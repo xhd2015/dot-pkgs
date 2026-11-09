@@ -19,7 +19,7 @@ func TestRequestCannotReviveExpiredRouteBeforeSweep(t *testing.T) {
 	advance(10 * time.Minute)
 	rec := httptest.NewRecorder()
 	m.ServeHTTP(rec, httptest.NewRequest("GET", "https://p.example.com/", nil))
-	if rec.Code != 410 || len(m.List()) != 1 {
+	if rec.Code != http.StatusServiceUnavailable || len(m.List()) != 1 {
 		t.Fatalf("late request revived or dropped history: %d %v", rec.Code, m.List())
 	}
 	if _, err := m.Ensure(context.Background(), "p.example.com", 8421); err != nil {

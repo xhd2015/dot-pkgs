@@ -70,7 +70,7 @@ func TestIdleExpiresWithoutManagementRenewal(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "https://p-8421.example.com/", nil)
 	m.ServeHTTP(rec, req)
-	if rec.Code != 410 {
+	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatal(rec.Code)
 	}
 }

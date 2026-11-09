@@ -218,7 +218,9 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if e == nil || !e.live || m.closed {
 		m.mu.Unlock()
-		http.Error(w, "port mapping is not active; reopen it through the managing application", http.StatusGone)
+		// 503: the hostname still exists; the route is only idle or unpublished.
+		// 410 would tell caches the URL is gone forever.
+		http.Error(w, "port mapping is not active; reopen it through the managing application", http.StatusServiceUnavailable)
 		return
 	}
 	e.Active++

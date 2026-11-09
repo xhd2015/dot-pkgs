@@ -39,7 +39,7 @@ func TestPrivateUnixRelayIsUniqueAndRemovedOnClose(t *testing.T) {
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != 410 {
+	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatal(resp.StatusCode)
 	}
 	if err := m.Close(); err != nil {
