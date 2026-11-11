@@ -82,6 +82,32 @@ func StopProcessWithTimeout(pid int, termTimeout, killTimeout time.Duration) err
 	return signalUntilExit(pid, pgid, group, termTimeout, killTimeout)
 }
 
+// StopProcessGroup terminates pid and every process in its group, even when pid
+// is not the group leader.
+//
+// StopProcess deliberately declines to signal -pgid for a non-leader pid,
+// because -pid would then hit whatever group shares that number. Hosts that
+// must reclaim a port from a listener their own shell spawned still need the
+// broader sweep, so this function targets the group once it proves the group is
+// neither the caller's own nor init's.
+func StopProcessGroup(pid int) error {
+	return StopProcessGroupWithTimeout(pid, DefaultTermTimeout, DefaultKillTimeout)
+}
+
+// StopProcessGroupWithTimeout is StopProcessGroup with explicit budgets.
+func StopProcessGroupWithTimeout(pid int, termTimeout, killTimeout time.Duration) error {
+	if pid <= 0 {
+		return nil
+	}
+	pgid, err := GroupID(pid)
+	if err != nil || pgid <= 1 || pgid == syscall.Getpgrp() {
+		// No usable group, or the group is the host's own: fall back to the
+		// single-pid sweep rather than risk signalling unrelated processes.
+		return StopProcessWithTimeout(pid, termTimeout, killTimeout)
+	}
+	return signalUntilExit(pid, pgid, true, termTimeout, killTimeout)
+}
+
 // KillProcessGroupNow sends SIGKILL without waiting for a graceful exit, then
 // waits up to two seconds for the pid to disappear. Used to reclaim an orphan
 // left by a previous host instance, where nothing is left to negotiate with.

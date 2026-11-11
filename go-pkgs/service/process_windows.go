@@ -35,6 +35,14 @@ func StopProcessWithTimeout(pid int, termTimeout, killTimeout time.Duration) err
 	return ErrUnsupported
 }
 
+// StopProcessGroup returns ErrUnsupported on Windows.
+func StopProcessGroup(pid int) error { return ErrUnsupported }
+
+// StopProcessGroupWithTimeout returns ErrUnsupported on Windows.
+func StopProcessGroupWithTimeout(pid int, termTimeout, killTimeout time.Duration) error {
+	return ErrUnsupported
+}
+
 // KillProcessGroupNow returns ErrUnsupported on Windows.
 func KillProcessGroupNow(pid int) error { return ErrUnsupported }
 

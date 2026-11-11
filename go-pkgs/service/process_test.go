@@ -134,6 +134,68 @@ func TestKillProcessGroupNow(t *testing.T) {
 	}
 }
 
+func TestStopProcessGroupStopsNonLeaderListener(t *testing.T) {
+	// The listener is the child, so its group is owned by the shell: the case
+	// StopProcess alone cannot cover.
+	cmd := exec.Command("bash", "-c", "sleep 300 & wait")
+	cmd.SysProcAttr = procAttr(false)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	leader := cmd.Process.Pid
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	child := firstChildPID(t, leader)
+	if child == 0 {
+		_ = StopProcessGroup(leader)
+		t.Skip("pgrep not available; cannot observe the child")
+	}
+	if pgid, err := GroupID(child); err != nil || pgid != leader {
+		_ = StopProcessGroup(leader)
+		t.Skipf("child %d is not in the leader's group", child)
+	}
+	if err := StopProcessGroup(child); err != nil {
+		_ = StopProcessGroup(leader)
+		t.Fatalf("StopProcessGroup(child) error = %v", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		_ = StopProcessGroup(leader)
+		t.Fatalf("group leader survived StopProcessGroup(child)")
+	}
+	if Alive(child) {
+		t.Fatalf("child %d survived StopProcessGroup", child)
+	}
+}
+
+func TestStopProcessGroupFallsBackForOwnGroup(t *testing.T) {
+	// A child that inherited the host's group must be stopped alone: signalling
+	// -pgid here would take the test process down with it.
+	cmd := exec.Command("sleep", "300")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	pid := cmd.Process.Pid
+	go func() { _ = cmd.Wait() }()
+	if pgid, err := GroupID(pid); err != nil || pgid == pid {
+		_ = StopProcessWithTimeout(pid, time.Second, time.Second)
+		t.Skipf("child %d leads its own group", pid)
+	}
+	if err := StopProcessGroup(pid); err != nil {
+		t.Fatalf("StopProcessGroup() error = %v", err)
+	}
+	if Alive(pid) {
+		t.Fatalf("pid %d survived StopProcessGroup", pid)
+	}
+	if !Alive(os.Getpid()) {
+		t.Fatalf("calling process was signalled")
+	}
+}
+
 func TestWaitingPIDsFindsListenerAndKillPortOwner(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no lsof")
