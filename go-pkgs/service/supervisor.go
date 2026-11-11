@@ -901,6 +901,56 @@ func (s *Supervisor) ForceStopAll() {
 	}
 }
 
+// Adopt takes over a live process this supervisor did not start, for a host
+// that found it on its own (for example by inspecting a listening port).
+//
+// command must be the process's current command line: it is recorded so a later
+// instance can tell this pid from a recycled one. Adopting does not start
+// anything and does not rewrite the process environment; Restart replaces it.
+func (s *Supervisor) Adopt(id string, pid int, command string) error {
+	if pid <= 0 {
+		return fmt.Errorf("adopt %q: pid is required", id)
+	}
+	if !Alive(pid) {
+		return fmt.Errorf("adopt %q: pid %d is not running", id, pid)
+	}
+	command = strings.TrimSpace(command)
+	if command == "" {
+		command = ProcessCommandLine(pid)
+	}
+	if command == "" {
+		return fmt.Errorf("adopt %q: cannot read the command line of pid %d", id, pid)
+	}
+	s.mu.Lock()
+	_, defined := s.defs[id]
+	ownPID := 0
+	if entry := s.entries[id]; entry != nil {
+		ownPID = entry.pid
+	}
+	s.mu.Unlock()
+	if !defined {
+		return fmt.Errorf("adopt %q: service is not defined", id)
+	}
+	if ownPID > 0 && ownPID != pid {
+		return fmt.Errorf("adopt %q: service already runs as pid %d", id, ownPID)
+	}
+	pgid, _ := GroupID(pid)
+	rec := RuntimeRecord{
+		PID:       pid,
+		PGID:      pgid,
+		StartedAt: s.now().UTC().Format(time.RFC3339),
+		Command:   command,
+	}
+	if s.runtime != nil {
+		if err := s.runtime.Record(id, rec); err != nil {
+			return err
+		}
+	}
+	s.adopt(id, rec)
+	s.logf("[service] adopted pid %d for %q", pid, id)
+	return nil
+}
+
 // ReclaimPolicy decides what happens to a process a previous host instance
 // recorded and left running.
 type ReclaimPolicy string

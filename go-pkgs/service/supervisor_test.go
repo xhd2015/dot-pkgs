@@ -631,3 +631,53 @@ func TestSupervisorProcessesSnapshot(t *testing.T) {
 		t.Fatalf("Stop(b) error = %v", err)
 	}
 }
+
+func TestSupervisorAdoptTakesOverALiveProcess(t *testing.T) {
+	dir := t.TempDir()
+	opts := Options{
+		DataDir: filepath.Join(dir, "data"),
+		LogDir:  filepath.Join(dir, "logs"),
+		Logf:    func(format string, args ...any) { t.Logf(format, args...) },
+	}
+	s := NewSupervisor(opts)
+	if err := s.Define([]Definition{sleepDefinition("adopted")}); err != nil {
+		t.Fatalf("Define() error = %v", err)
+	}
+	cmd := exec.Command("sleep", "300")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("cannot start a helper process: %v", err)
+	}
+	pid := cmd.Process.Pid
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+
+	if err := s.Adopt("adopted", pid, ""); err != nil {
+		t.Fatalf("Adopt() error = %v", err)
+	}
+	proc, ok := s.Process("adopted")
+	if !ok || !proc.Running() || !proc.Adopted || proc.PID != pid {
+		t.Fatalf("Process(adopted) = %+v, %v; want the adopted pid", proc, ok)
+	}
+
+	// The pid is recorded, so a later instance reclaims instead of orphaning it.
+	next := NewSupervisor(opts)
+	result := next.Reclaim(ReclaimAdopt)
+	if len(result.Adopted) != 1 || result.Adopted[0] != "adopted" {
+		t.Fatalf("Reclaim(Adopt) = %+v, want adopted", result)
+	}
+	reclaimed, ok := next.Process("adopted")
+	if !ok || reclaimed.PID != pid || !reclaimed.Running() {
+		t.Fatalf("Process(adopted) after reclaim = %+v, %v", reclaimed, ok)
+	}
+}
+
+func TestSupervisorAdoptRejectsAnUndefinedService(t *testing.T) {
+	s := newTestSupervisor(t, Options{})
+	if err := s.Adopt("ghost", os.Getpid(), ""); err == nil {
+		t.Fatal("Adopt(ghost) = nil error, want a definition error")
+	} else if !strings.Contains(err.Error(), "not defined") {
+		t.Fatalf("Adopt(ghost) error = %v, want a definition error", err)
+	}
+}
