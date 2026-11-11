@@ -686,6 +686,13 @@ func (s *Supervisor) Process(id string) (Process, bool) {
 	return snapshotProcess(entry), true
 }
 
+// SetRuntimeError records a host-side failure for a tracked service: the
+// process is still running, but its setup or forwarding is broken. The pid is
+// kept so the process remains stoppable.
+func (s *Supervisor) SetRuntimeError(id, message string) {
+	s.setRuntimeError(id, message)
+}
+
 // Processes returns a snapshot of every service the supervisor has observed,
 // sorted by id.
 func (s *Supervisor) Processes() []Process {
