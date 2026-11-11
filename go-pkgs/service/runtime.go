@@ -24,6 +24,11 @@ type RuntimeRecord struct {
 	// Command is the definition's command at start time, used to detect pid
 	// recycling before the record is trusted.
 	Command string `json:"command,omitempty"`
+	// Detached records how the process was started, not what the definition
+	// says now. Editing a definition must not change the lifetime of a process
+	// that is already running, and the next host instance needs the start-time
+	// value to decide between reclaiming and adopting it.
+	Detached bool `json:"detached,omitempty"`
 }
 
 // RuntimeState is the whole runtime file: the pids one host instance recorded.

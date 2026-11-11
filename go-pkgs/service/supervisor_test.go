@@ -423,6 +423,68 @@ func TestSupervisorShutdownLeavesDetachedServiceRunning(t *testing.T) {
 	}
 }
 
+// A definition edit must not retarget the lifetime of a process that is
+// already running: the change applies on the next start, exactly like an
+// enable/disable flag, so Shutdown keeps obeying the start-time value.
+func TestSupervisorDetachedEditDoesNotChangeARunningProcess(t *testing.T) {
+	s := newTestSupervisor(t, Options{})
+	if err := s.SetDefinition(sleepDefinition("svc")); err != nil {
+		t.Fatalf("SetDefinition() error = %v", err)
+	}
+	if err := s.Start("svc"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	proc := waitForState(t, s, "svc", StateRunning)
+
+	def := sleepDefinition("svc")
+	def.Detached = true
+	if err := s.SetDefinition(def); err != nil {
+		t.Fatalf("SetDefinition() error = %v", err)
+	}
+	got, _ := s.Process("svc")
+	if !got.Definition.Detached {
+		t.Fatalf("Definition.Detached = false, want the saved value")
+	}
+	if got.Detached {
+		t.Fatalf("Process.Detached = true, want the start-time value false")
+	}
+	if rec := s.RuntimeState().Processes["svc"]; rec.Detached {
+		t.Fatalf("runtime record = %+v, want detached left unset until restart", rec)
+	}
+
+	s.Shutdown()
+	if Alive(proc.PID) {
+		t.Fatalf("pid %d with Detached added mid-run survived Shutdown", proc.PID)
+	}
+}
+
+// The mirror case: clearing Detached must not hand the host a process that was
+// started detached, or quitting would kill a service the user asked to keep.
+func TestSupervisorClearingDetachedKeepsTheRunningProcess(t *testing.T) {
+	s := newTestSupervisor(t, Options{})
+	def := sleepDefinition("svc")
+	def.Detached = true
+	if err := s.SetDefinition(def); err != nil {
+		t.Fatalf("SetDefinition() error = %v", err)
+	}
+	if err := s.Start("svc"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	proc := waitForState(t, s, "svc", StateRunning)
+	if rec := s.RuntimeState().Processes["svc"]; !rec.Detached {
+		t.Fatalf("runtime record = %+v, want detached recorded at start", rec)
+	}
+
+	if err := s.SetDefinition(sleepDefinition("svc")); err != nil {
+		t.Fatalf("SetDefinition() error = %v", err)
+	}
+	s.Shutdown()
+	if !Alive(proc.PID) {
+		t.Fatalf("pid %d started detached died after Detached was cleared", proc.PID)
+	}
+	KillProcessGroupNow(proc.PID)
+}
+
 func TestSupervisorRemoveStopsTheProcess(t *testing.T) {
 	s := newTestSupervisor(t, Options{})
 	if err := s.SetDefinition(sleepDefinition("svc")); err != nil {
@@ -546,6 +608,38 @@ func TestSupervisorReclaimAdoptKeepsOrphan(t *testing.T) {
 	}
 }
 
+// ReclaimStop is the right policy for a host that owns its services, but a
+// process the user marked detached is not the host's to kill: the record says
+// "this outlives me", so it is adopted and reported as running.
+func TestSupervisorReclaimStopKeepsDetachedRecord(t *testing.T) {
+	s := newTestSupervisor(t, Options{})
+	if err := s.SetDefinition(sleepDefinition("svc")); err != nil {
+		t.Fatalf("SetDefinition() error = %v", err)
+	}
+	pid := spawnSleep(t, "sleep 300", true)
+	recordWith(t, s, "svc", pid, "sleep 300", true)
+	result := s.Reclaim(ReclaimStop)
+	if len(result.Adopted) != 1 || result.Adopted[0] != "svc" {
+		t.Fatalf("Reclaim() = %+v, want svc adopted", result)
+	}
+	if len(result.Reclaimed) != 0 {
+		t.Fatalf("Reclaim() = %+v, want nothing reclaimed", result)
+	}
+	if !Alive(pid) {
+		t.Fatalf("detached pid %d did not survive ReclaimStop", pid)
+	}
+	proc, ok := s.Process("svc")
+	if !ok || !proc.Adopted || !proc.Detached || proc.PID != pid || !s.Running("svc") {
+		t.Fatalf("Process() = %+v, %v, want an adopted detached running process", proc, ok)
+	}
+	// An explicit stop is still the user's call, and ForceStopAll is the host's
+	// last resort, so the adopted process stays killable.
+	s.ForceStopAll()
+	if Alive(pid) {
+		t.Fatalf("adopted detached pid %d survived ForceStopAll", pid)
+	}
+}
+
 func TestSupervisorReclaimSkipsRecycledPID(t *testing.T) {
 	s := newTestSupervisor(t, Options{})
 	record(t, s, "svc", os.Getpid(), "some-unrelated-command")
@@ -590,12 +684,18 @@ func spawnSleep(t *testing.T, command string, detached bool) int {
 
 func record(t *testing.T, s *Supervisor, id string, pid int, command string) {
 	t.Helper()
+	recordWith(t, s, id, pid, command, false)
+}
+
+func recordWith(t *testing.T, s *Supervisor, id string, pid int, command string, detached bool) {
+	t.Helper()
 	store := NewRuntimeStore(filepath.Join(s.Options().DataDir, "services-runtime.json"))
 	if err := store.Record(id, RuntimeRecord{
 		PID:       pid,
 		PGID:      pid,
 		StartedAt: time.Now().UTC().Format(time.RFC3339),
 		Command:   command,
+		Detached:  detached,
 	}); err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}

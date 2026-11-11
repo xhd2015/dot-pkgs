@@ -97,6 +97,12 @@ type serviceProcess struct {
 	stopRequested bool
 	logPath       string
 
+	// detached is the lifetime this process was actually started (or adopted)
+	// with. It is a snapshot of Definition.Detached, taken at start time, so a
+	// later definition edit cannot change how an already-running process ends:
+	// the edit only takes effect on the next start, like an enable/disable flag.
+	detached bool
+
 	lastStartedAt string
 	lastExitedAt  string
 	lastExitError string
@@ -407,6 +413,11 @@ func (s *Supervisor) start(id string, force bool) error {
 	}
 	workingDir := def.WorkingDir
 	detached := def.Detached
+	// Fix the lifetime now, while the process is being replaced: everything
+	// downstream (Shutdown, ForceStopAll, the Process snapshot, the runtime
+	// record) answers "how was this pid started", never "what does the
+	// definition say today".
+	entry.detached = detached
 	s.mu.Unlock()
 
 	if stalePID > 0 {
@@ -480,6 +491,7 @@ func (s *Supervisor) start(id string, force bool) error {
 		PGID:      pgid,
 		StartedAt: startedAt.UTC().Format(time.RFC3339),
 		Command:   def.Command,
+		Detached:  detached,
 	})
 
 	if s.opts.Started != nil {
@@ -708,12 +720,14 @@ func (s *Supervisor) Processes() []Process {
 
 func snapshotProcess(entry *serviceProcess) Process {
 	return Process{
-		Definition:    entry.def,
-		State:         entry.state,
-		PID:           entry.pid,
-		PGID:          entry.pgid,
-		Desired:       entry.desired,
-		Detached:      entry.def.Detached,
+		Definition: entry.def,
+		State:      entry.state,
+		PID:        entry.pid,
+		PGID:       entry.pgid,
+		Desired:    entry.desired,
+		// The live lifetime, not Definition.Detached: a host shows the
+		// difference between "saved" and "in effect" from these two fields.
+		Detached:      entry.detached,
 		Adopted:       entry.adopted,
 		LogPath:       entry.logPath,
 		LastStartedAt: entry.lastStartedAt,
@@ -860,12 +874,16 @@ func (s *Supervisor) Reconcile() []string {
 // Shutdown stops every service it started that is not detached, concurrently.
 // Detached services are left running on purpose: the user asked for them to
 // outlive the host.
+//
+// "Detached" here is the lifetime the process was started with, so editing a
+// definition between start and shutdown does not change who owns the process:
+// that edit applies on the next start.
 func (s *Supervisor) Shutdown() {
 	s.StopHealthCheck()
 	s.mu.Lock()
 	var ids []string
 	for id, entry := range s.entries {
-		if entry.def.Detached {
+		if entry.detached {
 			continue
 		}
 		if entry.pid > 0 || entry.desired {
@@ -941,6 +959,12 @@ func (s *Supervisor) Adopt(id string, pid int, command string) error {
 		StartedAt: s.now().UTC().Format(time.RFC3339),
 		Command:   command,
 	}
+	// The host cannot tell how the process was started; the definition it
+	// registered for this id is the only available statement of intent, and
+	// recording it keeps the next instance's Reclaim decision honest.
+	if def, ok := s.Definition(id); ok {
+		rec.Detached = def.Detached
+	}
 	if s.runtime != nil {
 		if err := s.runtime.Record(id, rec); err != nil {
 			return err
@@ -1002,6 +1026,16 @@ func (s *Supervisor) Reclaim(policy ReclaimPolicy) ReclaimResult {
 			result.Skipped = append(result.Skipped, id)
 			continue
 		}
+		// A detached record is the user's statement that this process should
+		// outlive the host, so it is adopted instead of killed even under
+		// ReclaimStop. A record without the flag predates it and stays under
+		// the host's ownership, which is the old behaviour.
+		if rec.Detached {
+			s.logf("[service] keeping detached process for %q (pid %d) left by a previous instance", id, rec.PID)
+			s.adopt(id, rec)
+			result.Adopted = append(result.Adopted, id)
+			continue
+		}
 		if policy == ReclaimAdopt {
 			s.adopt(id, rec)
 			result.Adopted = append(result.Adopted, id)
@@ -1043,6 +1077,9 @@ func (s *Supervisor) adopt(id string, rec RuntimeRecord) {
 	entry.state = StateRunning
 	entry.adopted = true
 	entry.desired = true
+	// Keep the lifetime the process was started with, not the definition's
+	// current value: the edit applies when the process is next restarted.
+	entry.detached = rec.Detached
 	entry.lastStartedAt = rec.StartedAt
 	entry.runStartedAt = ParseRecordTime(rec.StartedAt)
 	entry.lastExitError = ""
