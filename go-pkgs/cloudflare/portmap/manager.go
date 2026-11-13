@@ -4,6 +4,7 @@ package portmap
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net"
 	"net/http"
@@ -35,7 +36,16 @@ type Options struct {
 	// Wrap, when set, is the HTTP handler the relay serves. The argument is the
 	// manager (per-host reverse proxy). Used for a token login hop.
 	Wrap func(http.Handler) http.Handler
+	// ProbeSecret enables authenticated relay reachability probes. Probes must
+	// pass Wrap first and never count as application traffic or extend idle.
+	ProbeSecret string
 }
+
+const (
+	ProbeSecretHeader = "X-Portmap-Probe-Secret"
+	ProbeNonceHeader  = "X-Portmap-Probe-Nonce"
+	ProbeReplyHeader  = "X-Portmap-Probe-Reply"
+)
 
 const (
 	StatusUp   = "up"
@@ -66,19 +76,20 @@ type entry struct {
 // Manager serializes publication/removal, while traffic takes only the brief
 // state mutex. A request accepted before expiry keeps its stream alive.
 type Manager struct {
-	op        sync.Mutex
-	mu        sync.Mutex
-	routes    map[string]*entry
-	publisher Publisher
-	idle      time.Duration
-	now       func() time.Time
-	listener  net.Listener
-	server    *http.Server
-	origin    string
-	closed    bool
-	cancel    context.CancelFunc
-	cleanup   func()
-	onChange  func([]Route)
+	op          sync.Mutex
+	mu          sync.Mutex
+	routes      map[string]*entry
+	publisher   Publisher
+	idle        time.Duration
+	now         func() time.Time
+	listener    net.Listener
+	server      *http.Server
+	origin      string
+	closed      bool
+	cancel      context.CancelFunc
+	cleanup     func()
+	onChange    func([]Route)
+	probeSecret string
 }
 
 func New(opts Options) (*Manager, error) {
@@ -95,7 +106,7 @@ func New(opts Options) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &Manager{routes: map[string]*entry{}, publisher: opts.Publisher, idle: opts.IdleTimeout, now: opts.Now, listener: l, origin: origin, cleanup: cleanup, onChange: opts.OnChange}
+	m := &Manager{routes: map[string]*entry{}, publisher: opts.Publisher, idle: opts.IdleTimeout, now: opts.Now, listener: l, origin: origin, cleanup: cleanup, onChange: opts.OnChange, probeSecret: opts.ProbeSecret}
 	handler := http.Handler(m)
 	if opts.Wrap != nil {
 		handler = opts.Wrap(m)
@@ -203,6 +214,26 @@ func (m *Manager) Ensure(ctx context.Context, hostname string, port int) (Route,
 	return out, nil
 }
 
+// Reconcile repairs the shared publisher without removing individual routes.
+// It is serialized against Ensure, Stop and Close.
+func (m *Manager) Reconcile(ctx context.Context) error {
+	m.op.Lock()
+	defer m.op.Unlock()
+	m.mu.Lock()
+	closed := m.closed
+	m.mu.Unlock()
+	if closed {
+		return fmt.Errorf("port mapper is closed")
+	}
+	p, ok := m.publisher.(interface {
+		Reconcile(context.Context, string) error
+	})
+	if !ok {
+		return fmt.Errorf("publisher does not support reconciliation")
+	}
+	return p.Reconcile(ctx, m.origin)
+}
+
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := strings.ToLower(r.Host)
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -223,6 +254,18 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "port mapping is not active; reopen it through the managing application", http.StatusServiceUnavailable)
 		return
 	}
+	secret := r.Header.Get(ProbeSecretHeader)
+	nonce := r.Header.Get(ProbeNonceHeader)
+	if m.probeSecret != "" && secret != "" && nonce != "" && subtle.ConstantTimeCompare([]byte(secret), []byte(m.probeSecret)) == 1 {
+		m.mu.Unlock()
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set(ProbeReplyHeader, nonce)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	// Never pass an attempted internal probe credential to the application.
+	r.Header.Del(ProbeSecretHeader)
+	r.Header.Del(ProbeNonceHeader)
 	e.Active++
 	e.LastRequestAt = m.now()
 	e.lastUsed = e.LastRequestAt

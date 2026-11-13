@@ -137,6 +137,32 @@ func (p *ManagedPublisher) Publish(ctx context.Context, host, origin string) err
 	return nil
 }
 
+// Reconcile reattaches shared ingress after an externally verified failure.
+// It restarts the connector so corrected configuration is actually loaded.
+func (p *ManagedPublisher) Reconcile(ctx context.Context, origin string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for wildcard, hosts := range p.hosts {
+		if len(hosts) == 0 {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if p.attachFn != nil {
+			if err := p.attachFn(ctx, wildcard, origin); err != nil {
+				return err
+			}
+		} else {
+			_, err := cloudflare.Attach(cloudflare.AttachOptions{Domain: wildcard, LocalURL: origin, TunnelName: p.TunnelName, ConfigDir: p.ConfigDir, Log: p.Log, SkipDNS: true, ForceRestart: true})
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (p *ManagedPublisher) ensureTunnel(ctx context.Context) (string, error) {
 	if p.ensureTunnelFn != nil {
 		return p.ensureTunnelFn(ctx)

@@ -1,6 +1,7 @@
 package cloudflare
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // AttachOptions configures Attach for a hostname on a managed named tunnel.
@@ -25,6 +28,8 @@ type AttachOptions struct {
 	// SkipDNS lets a caller use separately verified, non-overwriting DNS
 	// management (for example a wildcard ingress with individual DNS records).
 	SkipDNS bool
+	// ForceRestart is reserved for an externally verified connector failure.
+	ForceRestart bool
 }
 
 // Attach merges hostname into the managed tunnel registry and ensures a connector.
@@ -113,6 +118,19 @@ func Attach(opts AttachOptions) (*Session, error) {
 		return nil, err
 	}
 	configPath := filepath.Join(managedDir, "config.yml")
+	// The saved registry can remain correct while the actual ingress file is
+	// replaced. A running connector must reload if the file drifted.
+	expectedConfig, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	existingConfig, readErr := os.ReadFile(configPath)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, readErr
+	}
+	if !bytes.Equal(existingConfig, expectedConfig) {
+		ingressChanged = true
+	}
 	if err := WriteConfig(configPath, cfg); err != nil {
 		return nil, err
 	}
@@ -148,6 +166,9 @@ func Attach(opts AttachOptions) (*Session, error) {
 		}
 	}
 
+	if opts.ForceRestart {
+		needStart = true
+	}
 	if needStart {
 		if runner != nil {
 			if _, err := runner.Exec("cloudflared", "tunnel", "--config", configPath, "run", name); err != nil {
