@@ -37,6 +37,9 @@ type Route struct {
 	Tunnel   string // logical tunnel name; empty → backend default
 	Hostname string // e.g. hello-world.xhd2015.xyz
 	Origin   string // e.g. http://127.0.0.1:18080 or http://10.0.2.2:18080
+	// Protocol selects the cloudflared edge transport ("http2" or "quic").
+	// Empty keeps whatever the tunnel already recorded.
+	Protocol string
 }
 
 // Backend hides whether cloudflared runs on the host or inside a qemu guest.

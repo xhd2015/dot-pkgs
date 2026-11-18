@@ -30,6 +30,10 @@ type AttachOptions struct {
 	SkipDNS bool
 	// ForceRestart is reserved for an externally verified connector failure.
 	ForceRestart bool
+	// Protocol selects the cloudflared edge transport ("http2" or "quic").
+	// Empty keeps whatever the tunnel already recorded, falling back to
+	// DefaultTunnelProtocol — so a caller that does not care never resets it.
+	Protocol string
 }
 
 // Attach merges hostname into the managed tunnel registry and ensures a connector.
@@ -104,6 +108,20 @@ func Attach(opts AttachOptions) (*Session, error) {
 	prev, hadHost := st.Hosts[opts.Domain]
 	ingressChanged := !hadHost || prev == nil || prev.Service != localURL
 
+	// A protocol change is a restart reason just like an ingress change: the
+	// connector must be relaunched for the new --protocol flag to take effect.
+	protocolChanged := false
+	if strings.TrimSpace(opts.Protocol) != "" {
+		normalized, perr := NormalizeProtocol(opts.Protocol)
+		if perr != nil {
+			return nil, perr
+		}
+		if effectiveProtocol(st.Protocol) != normalized {
+			protocolChanged = true
+		}
+		st.Protocol = normalized
+	}
+
 	st.TunnelName = name
 	st.TunnelID = tunnelID
 	st.CredentialsFile = credFile
@@ -154,12 +172,12 @@ func Attach(opts AttachOptions) (*Session, error) {
 	if runner != nil {
 		// Fake mode: PID>0 means a prior successful run for this registry.
 		// Start on first attach (no prior run) or when ingress changed.
-		if st.ConnectorPID <= 0 || ingressChanged {
+		if st.ConnectorPID <= 0 || ingressChanged || protocolChanged {
 			needStart = true
 		}
 	} else {
 		alive := processAlive(st.ConnectorPID)
-		if alive && !ingressChanged {
+		if alive && !ingressChanged && !protocolChanged {
 			sweepConfigConnectors(configPath, st.ConnectorPID)
 		} else {
 			needStart = true
@@ -171,8 +189,8 @@ func Attach(opts AttachOptions) (*Session, error) {
 	}
 	if needStart {
 		if runner != nil {
-			if _, err := runner.Exec("cloudflared", "tunnel", "--config", configPath, "run", name); err != nil {
-				if _, err2 := runner.Exec("cloudflared", "tunnel", "run", "--config", configPath, name); err2 != nil {
+			if _, err := runner.Exec("cloudflared", tunnelRunArgs(configPath, name, st.Protocol)...); err != nil {
+				if _, err2 := runner.Exec("cloudflared", tunnelRunArgsAlt(configPath, name, st.Protocol)...); err2 != nil {
 					return nil, fmt.Errorf("start cloudflared via runner: %v / %v", err, err2)
 				}
 			}

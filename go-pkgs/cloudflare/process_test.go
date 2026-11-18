@@ -27,13 +27,13 @@ func TestRestartDelay(t *testing.T) {
 func TestSuperviseRestartsUntilStopped(t *testing.T) {
 	var starts int
 	prev := startCommand
-	startCommand = func(configPath, tunnelName string) *exec.Cmd {
+	startCommand = func(configPath, tunnelName, protocol string) *exec.Cmd {
 		starts++
 		return exec.Command("sh", "-c", "exit 0")
 	}
 	t.Cleanup(func() { startCommand = prev })
 
-	p, err := StartProcess("cfg", "tunnel", nil)
+	p, err := StartProcess("cfg", "tunnel", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

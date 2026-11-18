@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -24,6 +25,7 @@ type Process struct {
 	cmd        *exec.Cmd
 	configPath string
 	tunnelName string
+	protocol   string
 	logPath    string
 	stopped    bool
 	attempt    int
@@ -34,17 +36,74 @@ type Process struct {
 	onPID      func(int)
 }
 
-// startCommand is replaced in tests.
-var startCommand = func(configPath, tunnelName string) *exec.Cmd {
-	return exec.Command("cloudflared", "tunnel", "--config", configPath, "run", tunnelName)
+// DefaultTunnelProtocol is the edge transport used when a caller does not
+// choose one. The "auto" default tries QUIC first, which is blocked or
+// degraded on many corporate networks: QUIC dial timeouts delay connector
+// startup for minutes and long-lived h2 fallback connections still decay on
+// lossy paths. http2 therefore stays the default, matching ai-critic's
+// unified_tunnel default, while a host on a lossy uplink can opt into QUIC.
+const DefaultTunnelProtocol = "http2"
+
+// ProtocolHTTP2 multiplexes every stream over one TCP connection.
+const ProtocolHTTP2 = "http2"
+
+// ProtocolQUIC runs over UDP. Independent streams keep one lossy path from
+// collapsing the congestion window for the whole connection.
+const ProtocolQUIC = "quic"
+
+// NormalizeProtocol validates a caller-supplied edge protocol. Empty means
+// "not specified" and resolves to DefaultTunnelProtocol, so an install that
+// never sets it behaves exactly as before.
+func NormalizeProtocol(p string) (string, error) {
+	v := strings.ToLower(strings.TrimSpace(p))
+	switch v {
+	case "":
+		return DefaultTunnelProtocol, nil
+	case ProtocolHTTP2, ProtocolQUIC:
+		return v, nil
+	default:
+		return "", fmt.Errorf("unknown edge protocol %q (want %s|%s)", p, ProtocolHTTP2, ProtocolQUIC)
+	}
 }
 
-// StartProcess launches `cloudflared tunnel --config <config> run <tunnel>`
-// in its own process group so Stop can kill the whole group.
-func StartProcess(configPath, tunnelName string, log *os.File) (*Process, error) {
+// tunnelRunArgs is the canonical `tunnel run` argv. All connector spawn sites
+// (process registry, attach, restart-after-ingress-change) must go through it
+// so every connector carries the same protocol, passed as a flag rather than
+// inherited from the environment.
+func tunnelRunArgs(configPath, tunnelName, protocol string) []string {
+	return []string{"tunnel", "--config", configPath, "--protocol", effectiveProtocol(protocol), "run", tunnelName}
+}
+
+// tunnelRunArgsAlt is the fallback argv shape used when the primary form is
+// rejected (older cloudflared builds expect `run` before `--config`).
+func tunnelRunArgsAlt(configPath, tunnelName, protocol string) []string {
+	return []string{"tunnel", "run", "--config", configPath, "--protocol", effectiveProtocol(protocol), tunnelName}
+}
+
+// effectiveProtocol maps any input to a protocol cloudflared accepts. An
+// unparseable value falls back to the default so a corrupted state.json cannot
+// stop the connector from starting.
+func effectiveProtocol(protocol string) string {
+	v, err := NormalizeProtocol(protocol)
+	if err != nil {
+		return DefaultTunnelProtocol
+	}
+	return v
+}
+
+// startCommand is replaced in tests.
+var startCommand = func(configPath, tunnelName, protocol string) *exec.Cmd {
+	return exec.Command("cloudflared", tunnelRunArgs(configPath, tunnelName, protocol)...)
+}
+
+// StartProcess launches `cloudflared tunnel --config <config> --protocol
+// <protocol> run <tunnel>` in its own process group so Stop can kill the whole
+// group. An empty protocol uses DefaultTunnelProtocol.
+func StartProcess(configPath, tunnelName, protocol string, log *os.File) (*Process, error) {
 	p := &Process{
 		configPath: configPath,
 		tunnelName: tunnelName,
+		protocol:   effectiveProtocol(protocol),
 		done:       make(chan struct{}),
 	}
 	if log != nil {
@@ -58,7 +117,7 @@ func StartProcess(configPath, tunnelName string, log *os.File) (*Process, error)
 }
 
 func (p *Process) spawn(log *os.File) error {
-	cmd := startCommand(p.configPath, p.tunnelName)
+	cmd := startCommand(p.configPath, p.tunnelName, p.protocol)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if log != nil {
 		cmd.Stdout = log

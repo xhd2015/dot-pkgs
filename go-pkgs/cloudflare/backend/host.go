@@ -105,6 +105,7 @@ func (h *hostBackend) UpsertRoute(ctx context.Context, r Route) (string, error) 
 		ConfigDir:  h.configDir,
 		Log:        h.log,
 		Runner:     h.runner,
+		Protocol:   r.Protocol,
 	})
 	if err != nil {
 		return "", err

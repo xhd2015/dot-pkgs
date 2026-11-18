@@ -67,7 +67,7 @@ func startRegisteredConnector(st *TunnelState, configPath, name, managedDir stri
 	if err != nil {
 		return nil, err
 	}
-	proc, err := StartProcess(configPath, name, logFile)
+	proc, err := StartProcess(configPath, name, st.Protocol, logFile)
 	_ = logFile.Close()
 	if err != nil {
 		return nil, err

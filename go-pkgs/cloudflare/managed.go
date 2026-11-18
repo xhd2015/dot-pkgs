@@ -22,6 +22,10 @@ type TunnelState struct {
 	CredentialsFile string                `json:"credentials_file,omitempty"`
 	ConnectorPID    int                   `json:"connector_pid,omitempty"`
 	Hosts           map[string]*HostEntry `json:"hosts"` // key = hostname
+	// Protocol is the cloudflared edge transport for this tunnel. Empty means
+	// "not configured" and resolves to DefaultTunnelProtocol, so a state.json
+	// written before this field existed keeps working unchanged.
+	Protocol string `json:"protocol,omitempty"`
 }
 
 // HostEntry is one hostname attached to a managed tunnel.

@@ -9,7 +9,7 @@ import (
 func TestRegisterProcessStopsPreviousSupervisor(t *testing.T) {
 	prev := startCommand
 	var starts int
-	startCommand = func(configPath, tunnelName string) *exec.Cmd {
+	startCommand = func(configPath, tunnelName, protocol string) *exec.Cmd {
 		starts++
 		return exec.Command("sh", "-c", "sleep 60")
 	}
@@ -18,13 +18,13 @@ func TestRegisterProcessStopsPreviousSupervisor(t *testing.T) {
 		stopRegisteredProcess("cfg-registry-test")
 	})
 
-	p1, err := StartProcess("cfg-registry-test", "tunnel", nil)
+	p1, err := StartProcess("cfg-registry-test", "tunnel", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	registerProcess("cfg-registry-test", p1)
 
-	p2, err := StartProcess("cfg-registry-test", "tunnel", nil)
+	p2, err := StartProcess("cfg-registry-test", "tunnel", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
